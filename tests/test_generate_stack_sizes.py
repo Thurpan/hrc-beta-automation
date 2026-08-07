@@ -3,15 +3,14 @@ import unittest
 from scripts.generate_stack_sizes import (
     STACK_OPTIONS,
     STACK_SORT_ORDER,
-    stack_priority_index,
     stack_sort_key,
 )
 
 
 class StackSortKeyTests(unittest.TestCase):
     def test_calculates_product_of_one_based_stack_ranks(self):
-        self.assertEqual(stack_priority_index((10, 10, 10, 10)), 1)
-        self.assertEqual(stack_priority_index((15, 20, 20, 10)), 48)
+        self.assertEqual(stack_sort_key((10, 10, 10, 10))[0], 1)
+        self.assertEqual(stack_sort_key((15, 20, 20, 10))[0], 48)
 
     def test_sorts_by_product_then_breaks_ties_by_stack_rank(self):
         setups = [
