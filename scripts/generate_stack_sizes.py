@@ -3,7 +3,7 @@ from math import prod
 from pathlib import Path
 
 STACK_OPTIONS = [10, 12.5, 15, 20, 30, 40, 100, 50, 7, 5, 17.5, 22.5, 35, 45, 60, 70, 80, 25]
-PLAYER_COUNT = 4
+PLAYER_COUNT = 5
 OUTPUT_FILE = Path("stack_size_options.txt")
 
 STACK_SORT_ORDER = {stack: rank for rank, stack in enumerate(STACK_OPTIONS, start=1)}
