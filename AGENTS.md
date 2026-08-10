@@ -22,7 +22,11 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 - Stop at a critical control that cannot be identified or operated safely.
 - Preserve unknown facts as `TBD` or `TO CONFIRM`.
 - Record only observed evidence in `docs/feasibility.md`.
-- Do not add source code, dependencies, or build commands before feasibility is proven.
+- Do not add application-automation source code, dependencies, or build
+  commands before feasibility is proven.
+- An explicitly requested HRC tree-building candidate can be developed offline
+  under `scripts/hrc/`. Keep it labelled unvalidated until HRC verifies it on
+  the licensed host.
 
 ## HRC data safety
 
@@ -54,5 +58,8 @@ Validate changed Markdown before each commit. Review the exact diff. Keep scaffo
 - Store project purpose and boundaries in `README.md`.
 - Store operating instructions in `AGENTS.md`.
 - Store observed discovery evidence in `docs/feasibility.md`.
+- Store verbatim external HRC script snapshots under `reference/hrc/`.
+- Do not apply project changes to an external snapshot.
+- Store project-owned HRC tree-building candidates under `scripts/hrc/`.
 - Keep licence material, HRC private configuration, and sensitive poker data outside Git.
 - Keep future implementation claims out of the repository until evidence supports them.

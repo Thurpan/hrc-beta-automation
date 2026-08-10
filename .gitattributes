@@ -1,2 +1,4 @@
 # Keep the shared HRC reference snapshot byte-stable across platforms.
 /reference/hrc/shared-chatgpt-prototype.js text eol=lf
+/scripts/hrc/*.js text eol=lf
+/tests/hrc/*.js text eol=lf

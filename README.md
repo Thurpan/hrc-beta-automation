@@ -32,7 +32,10 @@ machine evidence and Euan's licence confirmation supersede that reference.
 - Do not overwrite or delete existing HRC data.
 - Do not expose licence data, poker data, or other sensitive information.
 - Do not install software or start an expensive calculation without Euan's approval.
-- Do not choose an implementation language or framework before feasibility is proven.
+- Do not choose an application-automation language or framework before
+  feasibility is proven.
+- Keep HRC-required JavaScript tree-building candidates separate from
+  application automation.
 
 ## Current next action
 

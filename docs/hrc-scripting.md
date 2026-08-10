@@ -816,7 +816,8 @@ position rules, call rules, all-in rules, and postflop rules separate in that
 specification.
 
 Use [`hrc-script-design.md`](hrc-script-design.md) as the current design and
-decision record. It compares the sizing workbook with the shared prototype.
+decision record. It compares the sizing workbook, the archived shared
+prototype, and the project-owned working candidate.
 
 When implementation is authorised, prefer one reusable script that selects the
 correct rule for each decision. Generate separate scripts only when two
@@ -826,9 +827,9 @@ Keep the HRC script separate from the application automation. The script owns
 the action tree. The future automation owns UI navigation, observable state,
 safe output naming, and lifecycle handling.
 
-Do not add a script or generator to this repository until the selected HRC
-workflow has a supported feasibility verdict and the sizing policy above is
-complete.
+An explicitly requested project candidate can be stored for offline review
+before application-automation feasibility is complete. Keep it labelled
+unvalidated. Do not treat it as observed feasibility evidence.
 
 ## Sources
 
