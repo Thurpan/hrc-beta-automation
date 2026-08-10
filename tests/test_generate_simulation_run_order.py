@@ -16,9 +16,8 @@ class RunOrderConfigurationTests(unittest.TestCase):
                 (2, generator.HEADS_UP_STACK_OPTIONS),
                 (3, (10, 20, 15, 30)),
                 (5, (10, 20, 15)),
-                (3, generator.CORE_STACK_OPTIONS),
-                (5, generator.CORE_STACK_OPTIONS),
                 (3, generator.FULL_STACK_OPTIONS),
+                (5, generator.CORE_STACK_OPTIONS),
                 (5, generator.FULL_STACK_OPTIONS),
             ),
         )

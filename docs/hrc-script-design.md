@@ -93,9 +93,8 @@ The generator writes the batches in this order:
 1. Heads-up equal-stack setups from 1 to 80 big blinds.
 1. Three-player setups from the first four-option priority list.
 1. Five-player setups from the first three-option priority list.
-1. Three-player setups from the seven-option core list.
-1. Five-player setups from the seven-option core list.
 1. Three-player setups from the full 18-option list.
+1. Five-player setups from the seven-option core list.
 1. Five-player setups from the full 18-option list.
 
 Each batch uses its own configured option order to calculate setup priority.
