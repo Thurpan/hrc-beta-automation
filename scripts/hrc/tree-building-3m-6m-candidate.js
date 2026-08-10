@@ -14,6 +14,7 @@
  * PREFLOP:
  * - RFI / 3-bet / 4-bet sizing depends on effective stack.
  * - Effective stack uses only players who have not folded.
+ * - SB completion is unavailable at an effective stack of 5bb or less.
  * - Up to 2 callers are allowed versus an open.
  *
  * SQUEEZES:
@@ -77,6 +78,10 @@ let ALLOWED_FLATS_PER_RAISE = {
 
 
 let ALLOW_COLD_CALLS = false;
+
+
+//SB completion is disabled at or below this dynamic effective stack.
+const PREFLOP_SB_COMPLETION_CUTOFF_BB = 5;
 
 
 //Permit one non-cold closing call against a 5-bet or later all-in.
@@ -1985,12 +1990,23 @@ function canFlatCallPreflop(ctx) {
 		ctx.getBetCount();
 
 
-	//Before any raise, only SB may complete.
+	//Before any raise, only SB may complete, and only above the cutoff.
 	if (bets == 1) {
 
+		if (
+			ctx.getActivePlayer() !=
+				ctx.getPlayerIndexSmallBlind()
+		) {
+
+			return false;
+		}
+
+
 		return (
-			ctx.getActivePlayer() ==
-			ctx.getPlayerIndexSmallBlind()
+			getEffectiveStack(ctx) >
+			ctx.sizingBigBlinds(
+				PREFLOP_SB_COMPLETION_CUTOFF_BB
+			)
 		);
 	}
 
