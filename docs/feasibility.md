@@ -29,58 +29,73 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 
 ## Selected workflow
 
-- Workflow: TBD
-- Selection reason: TBD
-- Disposable inputs: TBD
-- New output filename: TBD
-- Expected cost and duration: TBD
+- Workflow: Create one true heads-up Monte Carlo tree with
+  `tree-building-hu-candidate.js`.
+- Selection reason: This is the smallest equal-stack setup in the generated
+  simulation run order.
+- Disposable inputs: Two players with `1 bb` starting stacks. Other hand
+  settings remain TO CONFIRM.
+- New output filename: TBD. The current hand is unsaved as `*Hand 1`.
+- Expected cost and duration: Tree creation completed during the observation
+  session. The exact duration, node estimate, memory estimate, and calculation
+  cost remain TO CONFIRM.
 
 ## Control map
 
 | Lifecycle step | Visible label | Accessible name | Control type | Automation ID | Supported patterns | Keyboard path | Required action | Observable success | Observable failure | Safe to automate |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Configure | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
-| Start | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
+| Configure stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
+| Select scripting | `Scripting` | `Scripting` | Tab item | Empty | SelectionItem and LegacyIAccessible | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | TBD | TO CONFIRM |
+| Open script picker | Icon button beside `Script:` | Empty | Button | `1903002` during this session; stability TO CONFIRM | Invoke and LegacyIAccessible | No access key was exposed. | Open the script file picker. | The standard `Open` dialog appeared. | TBD | NO: no stable name, identifier, or keyboard path has been observed. |
+| Select script file | `tree-building-hu-candidate.js`; `Open` | `tree-building-hu-candidate.js`; `Open` | List item; button | `0` for the file item; Open button not inspected | SelectionItem, Value, and LegacyIAccessible for the file item | The item was keyboard-focusable. The complete keyboard path is TO CONFIRM. | Select the HU candidate and open it. | HRC returned to Hand Setup. No script or tree error was visible in the captured states. | A script or tree error must stop the workflow. | TO CONFIRM |
+| Finish tree setup | `Finish` | `Finish` | Button | TO CONFIRM | TO CONFIRM | TO CONFIRM | Finish tree creation after the estimate completes. | Hand Setup closed and an unsaved `*Hand 1` tab opened with the strategy and table views. | TBD | TO CONFIRM |
+| Start | Green play button | `Run Nash Calculation (Alt+R)` | Button | Empty | Invoke and LegacyIAccessible | `Alt+R` | Start the calculation only after cost approval. | TBD | TBD | TO CONFIRM: the action has not been performed. |
 | Detect running | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
 | Detect completion or failure | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
-| Save | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
+| Save | Save and Save As toolbar buttons | `Save (Ctrl+S)`; `Save As (Ctrl+Alt+S)` | Button | TO CONFIRM | TO CONFIRM | `Ctrl+S`; `Ctrl+Alt+S` | Save to a new disposable filename. | TBD | TBD | TO CONFIRM: save has not been performed. |
 | Verify saved output | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
 
 ## Observable states
 
 | State | Visible evidence | Accessible evidence | Distinguishable | Notes |
 | --- | --- | --- | --- | --- |
-| Configured | TBD | TBD | TO CONFIRM | TBD |
+| Configured | Hand Setup closed. An unsaved `*Hand 1` tab opened with strategy, range, and HU table views. Progress showed no active operation. | The tree exposed `*Hand 1`, `Strategy Table`, `Hand Settings`, and `Run Nash Calculation (Alt+R)`. | CONFIRMED | Tree creation completed. The calculation was not started. |
 | Running | TBD | TBD | TO CONFIRM | TBD |
 | Completed | TBD | TBD | TO CONFIRM | TBD |
 | Failed | TBD | TBD | TO CONFIRM | TBD |
-| Saved | TBD | TBD | TO CONFIRM | TBD |
+| Saved | The current hand has an asterisk and remains unsaved. | Save and Save As controls are exposed with keyboard shortcuts. | TO CONFIRM | No save action was performed. |
 | Saved output verified | TBD | TBD | TO CONFIRM | TBD |
 
 ## Test runs
 
 | Run | Date and time | Disposable filename | Result | Observed duration | Evidence | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | TBD | TBD | NOT RUN | TBD | TBD | TBD |
+| 1 | 10 August 2026, 22:40 BST | TBD | NOT RUN | TBD | HU `1 bb` tree creation succeeded. The calculation was not started. | The current hand remains unsaved as `*Hand 1`. |
 | 2 | TBD | TBD | NOT RUN | TBD | TBD | Run only when quick and safe. |
 
 ## Blockers
 
-- No HRC control blocker has been observed. The HRC interface and Microsoft
-  Inspect output have not been inspected.
+- The button used to open the script picker exposes Button and Invoke, but its
+  accessible name and access key are empty. Its numeric Automation ID has not
+  been shown stable. A supported keyboard path or stable identifier is
+  required before this critical step is safe to automate.
+- The tree node estimate and memory estimate were not captured.
+- Running, completion, failure, save, and saved-output verification have not
+  been observed.
 
 ## Verdict
 
 - Feasibility: TO CONFIRM
 - Confidence: TO CONFIRM
-- Basis: The licensed environment and Microsoft Inspect are available. No
-  workflow is selected, no lifecycle control map is complete, and no workflow
-  test has been recorded.
+- Basis: The selected HU tree was configured and created without a visible
+  error. The start and save controls expose keyboard shortcuts. The full
+  lifecycle remains untested, and the script-picker control does not yet have
+  a safe durable target.
 
 ## Next action
 
-Open the x64 Microsoft Inspect executable and inspect the existing HRC main
-window manually. Record the accessible properties and keyboard paths needed to
-select one small disposable workflow. Confirm the workflow inputs and expected
-calculation cost with Euan before entering poker inputs or starting a
-calculation.
+Inspect `Tree Statistics and Abstractions` for the existing disposable hand.
+Record the node and memory estimates without changing the hand. Then identify
+a supported keyboard path or stable identifier for the unnamed script-picker
+button. Do not start the calculation until Euan reviews the estimate and
+explicitly approves the cost.
