@@ -817,19 +817,21 @@ specification.
 
 Use [`hrc-script-design.md`](hrc-script-design.md) as the current design and
 decision record. It compares the sizing workbook, the archived shared
-prototype, and the project-owned working candidate.
+prototype, and the two project-owned working candidates.
 
-When implementation is authorised, prefer one reusable script that selects the
-correct rule for each decision. Generate separate scripts only when two
-workflows use genuinely different poker policies.
+Keep one standalone script per materially different configuration family. The
+current 3–6-max and HU workflows have different stack grids, position models,
+and preflop action grammar, so they use separate candidates. Keep common
+postflop policy aligned through shared regression vectors because the HRC
+loader has no documented module-import mechanism.
 
 Keep the HRC script separate from the application automation. The script owns
 the action tree. The future automation owns UI navigation, observable state,
 safe output naming, and lifecycle handling.
 
-An explicitly requested project candidate can be stored for offline review
-before application-automation feasibility is complete. Keep it labelled
-unvalidated. Do not treat it as observed feasibility evidence.
+Explicitly requested project candidates can be stored for offline review before
+application-automation feasibility is complete. Keep them labelled
+unvalidated. Do not treat them as observed feasibility evidence.
 
 ## Sources
 

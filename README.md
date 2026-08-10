@@ -37,6 +37,20 @@ machine evidence and Euan's licence confirmation supersede that reference.
 - Keep HRC-required JavaScript tree-building candidates separate from
   application automation.
 
+## HRC tree-building candidates
+
+Two standalone, offline-reviewed candidates live under `scripts/hrc/`:
+
+- [`tree-building-3m-6m-candidate.js`](scripts/hrc/tree-building-3m-6m-candidate.js)
+  for non-straddled configurations with three through six players; and
+- [`tree-building-hu-candidate.js`](scripts/hrc/tree-building-hu-candidate.js)
+  for a true two-player configuration.
+
+They use separate preflop policies from the sizing workbook and a shared
+postflop policy. Neither candidate has been validated inside HRC. Loading and
+tree-preview inspection on `EM-3960X` are still required before either file is
+treated as runtime-proven.
+
 ## Current next action
 
 Inspect HRC Beta with Microsoft Inspect. Select and test one small workflow

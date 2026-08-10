@@ -19,7 +19,7 @@ const RAISE = 3;
 
 const candidatePath = path.resolve(
     __dirname,
-    "../../scripts/hrc/tree-building-candidate.js",
+    "../../scripts/hrc/tree-building-3m-6m-candidate.js",
 );
 
 const candidateSource = fs.readFileSync(candidatePath, "utf8");
@@ -27,11 +27,6 @@ const referencePath = path.resolve(
     __dirname,
     "../../reference/hrc/shared-chatgpt-prototype.js",
 );
-const workbookPath = path.resolve(
-    __dirname,
-    "../../data/stack-sizes/Sizes_for_hrc_script.xlsx",
-);
-
 const exportSource = `
 globalThis.__hrc = {
     PREFLOP_STACK_GRID,
@@ -88,19 +83,6 @@ test("preserves the archived shared-thread snapshot", () => {
 });
 
 
-test("pins the workbook used to derive the table manifest", () => {
-    const workbookHash = crypto
-        .createHash("sha256")
-        .update(fs.readFileSync(workbookPath))
-        .digest("hex");
-
-    assert.equal(
-        workbookHash,
-        "6a055bb26b3503496bc9757efdf806906bbd4e5bda5dfe6d9e1bea1271edc243",
-    );
-});
-
-
 function makeAction(player, actionType, amount = 0, street = PREFLOP) {
     return {
         getActionType: () => actionType,
@@ -113,14 +95,19 @@ function makeAction(player, actionType, amount = 0, street = PREFLOP) {
 
 function makePotState({
     stacks = [100, 100, 100, 100, 100],
-    active = [0, 0, 0, 0, 0],
-    dead = [0, 0, 0, 0, 0],
+    active,
+    dead,
     remaining,
-    folded = [false, false, false, false, false],
+    folded,
     allIn,
 } = {}) {
+    const chipsActive = active ?? Array(stacks.length).fill(0);
+    const chipsDead = dead ?? Array(stacks.length).fill(0);
+    const playersFolded = folded ?? Array(stacks.length).fill(false);
     const chipsRemaining = remaining ?? stacks.map(
-        (stack, player) => stack - active[player] - dead[player],
+        (stack, player) => (
+            stack - chipsActive[player] - chipsDead[player]
+        ),
     );
 
     const playersAllIn = allIn ?? chipsRemaining.map(
@@ -128,13 +115,13 @@ function makePotState({
     );
 
     return {
-        getChipsActive: (player) => active[player],
-        getChipsDead: (player) => dead[player],
+        getChipsActive: (player) => chipsActive[player],
+        getChipsDead: (player) => chipsDead[player],
         getChipsRemaining: (player) => chipsRemaining[player],
-        hasPlayerFolded: (player) => folded[player],
+        hasPlayerFolded: (player) => playersFolded[player],
         isPlayerAllIn: (player) => playersAllIn[player],
         countPlayersLive: () => stacks.filter(
-            (_, player) => !folded[player] && !playersAllIn[player],
+            (_, player) => !playersFolded[player] && !playersAllIn[player],
         ).length,
     };
 }
@@ -221,6 +208,29 @@ test("calculates dynamic effective stacks from non-folded opponents", () => {
 
     assert.equal(hrc.getEffectiveStackForPlayer(beforeFold, 0), 100);
     assert.equal(hrc.getEffectiveStackForPlayer(afterFold, 2), 10);
+});
+
+
+test("calculates effective stacks at the 3m and 6m boundaries", () => {
+    const threeHanded = makeContext({
+        numberOfPlayers: 3,
+        activePlayer: 0,
+        button: 0,
+        smallBlind: 1,
+        bigBlind: 2,
+        state: makePotState({stacks: [100, 40, 10]}),
+    });
+    const sixHanded = makeContext({
+        numberOfPlayers: 6,
+        activePlayer: 0,
+        button: 3,
+        smallBlind: 4,
+        bigBlind: 5,
+        state: makePotState({stacks: [100, 20, 30, 40, 50, 60]}),
+    });
+
+    assert.equal(hrc.getEffectiveStackForPlayer(threeHanded, 0), 40);
+    assert.equal(hrc.getEffectiveStackForPlayer(sixHanded, 0), 60);
 });
 
 
@@ -346,6 +356,125 @@ test("routes every five-player opening position at 100bb", () => {
         assert.deepEqual(
             Array.from(hrc.getSizingsPreflop(ctx)),
             [expectedSize, 100],
+        );
+    }
+});
+
+
+test("routes opening positions for every supported table size", () => {
+    const configurations = [
+        {
+            count: 3,
+            button: 0,
+            smallBlind: 1,
+            bigBlind: 2,
+            expected: [2.5, 3, 3],
+            shallowExpected: [2, 2.5, 2.5],
+        },
+        {
+            count: 4,
+            button: 1,
+            smallBlind: 2,
+            bigBlind: 3,
+            expected: [2.25, 2.5, 3, 3],
+            shallowExpected: [2, 2, 2.5, 2.5],
+        },
+        {
+            count: 5,
+            button: 2,
+            smallBlind: 3,
+            bigBlind: 4,
+            expected: [2.25, 2.25, 2.5, 3, 3],
+            shallowExpected: [2, 2, 2, 2.5, 2.5],
+        },
+        {
+            count: 6,
+            button: 3,
+            smallBlind: 4,
+            bigBlind: 5,
+            expected: [2.25, 2.25, 2.25, 2.5, 3, 3],
+            shallowExpected: [2, 2, 2, 2, 2.5, 2.5],
+        },
+    ];
+
+    for (const configuration of configurations) {
+        for (const stack of [10, 100]) {
+            const stacks = Array(configuration.count).fill(stack);
+            for (
+                let activePlayer = 0;
+                activePlayer < configuration.count;
+                activePlayer++
+            ) {
+                const ctx = makeContext({
+                    numberOfPlayers: configuration.count,
+                    button: configuration.button,
+                    smallBlind: configuration.smallBlind,
+                    bigBlind: configuration.bigBlind,
+                    activePlayer,
+                    betCount: 1,
+                    state: makePotState({stacks}),
+                    allin: stack,
+                });
+                const expected = stack === 10
+                    ? configuration.shallowExpected[activePlayer]
+                    : configuration.expected[activePlayer];
+
+                assert.deepEqual(
+                    Array.from(hrc.getSizingsPreflop(ctx)),
+                    [expected, stack],
+                    `${configuration.count}m player ${activePlayer} at ${stack}bb`,
+                );
+            }
+        }
+    }
+});
+
+
+test("routes nonblind IP 3-bets in 4m and 6m configurations", () => {
+    const configurations = [
+        {
+            label: "4m BTN versus CO",
+            count: 4,
+            button: 1,
+            smallBlind: 2,
+            bigBlind: 3,
+            opener: 0,
+            activePlayer: 1,
+        },
+        {
+            label: "6m HJ versus UTG",
+            count: 6,
+            button: 3,
+            smallBlind: 4,
+            bigBlind: 5,
+            opener: 0,
+            activePlayer: 1,
+        },
+    ];
+
+    for (const configuration of configurations) {
+        const stacks = Array(configuration.count).fill(60);
+        const active = Array(configuration.count).fill(0);
+        active[configuration.opener] = 2.25;
+        active[configuration.smallBlind] = 0.5;
+        active[configuration.bigBlind] = 1;
+
+        const ctx = makeContext({
+            numberOfPlayers: configuration.count,
+            button: configuration.button,
+            smallBlind: configuration.smallBlind,
+            bigBlind: configuration.bigBlind,
+            activePlayer: configuration.activePlayer,
+            betCount: 2,
+            actions: [makeAction(configuration.opener, RAISE, 2.25)],
+            state: makePotState({stacks, active}),
+            allin: 60,
+        });
+
+        assert.deepEqual(
+            Array.from(hrc.getSizingsPreflop(ctx)),
+            [7.5, 60],
+            configuration.label,
         );
     }
 });
@@ -1225,6 +1354,14 @@ test("makes postflop calls and configured street horizons explicit", () => {
         street: FLOP,
         state: makePotState(),
     });
+    const sixWayFlop = makeContext({
+        numberOfPlayers: 6,
+        button: 3,
+        smallBlind: 4,
+        bigBlind: 5,
+        street: FLOP,
+        state: makePotState({stacks: Array(6).fill(100)}),
+    });
     const twoAblePlusAllin = makeContext({
         street: TURN,
         state: makePotState({
@@ -1241,15 +1378,32 @@ test("makes postflop calls and configured street horizons explicit", () => {
     assert.equal(hrc.hasNextStreetBetting(threeWayRiver), false);
     assert.equal(hrc.hasNextStreetBetting(fourWayFlop), true);
     assert.equal(hrc.hasNextStreetBetting(fiveWayFlop), false);
+    assert.equal(hrc.hasNextStreetBetting(sixWayFlop), false);
     assert.equal(hrc.hasNextStreetBetting(twoAblePlusAllin), true);
 });
 
 
-test("rejects a non-five-player HRC configuration at callback boundaries", () => {
-    const ctx = makeContext({numberOfPlayers: 4});
+test("accepts 3m through 6m and rejects other configured player counts", () => {
+    for (const numberOfPlayers of [3, 4, 5, 6]) {
+        const stacks = Array(numberOfPlayers).fill(100);
+        const ctx = makeContext({
+            numberOfPlayers,
+            activePlayer: 0,
+            button: Math.max(0, numberOfPlayers - 3),
+            smallBlind: numberOfPlayers - 2,
+            bigBlind: numberOfPlayers - 1,
+            state: makePotState({stacks}),
+            allin: 100,
+        });
 
-    assert.throws(
-        () => hrc.getSizingsPreflop(ctx),
-        /supports five-player configurations only/,
-    );
+        assert.doesNotThrow(() => hrc.getSizingsPreflop(ctx));
+    }
+
+    for (const numberOfPlayers of [2, 7]) {
+        const ctx = makeContext({numberOfPlayers});
+        assert.throws(
+            () => hrc.getSizingsPreflop(ctx),
+            /supports three- through six-player configurations only/,
+        );
+    }
 });

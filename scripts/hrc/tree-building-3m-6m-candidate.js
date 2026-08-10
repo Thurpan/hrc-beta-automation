@@ -7,7 +7,7 @@
  *
  * This file is not a verbatim copy and has not been validated in HRC.
  * Project changes are recorded in docs/hrc-script-design.md.
- * Load it only in a five-player, non-straddled configuration.
+ * Load it only in a three- through six-player, non-straddled configuration.
  *
  * HRC STACK-DEPENDENT PREFLOP + ADVANCED POSTFLOP SCRIPT
  *
@@ -51,9 +51,10 @@ const PREFLOP_STACK_GRID = [
 ];
 
 
-//The generated configurations contain five seats. Folds can reduce the
-//number of players still in the hand without changing this configured count.
-const SUPPORTED_PLAYER_COUNT = 5;
+//The workbook's non-blind row applies from UTG through CO. Position helpers
+//identify BTN, SB, and BB for every supported table size.
+const MIN_SUPPORTED_PLAYER_COUNT = 3;
+const MAX_SUPPORTED_PLAYER_COUNT = 6;
 
 
 //50% all-in threshold.
@@ -392,13 +393,15 @@ let POSTFLOP_FORCE_CHECKDOWN_AFTER = {
 function assertSupportedConfiguration(ctx) {
 
 	if (
-		ctx.getNumberOfPlayers() !=
-			SUPPORTED_PLAYER_COUNT
+		ctx.getNumberOfPlayers() <
+			MIN_SUPPORTED_PLAYER_COUNT ||
+		ctx.getNumberOfPlayers() >
+			MAX_SUPPORTED_PLAYER_COUNT
 	) {
 
 		throw new Error(
-			"This HRC sizing candidate supports five-player " +
-			"configurations only."
+			"This HRC sizing candidate supports three- through " +
+			"six-player configurations only."
 		);
 	}
 

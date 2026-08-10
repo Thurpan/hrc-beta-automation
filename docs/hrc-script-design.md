@@ -2,9 +2,9 @@
 
 ## Status
 
-This document records the current inputs and decisions for the first project
-HRC tree-building script. The project candidate is ready for offline review,
-but it has not been validated in HRC.
+This document records the current inputs and decisions for the project HRC
+tree-building scripts. Separate 3–6-max and heads-up (HU) candidates are ready
+for offline review, but neither candidate has been validated in HRC.
 
 The design combines three sources:
 
@@ -20,10 +20,16 @@ Its SHA-256 is
 It remains an unapproved reference and has not been loaded into HRC. Re-review
 the shared page before relying on these findings if its content changes.
 
-The project-owned working file is
-[`tree-building-candidate.js`](../scripts/hrc/tree-building-candidate.js). It
-derives from the archived prototype, but it is not a verbatim copy. It contains
-the agreed 50% all-in threshold and the corrections recorded below.
+The project-owned working files are:
+
+- [`tree-building-3m-6m-candidate.js`](../scripts/hrc/tree-building-3m-6m-candidate.js)
+  for configured table sizes from three through six players; and
+- [`tree-building-hu-candidate.js`](../scripts/hrc/tree-building-hu-candidate.js)
+  for a true two-player configuration.
+
+Both are standalone HRC scripts. The 3–6-max candidate derives from the
+archived prototype. The HU candidate uses the HU workbook tab and shares the
+same reviewed postflop policy. Both use the agreed 50% all-in threshold.
 
 Use [`hrc-scripting.md`](hrc-scripting.md) for the documented HRC API,
 execution model, and product limits. The shared prototype is useful working
@@ -41,10 +47,10 @@ Apply these rules when sources disagree:
 1. Use the public HRC API documentation for technical capabilities and legal
    normalisation.
 1. Use the shared prototype only as historical implementation input. Apply
-   project changes to the working candidate.
+   project changes to a project-owned working candidate.
 
 Do not silently replace a workbook value with a value from the prototype.
-Record each correction and its authority. `Sheet1!P29` was corrected from
+Record each correction and its authority. `3m-6m!P29` was corrected from
 `75` to `7.5` under Euan's instruction to fix the audited prototype issues.
 The corrected value follows the surrounding 50 bb, 60 bb, and 70 bb sequence
 of `7`, `7.5`, and `7.5`.
@@ -59,13 +65,16 @@ The stack-size planning artefacts are stored together:
 | [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated five-player stack combinations for future automation input. |
 | [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured stack options. |
 | [`shared-chatgpt-prototype.js`](../reference/hrc/shared-chatgpt-prototype.js) | Verbatim shared-thread snapshot. Refresh it only from the shared source. Do not apply project fixes. |
-| [`tree-building-candidate.js`](../scripts/hrc/tree-building-candidate.js) | Project-owned working candidate. Apply agreed project changes here. Keep it labelled unvalidated until HRC verification. |
-| [`test_tree_building_candidate.js`](../tests/hrc/test_tree_building_candidate.js) | Offline regression tests for the project candidate. |
+| [`tree-building-3m-6m-candidate.js`](../scripts/hrc/tree-building-3m-6m-candidate.js) | Standalone 3–6-max working candidate. |
+| [`tree-building-hu-candidate.js`](../scripts/hrc/tree-building-hu-candidate.js) | Standalone HU working candidate. |
+| [`test_tree_building_3m_6m_candidate.js`](../tests/hrc/test_tree_building_3m_6m_candidate.js) | Offline 3–6-max regression tests. |
+| [`test_tree_building_hu_candidate.js`](../tests/hrc/test_tree_building_hu_candidate.js) | Offline HU regression tests. |
 
-The workbook contains one sheet, one table, and no formulas. Its used range is
-`A1:S39`. Cell `P29` now contains numeric value `7.5`.
+The workbook contains two sheets and two tables. `3m-6m!A1:S39` contains the
+multiway policy. `HU!A1:BQ11` contains the HU policy. Cell `3m-6m!P29`
+contains numeric value `7.5`.
 
-The workbook has these 18 stack columns, in big blinds:
+The 3–6-max sheet has these 18 stack columns, in big blinds:
 
 ```text
 5, 7.5, 10, 12.5, 15, 17.5, 20, 22.5, 25,
@@ -74,6 +83,10 @@ The workbook has these 18 stack columns, in big blinds:
 
 It contains rules for opens, 3-bets, 4-bets, and 5-bets or later. The 3-bet
 section separates blind-versus-blind, BB, SB, and in-position cases.
+
+The HU sheet has 68 exact stack columns from 1 bb through 80 bb. It contains
+six policy rows: SB and BB rows for opens, 3-bets, and 4-bets. A cell can
+contain `allin`, one fixed-bb size, or two comma-separated fixed-bb sizes.
 
 The generator uses the same set of 18 stack values. Therefore, a configuration
 from `stack_size_options.txt` always produces an effective stack that matches a
@@ -158,39 +171,46 @@ The archived prototype applies a 40% preflop all-in replacement threshold. It
 also uses a script-owned `-1` sentinel to add all-in at every preflop decision.
 These statements remain historical facts about the archived source.
 
-## Working candidate status
+## Working candidates status
 
-The working candidate preserves the archived source as provenance and applies
-project corrections in a separate file. Its offline tests pass, but a passing
-test suite does not prove HRC runtime behaviour.
+The working candidates preserve the archived source as provenance and apply
+project policy in separate files. Their offline tests pass, but a passing test
+suite does not prove HRC runtime behaviour.
 
-| Area | Archived prototype | Working candidate | Authority | Validation status |
+| Area | Archived prototype | Working candidates | Authority | Validation status |
 | --- | --- | --- | --- | --- |
 | Preflop all-in replacement | 40% of the distance from active chips to HRC's all-in raise-to size. | 50% of that distance. | Euan's direct decision. | Offline boundary tests pass; HRC unverified. |
 | Workbook cell `P29` | Uses `7.5`; workbook previously contained `75`. | Uses corrected workbook value `7.5`. | Euan's instruction to fix the audited issues. | Workbook and all 396 embedded table cells compare equal. |
 | Effective-stack terminal state | Falls back to the player's full stack. | Throws when no non-folded opponent exists. | Agreed project convention. | Offline error-path test passes. |
-| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. | Generated inputs use exact values. | All 18 columns and an invalid value are tested. |
-| Supported setup | Does not guard the player count or straddles. | Requires five configured players. Non-straddled setup is a documented precondition. | Current generator scope and API limits. | Player-count guard tested; straddle precondition requires UI verification. |
-| Actual open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification. | Ordinary, all-in, normalised, scaled-unit, and invalid-amount tests pass. |
-| Preflop calls | Closing action can bypass caller and cold-call limits. | Enforces hard caps of two, one, and one. Allows one non-cold closing response to a 5-bet or later all-in. | Fix for reachable excess-call branches. | Bet levels 2 through 12 are tested. |
+| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. | Workbook values are exact policy inputs. | All 18 multiway and 68 HU columns, plus invalid values, are tested. |
+| Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested; straddles require UI verification. |
+| Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification. | Ordinary, all-in, normalised, scaled-unit, and invalid-amount tests pass. |
+| HU action classification | No separate HU policy. | Routes by the full action line. It distinguishes the SB open from an SB completion followed by a BB raise. | Euan's confirmed HU row meanings. | Both 3-bet and both 4-bet lines are tested. |
+| Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both allow one non-cold closing response to a 5-bet or later all-in. | Fix for reachable excess-call branches. | Call topology and later all-in responses are tested. |
 | Blind-versus-blind 4-bet | Selects by current player and last raiser only. | Also requires the original opener to be a blind. | Fix for non-blind squeeze lines. | Genuine and false-positive lines are tested. |
 | Legal-size duplicates | De-duplicates before legal normalisation. | Mirrors minimum/all-in clamping, then de-duplicates. | HRC normalisation contract. | Minimum and all-in collisions are tested. |
 | Postflop calls | Relies on HRC's default `true`. | Returns `true` explicitly. | Public [`ITreeBuildingScript`](https://www.holdemresources.net/s/updatesites/hrc/latest/scripting/javadoc/net/holdemresources/scripting/treescripts/api/ITreeBuildingScript.html) default and explicit project choice. | Offline callback test passes. |
 | Bets per street | Omits cap logic. | Uses `null` for the blank screenshot field. A future numeric value produces all-in only after the cap. | Linked screenshot and HRC release notes. | Blank and numeric-cap paths are tested. |
 
-The 50% rule applies to the requested size before legal normalisation. For
-example, a requested size below the threshold can remain non-all-in even when
-HRC raises it above the threshold to satisfy the legal minimum. This preserves
-the archived default-script ordering while changing only the agreed percentage.
+In both candidates, the 50% rule applies to the requested size before legal
+normalisation. For example, a requested size below the threshold can remain
+non-all-in even when HRC raises it above the threshold to satisfy the legal
+minimum. This preserves the archived default-script ordering while changing
+only the agreed percentage.
 
 ## Workbook alignment
 
-The corrected workbook is the numeric source of truth. The candidate contains
-18 arrays with 324 cells. Two blind-versus-blind rows reuse the same arrays.
-Together with the 5-bet row, all 396 populated workbook policy cells match the
-working candidate.
+The corrected workbook is the numeric source of truth. The 3–6-max candidate
+contains 18 arrays with 324 cells. Two blind-versus-blind rows reuse the same
+arrays. Together with the 5-bet row, all 396 populated multiway policy cells
+match the candidate.
 
-`Sheet1!P29`, IP 3-bet versus a `2.25x` open at 60 bb, is now `7.5`.
+The HU candidate contains six arrays with 408 cells. Its stack grid and policy
+manifest match all 68 columns in `HU!B1:BQ11`. Formula-backed workbook cells
+are embedded by their displayed values. The workbook has no HU 5-bet row, so
+the agreed 5-bet-and-later all-in rule is explicit in the script.
+
+`3m-6m!P29`, IP 3-bet versus a `2.25x` open at 60 bb, is `7.5`.
 
 ## Decisions and runtime checks
 
@@ -199,21 +219,23 @@ Do not treat an offline-tested decision as HRC-validated:
 | Decision | Working candidate behaviour | Status |
 | --- | --- | --- |
 | Effective-stack basis | Cap the active player by the largest non-folded opponent. Recalculate at every decision. Include all-in opponents. | Agreed; offline tested; HRC unverified. |
-| Supported setup | Require five configured players. Folds can reduce the players who remain in the hand. | Current project scope; guard tested. |
-| Position mapping | Use BB, SB, and BTN indices explicitly. Use the shared HJ/CO table for the other two seats. | Five-player mapping tested offline. |
-| Straddles | Do not use this candidate with a straddled setup. The API does not expose a reliable straddle detector. | Manual UI precondition. |
+| Supported setup | Use the 3–6-max candidate for three through six configured players. Use the HU candidate for exactly two. | Current project scope; both guards tested. |
+| 3–6-max position mapping | Use BB, SB, and BTN helpers explicitly. Use the shared UTG–CO row for every remaining seat. | Every position at 3m, 4m, 5m, and 6m is tested offline. |
+| HU position mapping | Use only the SB and BB helpers. Do not depend on a numeric button index. | Offline tested; HRC's two-player helper values remain `TO CONFIRM`. |
+| Straddles | Do not use either candidate with a straddled setup. The API does not expose a reliable straddle detector. | Manual UI precondition. |
 | Maximum active players | A UI-forced fold can change the effective stack and sizing bucket. | `TO CONFIRM` in HRC. |
-| Effective stack outside workbook columns | Throw instead of rounding or capping. | Agreed initial policy; offline tested. |
-| Opening sizes | Use the corrected workbook RFI rows. | All embedded cells match; HRC unverified. |
-| BB isolation after an SB completion | Use the workbook BB RFI row. | Current candidate; HRC unverified. |
+| Effective stack outside workbook columns | Throw instead of rounding or capping. | Both grids are tested offline. |
+| Opening sizes | Use the RFI rows from the applicable workbook sheet. | All embedded cells match; HRC unverified. |
+| BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan; offline tested; HRC unverified. |
 | Other limps and isolation raises | Permit only the SB completion before a voluntary raise. | Current scope; policy expansion remains `TBD`. |
-| SB limp-reraise | Treat the BB raise as the original open. Use the blind-versus-blind response table. | Current candidate; HRC unverified. |
-| 3-bet sizes | Use the corrected workbook values, including `P29 = 7.5`. | All embedded cells match; HRC unverified. |
+| SB limp-reraise | In 3–6-max, treat the BB raise as the original open. In HU, use `3bet / SB`. | Confirmed HU meaning; offline tested; HRC unverified. |
+| 3-bet sizes | Use the applicable workbook rows, including `3m-6m!P29 = 7.5`. | All embedded cells match; HRC unverified. |
 | Squeeze sizes | Use the project effective stack for the base table. Use `min(squeezer total, first-caller total)` for the separate 40 bb increment threshold. Ignore calls before the original raise. | Agreed; offline tested; HRC unverified. |
-| 3-bet table selection | Compare the recorded first raise amount with its expected workbook open. Give a non-matching open only the global all-in response. | Corrected and offline tested; HRC unverified. |
-| 4-bet sizes | Use the blind table only when the original opener and the current blind pair form a genuine blind-versus-blind line. Otherwise, use IP or OOP. | Corrected and offline tested; HRC unverified. |
-| 5-bets and later | Return all-in only. | Agreed; all 18 stack columns tested. |
-| Preflop calls | Permit two calls versus an open, one versus a 3-bet, and one versus a 4-bet. Reject cold calls. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested; HRC unverified. |
+| Multiway 3-bet selection | Compare the recorded first raise amount with its expected workbook open. Give a non-matching open only the global all-in response. | Corrected and offline tested; HRC unverified. |
+| HU 3-bet selection | Route by the first raiser and whether the SB completed before that raise. Do not classify comma-pair or legally normalised raises as scalar open categories. | Corrected and offline tested; HRC unverified. |
+| 4-bet sizes | Multiway selects blind-versus-blind, IP, or OOP rows. HU selects the SB or BB fixed-bb row from the action line. | Both candidates are offline tested; HRC unverified. |
+| 5-bets and later | Return all-in only in both candidates. | Agreed; multiple later raise levels tested. |
+| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested; HRC unverified. |
 | Preflop all-in additions | Always offer all-in. Replace a requested size at 50% of the distance from active chips to HRC's all-in raise-to size. | 50% agreed; offline tested; HRC unverified. |
 | Postflop sizes | Use the screenshot's HU and multiway fixed pot fractions. Replace normal rows with low-SPR rows at HU SPR `<= 2.5` and multiway SPR `<= 1.5`. Add all-in at SPR `<= 5`. | All matrix rows and boundaries tested offline. |
 | Limited donks | Allow a donk only when the player made a previous bet or raise. Use the low-SPR bet row when low SPR applies. | Screenshot-aligned and offline tested. |
@@ -222,14 +244,14 @@ Do not treat an offline-tested decision as HRC-validated:
 | Postflop horizon | Continue through river with two or three players able to act and through turn with four. Use `countPlayersLive()`, which excludes all-ins. | Screenshot-aligned and offline tested. |
 | Postflop abstractions | The screenshot shows flop `1024`, turn `256`, and river `256`. The HRC UI owns these settings. | Must be configured and verified in HRC. |
 | HRC SPR and all-in semantics | Use HRC's `getStackPotRatio()` and `sizingAllIn()`. The public API does not define the controlling opponent in every multiway state. | `TO CONFIRM` in HRC. |
-| Parser and legal normalisation | Build `bb` strings for opens, 3-bets, and squeezes. Build `x` strings for 4-bets. Mirror minimum/all-in clamping before de-duplication. | Offline tested; inspect exact HRC preview. |
+| Parser and legal normalisation | Multiway uses `bb` and `x` rules. HU uses fixed-bb amounts, including comma-pair cells. Apply the 50% test before minimum/all-in clamping, then de-duplicate. | Offline tested; inspect exact HRC preview. |
 
 The effective-stack convention is not pending. It applies to all project stack
 references. HRC's SPR and legal all-in helpers remain separate runtime inputs.
 
 ## Implementation boundaries
 
-The first implementation must keep these concepts separate:
+Both implementations must keep these concepts separate:
 
 - derive the active player's project effective stack;
 - map that value to an agreed workbook column;
@@ -239,10 +261,14 @@ The first implementation must keep these concepts separate:
 - return the one configured size set for that node; and
 - let HRC enforce minimum raises and its legal all-in cap.
 
+The HU candidate must classify the full action line. It must not reuse the
+multiway open-size category router or squeeze logic. The HU workbook 4-bet
+values are fixed-bb amounts, not previous-raise multipliers.
+
 Do not use HRC's legal normalisation to conceal a missing or incorrect rule.
 Inspect the tree preview for the returned and normalised sizes.
 
-Tree size is a material risk. The candidate combines an unconditional preflop
+Tree size is a material risk. Each candidate combines an unconditional preflop
 all-in option, multiple postflop sizes, low-SPR alternatives, an SPR `5`
 postflop all-in, an unlimited bets-per-street field, and unrestricted postflop
 flat calls. The source screenshot estimates 19,888,053 nodes and 131.7 GB with
@@ -272,12 +298,28 @@ The offline suite verifies:
   boundaries; and
 - all configured postflop horizons, including an all-in participant.
 
+The HU suite also verifies:
+
+- all 68 stack columns and all 408 workbook policy cells;
+- the `allin`, single-size, and comma-pair cell grammar;
+- the SB open and the BB raise after an SB completion;
+- both HU 3-bet lines and both HU 4-bet lines;
+- 5-bet and later all-in-only behaviour;
+- the 4 bb `1.93bb` request normalising to the legal `2bb` raise;
+- the 20 bb `7.5bb` limp-reraise normalising to `11bb` without becoming
+  all-in; and
+- the complete shared HU postflop policy.
+
 Complete these checks in HRC on `EM-3960X`:
 
-1. Verify a five-player, non-straddled disposable setup.
-1. Load the candidate without starting a calculation.
+1. Verify a non-straddled disposable setup for the candidate under test.
+1. Test the 3–6-max candidate once at each configured table size.
+1. Test the HU candidate in a true two-player setup.
+1. Load only the applicable candidate without starting a calculation.
 1. Verify the tree estimate completes without a script error.
 1. Inspect every position and preflop bet level in the tree preview.
+1. In HU, verify that HRC reports the expected SB/button and BB helpers.
+1. In HU, inspect both sizes from representative comma-pair cells.
 1. Inspect the 100/100/10/10 example before and after the deep CO folds.
 1. Verify HRC's multiway `sizingAllIn()` and `getStackPotRatio()` choices.
 1. Verify minimum raises, incomplete raises, and duplicate removal.
