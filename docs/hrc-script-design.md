@@ -48,8 +48,8 @@ The stack-size planning artefacts are stored together:
 | Artefact | Purpose |
 | --- | --- |
 | [`Sizes_for_hrc_script.xlsx`](../data/stack-sizes/Sizes_for_hrc_script.xlsx) | Current position, action, and effective-stack sizing matrix. |
-| [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated five-player stack combinations for future automation input. |
-| [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured stack options. |
+| [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated heads-up, three-player, and five-player simulation run order. |
+| [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured run-order batches. |
 
 The workbook was inspected without changing its cells. It contains one sheet,
 one table, and no formulas. Its used range is `A1:S39`.
@@ -64,11 +64,28 @@ The workbook has these 18 stack columns, in big blinds:
 It contains rules for opens, 3-bets, 4-bets, and 5-bets or later. The 3-bet
 section separates blind-versus-blind, BB, SB, and in-position cases.
 
-The generator uses the same set of 18 stack values. Therefore, a configuration
-from `stack_size_options.txt` always produces an effective stack that matches a
-workbook column exactly. The generator omits a setup with only one largest
-stack. Under the agreed convention, capping that stack at the next-largest
-stack produces the same effective stacks for every active player.
+The generator writes the batches in this order:
+
+1. Heads-up equal-stack setups from 1 to 80 big blinds.
+1. Three-player setups from the first four-option priority list.
+1. Five-player setups from the first three-option priority list.
+1. Three-player setups from the seven-option core list.
+1. Five-player setups from the seven-option core list.
+1. Three-player setups from the full 18-option list.
+1. Five-player setups from the full 18-option list.
+
+Each batch uses its own configured option order to calculate setup priority.
+The generator omits an exact setup if an earlier batch already contains it.
+The number of hyphen-delimited stacks identifies the player count.
+
+The final three-player and five-player batches use the workbook's 18 stack
+values. Therefore, each multiway effective stack matches a workbook column.
+The heads-up batch uses its own stack range and is not limited to those columns.
+
+The generator also omits a setup with only one largest stack. Under the agreed
+convention, capping that stack at the next-largest stack produces the same
+effective stacks for every active player. For heads-up setups, this rule leaves
+one equal-stack simulation for each configured size.
 
 ## Effective-stack convention
 
@@ -167,11 +184,11 @@ Confirm these items before treating a generated tree as correct:
 | Decision | Current input or prototype behaviour | Status |
 | --- | --- | --- |
 | Effective-stack basis | Active player capped by the largest non-folded opponent. Recalculate at every decision. | Agreed |
-| Supported table sizes | The generator supplies five-player configurations. The required script scope is not yet confirmed. | TBD |
+| Supported table sizes | The run order supplies heads-up, three-player, and five-player configurations. The required HRC script scope is not yet confirmed. | TBD |
 | Position mapping | Map every position for each supported player count. In a hand configured heads-up, the prototype gives the SB branch priority when BTN is also SB. Folds in a larger hand do not change fixed player indices. | TBD |
 | Straddles | The prototype has not been designed or validated for straddles. | TBD |
 | Maximum active players | HRC can force folds at this UI limit. A forced fold can change the effective stack and sizing bucket. | TBD |
-| Effective stack outside the workbook columns | The prototype maps below 5 bb to 5 bb, rounds intermediate values up, and maps above 100 bb to 100 bb. Generated project configurations use exact column values. Decide whether any other value must fail or use a fallback. | TBD |
+| Effective stack outside the workbook columns | The prototype maps below 5 bb to 5 bb, rounds intermediate values up, and maps above 100 bb to 100 bb. Multiway configurations use exact column values, but the heads-up run order includes other values. Confirm whether those values use this mapping or must fail. | TBD |
 | Opening sizes | The refreshed RFI arrays match the workbook rows. The workbook remains authoritative. | Current workbook; candidate logic unapproved |
 | BB isolation after an SB limp | After an SB completion, the refreshed prototype selects the workbook-aligned BB RFI row. | Current workbook; candidate logic unapproved |
 | Other limps and isolation raises | The prototype permits only the SB to complete before a raise. It does not permit non-SB limps or overlimps. | TBD |

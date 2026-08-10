@@ -8,9 +8,56 @@ from unittest.mock import patch
 import scripts.generate_stack_sizes as generator
 
 
-class GenerateStackSetupsTests(unittest.TestCase):
-    def test_uses_five_players(self):
-        self.assertEqual(generator.PLAYER_COUNT, 5)
+class RunOrderConfigurationTests(unittest.TestCase):
+    def test_uses_the_requested_batch_order(self):
+        self.assertEqual(
+            generator.RUN_ORDER_BATCHES,
+            (
+                (2, generator.HEADS_UP_STACK_OPTIONS),
+                (3, (10, 20, 15, 30)),
+                (5, (10, 20, 15)),
+                (3, generator.CORE_STACK_OPTIONS),
+                (5, generator.CORE_STACK_OPTIONS),
+                (3, generator.FULL_STACK_OPTIONS),
+                (5, generator.FULL_STACK_OPTIONS),
+            ),
+        )
+
+    def test_uses_the_requested_heads_up_stack_options(self):
+        options = generator.HEADS_UP_STACK_OPTIONS
+
+        self.assertEqual(len(options), 68)
+        self.assertEqual(len(options), len(set(options)))
+        self.assertEqual(
+            options[:49],
+            tuple(value / 2 for value in range(2, 51)),
+        )
+        self.assertEqual(
+            options[49:],
+            (
+                26, 27, 28, 29, 30,
+                32.5, 35, 37.5, 40, 42.5, 45, 47.5, 50,
+                55, 60, 65, 70, 75, 80,
+            ),
+        )
+
+    def test_uses_the_requested_multiway_stack_options(self):
+        self.assertEqual(
+            generator.CORE_STACK_OPTIONS,
+            (10, 12.5, 15, 20, 30, 40, 100),
+        )
+        self.assertEqual(
+            generator.FULL_STACK_OPTIONS,
+            (
+                10, 12.5, 15, 20, 30, 40, 100, 50, 7.5,
+                5, 17.5, 22.5, 35, 45, 60, 25, 70, 80,
+            ),
+        )
+
+    def test_each_batch_contains_distinct_stack_options(self):
+        for _, stack_options in generator.RUN_ORDER_BATCHES:
+            with self.subTest(stack_options=stack_options):
+                self.assertEqual(len(stack_options), len(set(stack_options)))
 
     def test_writes_to_the_stack_size_data_directory(self):
         repository_root = Path(__file__).resolve().parents[1]
@@ -19,8 +66,73 @@ class GenerateStackSetupsTests(unittest.TestCase):
             repository_root / "data" / "stack-sizes" / "stack_size_options.txt",
         )
 
-    def test_writes_expected_setups_and_status(self):
+
+class GenerateStackSetupsTests(unittest.TestCase):
+    def test_heads_up_contains_one_equal_stack_setup_per_size(self):
+        self.assertEqual(
+            generator.generate_setups(2, (1, 1.5, 2)),
+            [(1, 1), (1.5, 1.5), (2, 2)],
+        )
+
+    def test_omits_a_setup_with_only_one_largest_stack(self):
+        setups = generator.generate_setups(3, (5, 10))
+
+        self.assertEqual(
+            setups,
+            [
+                (5, 5, 5),
+                (5, 10, 10),
+                (10, 5, 10),
+                (10, 10, 5),
+                (10, 10, 10),
+            ],
+        )
+
+    def test_uses_each_batch_option_order_as_its_priority(self):
+        setups = generator.generate_setups(3, (10, 20, 15))
+
+        self.assertLess(
+            setups.index((10, 20, 20)),
+            setups.index((10, 15, 15)),
+        )
+
+    def test_rejects_duplicate_stack_options(self):
+        with self.assertRaisesRegex(ValueError, "duplicate stack options"):
+            generator.generate_setups(3, (5, 10, 10))
+
+
+class GenerateRunOrderTests(unittest.TestCase):
+    def test_appends_batches_and_omits_previous_setups(self):
+        run_order = generator.generate_run_order(
+            (
+                (3, (5, 10)),
+                (3, (5, 10, 15)),
+            )
+        )
+
+        self.assertEqual(
+            run_order,
+            [
+                (5, 5, 5),
+                (5, 10, 10),
+                (10, 5, 10),
+                (10, 10, 5),
+                (10, 10, 10),
+                (5, 15, 15),
+                (15, 5, 15),
+                (15, 15, 5),
+                (10, 15, 15),
+                (15, 10, 15),
+                (15, 15, 10),
+                (15, 15, 15),
+            ],
+        )
+        self.assertEqual(len(run_order), len(set(run_order)))
+
+    def test_writes_expected_run_order_and_status(self):
         expected_output = (
+            "1-1\n"
+            "2-2\n"
             "5-5-5\n"
             "5-10-10\n"
             "10-5-10\n"
@@ -33,9 +145,11 @@ class GenerateStackSetupsTests(unittest.TestCase):
             stdout = StringIO()
 
             with (
-                patch.object(generator, "STACK_OPTIONS", [5, 10]),
-                patch.object(generator, "STACK_SORT_ORDER", {5: 1, 10: 2}),
-                patch.object(generator, "PLAYER_COUNT", 3),
+                patch.object(
+                    generator,
+                    "RUN_ORDER_BATCHES",
+                    ((2, (1, 2)), (3, (5, 10))),
+                ),
                 patch.object(generator, "OUTPUT_FILE", output_file),
                 redirect_stdout(stdout),
             ):
@@ -47,14 +161,35 @@ class GenerateStackSetupsTests(unittest.TestCase):
             )
             self.assertEqual(
                 stdout.getvalue(),
-                f"Generated 5 unique stack setups.\nSaved to {output_file}\n",
+                f"Generated 7 unique stack setups.\nSaved to {output_file}\n",
             )
 
 
 class StackSortKeyTests(unittest.TestCase):
+    def setUp(self):
+        self.stack_sort_order = {
+            stack: rank
+            for rank, stack in enumerate(
+                generator.CORE_STACK_OPTIONS,
+                start=1,
+            )
+        }
+
     def test_calculates_product_of_one_based_stack_ranks(self):
-        self.assertEqual(generator.stack_sort_key((10, 10, 10, 10, 10))[0], 1)
-        self.assertEqual(generator.stack_sort_key((15, 20, 20, 10, 10))[0], 48)
+        self.assertEqual(
+            generator.stack_sort_key(
+                (10, 10, 10, 10, 10),
+                self.stack_sort_order,
+            )[0],
+            1,
+        )
+        self.assertEqual(
+            generator.stack_sort_key(
+                (15, 20, 20, 10, 10),
+                self.stack_sort_order,
+            )[0],
+            48,
+        )
 
     def test_sorts_by_product_then_breaks_ties_by_stack_rank(self):
         setups = [
@@ -65,30 +200,19 @@ class StackSortKeyTests(unittest.TestCase):
         ]
 
         self.assertEqual(
-            sorted(setups, key=generator.stack_sort_key),
+            sorted(
+                setups,
+                key=lambda setup: generator.stack_sort_key(
+                    setup,
+                    self.stack_sort_order,
+                ),
+            ),
             [
                 (10, 10, 10, 10, 10),
                 (10, 10, 10, 40, 10),
                 (10, 10, 12.5, 15, 10),
                 (15, 20, 20, 10, 10),
             ],
-        )
-
-    def test_assigns_every_stack_option_a_one_based_rank(self):
-        self.assertEqual(set(generator.STACK_SORT_ORDER), set(generator.STACK_OPTIONS))
-        self.assertEqual(
-            sorted(generator.STACK_SORT_ORDER.values()),
-            list(range(1, len(generator.STACK_OPTIONS) + 1)),
-        )
-        self.assertIn(7.5, generator.STACK_OPTIONS)
-        self.assertNotIn(7, generator.STACK_OPTIONS)
-        self.assertLess(
-            generator.STACK_SORT_ORDER[25],
-            generator.STACK_SORT_ORDER[70],
-        )
-        self.assertEqual(
-            generator.STACK_SORT_ORDER[80],
-            len(generator.STACK_OPTIONS),
         )
 
 
