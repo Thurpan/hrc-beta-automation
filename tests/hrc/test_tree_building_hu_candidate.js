@@ -544,6 +544,49 @@ test("clamps and deduplicates HU sizings at both legal bounds", () => {
 });
 
 
+test("disables HU SB completion at 5bb effective stack or less", () => {
+    for (const [stack, expected] of [
+        [4.5, false],
+        [5, false],
+        [5.5, true],
+    ]) {
+        const ctx = makeContext({
+            activePlayer: 0,
+            betCount: 1,
+            state: makePotState({stacks: [stack, stack]}),
+        });
+
+        assert.equal(
+            hu.canFlatCallPreflop(ctx),
+            expected,
+            `${stack}bb`,
+        );
+    }
+
+    const deepSmallBlind = makeContext({
+        activePlayer: 0,
+        betCount: 1,
+        state: makePotState({stacks: [100, 5]}),
+    });
+    assert.equal(hu.canFlatCallPreflop(deepSmallBlind), false);
+
+    const scaledCutoff = makeContext({
+        activePlayer: 0,
+        betCount: 1,
+        bbUnit: 100,
+        state: makePotState({stacks: [500, 500]}),
+    });
+    const scaledAbove = makeContext({
+        activePlayer: 0,
+        betCount: 1,
+        bbUnit: 100,
+        state: makePotState({stacks: [550, 550]}),
+    });
+    assert.equal(hu.canFlatCallPreflop(scaledCutoff), false);
+    assert.equal(hu.canFlatCallPreflop(scaledAbove), true);
+});
+
+
 test("enforces HU preflop call topology", () => {
     assert.equal(hu.canFlatCallPreflop(makeContext({
         activePlayer: 0,

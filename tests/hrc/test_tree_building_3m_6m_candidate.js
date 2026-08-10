@@ -843,6 +843,79 @@ test("keeps a shallow all-in table entry unchanged for a squeeze", () => {
 });
 
 
+test("disables SB completion at 5bb dynamic effective stack or less", () => {
+    const contexts = [
+        {
+            label: "below the cutoff",
+            expected: false,
+            stacks: [4.5, 4.5, 4.5],
+        },
+        {
+            label: "at the cutoff",
+            expected: false,
+            stacks: [5, 5, 5],
+        },
+        {
+            label: "at the next supported stack bucket",
+            expected: true,
+            stacks: [7.5, 7.5, 7.5],
+        },
+        {
+            label: "with a deep SB and only shallow opponents",
+            expected: false,
+            stacks: [5, 100, 5],
+        },
+    ];
+
+    for (const {label, expected, stacks} of contexts) {
+        const ctx = makeContext({
+            numberOfPlayers: 3,
+            activePlayer: 1,
+            button: 0,
+            smallBlind: 1,
+            bigBlind: 2,
+            betCount: 1,
+            state: makePotState({stacks}),
+        });
+
+        assert.equal(hrc.canFlatCallPreflop(ctx), expected, label);
+    }
+
+    const beforeDeepFold = makeContext({
+        numberOfPlayers: 3,
+        activePlayer: 1,
+        button: 0,
+        smallBlind: 1,
+        bigBlind: 2,
+        state: makePotState({stacks: [100, 100, 5]}),
+    });
+    const afterDeepFold = makeContext({
+        numberOfPlayers: 3,
+        activePlayer: 1,
+        button: 0,
+        smallBlind: 1,
+        bigBlind: 2,
+        state: makePotState({
+            stacks: [100, 100, 5],
+            folded: [true, false, false],
+        }),
+    });
+    const scaledCutoff = makeContext({
+        numberOfPlayers: 3,
+        activePlayer: 1,
+        button: 0,
+        smallBlind: 1,
+        bigBlind: 2,
+        bbUnit: 100,
+        state: makePotState({stacks: [500, 500, 500]}),
+    });
+
+    assert.equal(hrc.canFlatCallPreflop(beforeDeepFold), true);
+    assert.equal(hrc.canFlatCallPreflop(afterDeepFold), false);
+    assert.equal(hrc.canFlatCallPreflop(scaledCutoff), false);
+});
+
+
 test("enforces hard caller caps even when the action closes", () => {
     const openCap = makeContext({
         betCount: 2,

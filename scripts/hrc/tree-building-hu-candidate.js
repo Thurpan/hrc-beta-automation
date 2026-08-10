@@ -13,6 +13,8 @@
  * - 3bet / SB: the SB limp-reraise versus a BB raise;
  * - 4bet / SB and BB: the corresponding alternating 4-bet lines; and
  * - 5-bet and later: all-in only.
+ *
+ * SB completion is unavailable at an effective stack of 5bb or less.
  */
 
 
@@ -124,6 +126,7 @@ const HU_SUPPORTED_PLAYER_COUNT = 2;
 const PREFLOP_ALLIN_THRESHOLD = 0.50;
 const PREFLOP_ADD_ALLIN_SPR = -1;
 const HU_ALLOWED_FLATS_PER_RAISE = {2: 1, 3: 1, 4: 1};
+const PREFLOP_SB_COMPLETION_CUTOFF_BB = 5;
 
 
 const POSTFLOP_HU_FLOP_BET = [0.25, 0.40, 0.67, 1.00];
@@ -491,7 +494,12 @@ function canFlatCallPreflop(ctx) {
 
     let bets = ctx.getBetCount();
     if (bets == 1) {
-        return ctx.getActivePlayer() == ctx.getPlayerIndexSmallBlind();
+        let player = ctx.getActivePlayer();
+        return (
+            player == ctx.getPlayerIndexSmallBlind() &&
+            getEffectiveStackForPlayer(ctx, player) >
+                ctx.sizingBigBlinds(PREFLOP_SB_COMPLETION_CUTOFF_BB)
+        );
     }
 
     if (isColdCall(ctx))
