@@ -67,6 +67,10 @@ these queued operations to finish successfully before step 6.
 
 After step 6, verify the new Viewer file and strategy archive. Both files must
 exist and must not be empty. Then close the completed hand tab before step 7.
+HRC shows a `Save Resource` prompt because Viewer Save does not save the
+editable hand. Confirm that the prompt names the expected completed simulation.
+Only then select `Don't Save` and confirm that HRC returns to `Home`. Stop on
+any filename or prompt mismatch.
 
 Treat an operation as queued only when HRC shows it in the expected order.
 Stop the workflow if an operation fails or the Viewer output cannot be
@@ -88,17 +92,18 @@ heads-up tree on `EM-3960X`. This result proves only script loading and tree
 creation. A short HU demonstration covered rename, both Nash submissions, an
 accidental Complete Save, a corrected Viewer Save, and output verification. A
 follow-up demonstration created a non-empty strategy-export archive and closed
-the saved hand tab. Long-run queue behaviour, completion or failure detection,
+the saved hand tab. A Viewer-only follow-up preserved verified `.hrcv` and
+`.zip` files after `Don't Save` closed the unsaved hand. No matching `.hrcz`
+file was present. Long-run queue behaviour, completion or failure detection,
 and the tree policy remain unverified. The three-through-six-player candidate
 has not been validated inside HRC.
 
 ## Current next action
 
 Map accessible properties and safe automation paths for rename, both Nash
-submissions, Viewer Save, strategy export, and completed-tab closure. Confirm
-the close behaviour after a Viewer-only save. Then validate queue order and
-explicit completion or failure detection on a separately authorised
-long-running test.
+submissions, Viewer Save, strategy export, the `Save Resource` prompt, and
+`Don't Save`. Then validate queue order and explicit completion or failure
+detection on a separately authorised long-running test.
 
 ## Definition of done
 

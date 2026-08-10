@@ -40,8 +40,10 @@ The HU candidate loaded and created a tree on the licensed host `EM-3960X`.
 A short demonstration covered rename, two Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and read-only Viewer output
 verification. A follow-up demonstration created a non-empty strategy-export
-archive and closed the saved source tab. Long-run queue behaviour, explicit
-completion or failure detection, and Viewer-only tab closure remain unverified.
+archive and closed the saved source tab. A Viewer-only follow-up confirmed the
+`Save Resource` prompt and used `Don't Save`. The non-empty `.hrcv` and `.zip`
+files persisted, and no matching `.hrcz` file was present. Long-run queue
+behaviour and explicit completion or failure detection remain unverified.
 
 ## Source boundaries
 

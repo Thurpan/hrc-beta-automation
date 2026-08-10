@@ -47,6 +47,10 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 - Verify the Viewer output and strategy archive before closing the completed
   hand tab. Do not inspect strategy contents unless the task requires it and
   Euan authorises the inspection.
+- When HRC shows `Save Resource` during Viewer-only tab closure, select
+  `Don't Save` only when the verified `.hrcv` and `.zip` base filenames match
+  the simulation named in the prompt. Stop without discarding the hand if any
+  filename, prompt, or available action differs from the observed workflow.
 
 ## One workflow pattern
 
