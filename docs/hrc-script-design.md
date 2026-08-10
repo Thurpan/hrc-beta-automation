@@ -37,8 +37,10 @@ execution model, and product limits. The shared prototype is useful working
 material, but it is generated advice rather than an official API contract.
 
 The HU candidate loaded and created a tree on the licensed host `EM-3960X`.
-No Nash calculation or Viewer save has been observed. Runtime behaviour beyond
-HU script loading and tree creation remains unverified.
+A short demonstration covered rename, two Nash submissions, an accidental
+Complete Save, a corrected Viewer Save, and read-only Viewer output
+verification. Long-run queue behaviour and explicit completion or failure
+detection remain unverified.
 
 ## Source boundaries
 

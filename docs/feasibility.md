@@ -37,11 +37,12 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
   simulation run order.
 - Selected inputs: Two players with `1 bb` starting stacks from the generated
   simulation run order.
-- New output filename: `HU-1.hrcv`. The current hand is still unsaved as
-  `*Hand 1`.
-- Expected cost and duration: Tree creation completed during the observation
-  session. Euan reports that both Nash calculations can take a long time. Exact
-  durations remain TO CONFIRM.
+- Viewer output filename: `HU-1.hrcv`. The demonstration also created an
+  unintended `HU-1.hrcz` Complete Save. It remains untouched, and the open tab
+  now reads `HU-1.hrcz`.
+- Expected cost and duration: The small demonstration calculations transitioned
+  quickly. Euan reports that production calculations can take a long time.
+  Exact production durations remain TO CONFIRM.
 
 ## Required queue sequence
 
@@ -61,8 +62,10 @@ operation to finish:
    other workflows, such as `5m`.
 1. Start the next simulation.
 
-The required sequence is Euan's workflow definition. Queue behaviour and
-completion remain TO CONFIRM through observed testing.
+The required sequence is Euan's workflow definition. The second Nash dialog
+opened while CI 10 Progress was visible. After submission, CI 1 Progress
+appeared. The demonstration was too fast to establish queue order, calculation
+completion, or failure states.
 
 ## Control map
 
@@ -73,33 +76,38 @@ completion remain TO CONFIRM through observed testing.
 | Open script picker | Icon button beside `Script:` | Empty | Button | `1903002` during this session; stability TO CONFIRM | Invoke and LegacyIAccessible | No access key was exposed. | Open the script file picker. | The standard `Open` dialog appeared. | TBD | NO: no stable name, identifier, or keyboard path has been observed. |
 | Select script file | `tree-building-hu-candidate.js`; `Open` | `tree-building-hu-candidate.js`; `Open` | List item; button | `0` for the file item; Open button not inspected | SelectionItem, Value, and LegacyIAccessible for the file item | The item was keyboard-focusable. The complete keyboard path is TO CONFIRM. | Select the HU candidate and open it. | HRC returned to Hand Setup. No script or tree error was visible in the captured states. | A script or tree error must stop the workflow. | TO CONFIRM |
 | Finish tree setup | `Finish` | `Finish` | Button | TO CONFIRM | TO CONFIRM | TO CONFIRM | Finish tree creation after the estimate completes. | Hand Setup closed and an unsaved `*Hand 1` tab opened with the strategy and table views. | TBD | TO CONFIRM |
-| Rename | TBD | TBD | TBD | TBD | TBD | TBD | Rename the tree to `HU-1`. | The document and queued operations use the required simulation name. | TBD | TO CONFIRM |
-| Queue CI 10 | `Nash Calculation`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Alt+R` opens Nash Calculation. | Select `HRC 4.0 (Default)`, Full Tree, Until CI value is reached, CI Target `10.0`, Reset Regret clear, and Reset Strategies clear. Select OK. | The CI 10 operation appears in the queue. | A rejected or failed queue operation is distinguishable. | TO CONFIRM: the dialog configuration is observed, but OK and queue state are not. |
-| Queue CI 1 | `Nash Calculation`; `Reset Strategies`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Alt+R` opens Nash Calculation. | Keep the same algorithm, scope, and sampling mode. Set CI Target to `1.0`, select Reset Strategies, keep Reset Regret clear, and select OK. | The CI 1 operation appears after CI 10 in the queue. | A rejected or failed queue operation is distinguishable. | TO CONFIRM: the dialog configuration is observed, but OK and queue state are not. |
-| Detect running | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
+| Rename | `Hand`; `Rename Hand`; `Rename to:`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Ctrl+H, R` | Open Rename Hand, replace the current name with `HU-1`, and select OK. | The tab changed from `*Hand 2` to `*HU-1`. Later Progress text used `HU-1`. | TBD | TO CONFIRM: the visible path and shortcut are observed, but accessible properties are not. |
+| Submit CI 10 | `Run Nash Calculation`; `Nash Calculation`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Alt+R` | Select `HRC 4.0 (Default)`, Full Tree, Until CI value is reached, CI Target `10.0`, Reset Regret clear, and Reset Strategies clear. Select OK. | Progress showed `HU-1: Monte Carlo Sampling` and `MC-CFR [Target CI < 10.00]`. | A rejected or failed submission must be distinguishable. | TO CONFIRM: submission and running state are visually observed, but accessible properties and failure state are not. |
+| Submit CI 1 | `Run Nash Calculation`; `Reset Strategies`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Alt+R` | Keep the same algorithm, scope, and sampling mode. Set CI Target to `1.0`, select Reset Strategies, keep Reset Regret clear, and select OK. | The dialog opened while CI 10 Progress was visible. After OK, Progress showed `MC-CFR [Target CI < 1.00]`. | A rejected or failed submission must be distinguishable. | TO CONFIRM: the submission transition is observed, but durable queue order and accessible properties are not. |
+| Detect running | `Progress`; `HU-1: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Read the Progress pane without changing the operation. | The operation name, target CI, activity bar, and stop button were visible. | TBD | TO CONFIRM: the visible running state is observed, but accessible state is not. |
 | Detect completion or failure | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
-| Queue Viewer save | Viewer save; filename and destination controls | TBD | TBD | TBD | TBD | TBD | Queue `HU-1.hrcv` to `\\VAULT\sims\Preflop\HU`. | The Viewer save appears after both calculations in the queue. | A rejected or failed save operation is distinguishable. | TO CONFIRM |
-| Verify saved output | `HU-1.hrcv` | TBD | TBD | TBD | TBD | TBD | Verify the new file without modifying another output. | The expected `.hrcv` file exists in the HU folder and can be identified safely. | The file is absent, incomplete, or saved elsewhere. | TO CONFIRM |
+| Viewer save | `File`; `Save As`; `Save as type:`; `*.hrcv Viewer Save`; `Save` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Ctrl+Alt+S` opens Save As. | Open Save As, select `*.hrcv Viewer Save`, confirm `HU-1.hrcv`, browse to `\\VAULT\sims\Preflop\HU`, and select Save. | Selecting Viewer Save changed the proposed extension from `.hrcz` to `.hrcv`. HRC returned to the main view after Save. | The default `*.hrcz Complete Save` can create the wrong output type if it is not changed. | TO CONFIRM: the visible flow is observed, but accessible properties and long-run queue behaviour are not. |
+| Verify saved output | `HU-1.hrcv` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new file without modifying another output. | `\\VAULT\sims\Preflop\HU\HU-1.hrcv` existed with a non-zero size of 5,506 bytes at 23:10 BST. | The file is absent, empty, or saved elsewhere. | YES for read-only verification of this exact new file. |
+| Start next simulation | `Hand`; `Start New Calculation` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Ctrl+W, H` | Start the next simulation after steps 2–5 are submitted. | TBD | TBD | TO CONFIRM: the menu item and shortcut are visible, but the action was not demonstrated. |
 
 ## Observable states
 
 | State | Visible evidence | Accessible evidence | Distinguishable | Notes |
 | --- | --- | --- | --- | --- |
 | Configured | Hand Setup closed. An unsaved `*Hand 1` tab opened with strategy, range, and HU table views. Progress showed no active operation. | The tree exposed `*Hand 1`, `Strategy Table`, `Hand Settings`, and `Run Nash Calculation (Alt+R)`. | CONFIRMED | Tree creation completed. The calculation was not started. |
-| Queued | TBD | TBD | TO CONFIRM | Rename, CI 10, CI 1 with Reset Strategies, and Viewer save must be queued in that order. |
-| Running | TBD | TBD | TO CONFIRM | TBD |
-| CI 10 completed | TBD | TBD | TO CONFIRM | Completion must be distinguishable from failure before CI 1 is relied on. |
-| CI 1 completed | TBD | TBD | TO CONFIRM | Reset Strategies must apply only to this operation. |
-| Viewer saved | TBD | TBD | TO CONFIRM | The save must follow both calculations in the queue. |
+| Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
+| Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
+| CI 10 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 10.00`. | TBD | CONFIRMED visually | A red stop button and activity bar were visible. |
+| CI 1 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 1.00`. | TBD | CONFIRMED visually | Reset Strategies was selected in the submitted dialog. |
+| CI 10 completed | The CI 10 line was replaced by the CI 1 line. | TBD | TO CONFIRM | No explicit successful-completion marker was captured. |
+| CI 1 completed | Progress later showed `No operations to display at this time.` | TBD | TO CONFIRM | This text alone does not distinguish success from failure. |
+| Viewer saved | The Save As dialog accepted `HU-1.hrcv` with `*.hrcv Viewer Save`. | File existence was verified separately. | CONFIRMED | The open tab remained `HU-1.hrcz` after Viewer Save. |
 | Failed | TBD | TBD | TO CONFIRM | TBD |
-| Saved | The current hand has an asterisk and remains unsaved. | Save and Save As controls are exposed with keyboard shortcuts. | TO CONFIRM | No save action was performed. |
-| Saved output verified | TBD | TBD | TO CONFIRM | TBD |
+| Complete Save | The first Save As used the default `*.hrcz Complete Save` in error. The tab changed to `HU-1.hrcz`. | TBD | CONFIRMED visually | The unintended file remains untouched. |
+| Saved output verified | The new `.hrcv` file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED | File contents were not opened or modified. |
+| Next simulation started | TBD | TBD | TO CONFIRM | The transition to the next simulation was not demonstrated. |
 
 ## Test runs
 
 | Run | Date and time | Planned output | Result | Observed duration | Evidence | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10 August 2026, 22:40 BST | `HU-1.hrcv` planned | NOT RUN | TBD | HU `1 bb` tree creation succeeded. The two required Nash dialog configurations were supplied separately. | The current hand remains unsaved as `*Hand 1`. No queue operation was observed. |
+| 1 | 10 August 2026, 22:40 BST | None | TREE CREATED | TBD | HU `1 bb` tree creation succeeded and opened `*Hand 1`. | No calculation or save was performed in this observation. |
+| 2 | 10 August 2026, 23:08–23:10 BST | `HU-1.hrcv`; unintended `HU-1.hrcz` | PARTIAL DEMONSTRATION | Progress changed to no operation displayed within the observation period. Explicit completion and production duration remain TO CONFIRM. | The demonstration renamed `*Hand 2` to `*HU-1`, submitted both Nash configurations, showed both running targets, made an accidental Complete Save, corrected it with Viewer Save, and verified the Viewer file. | This observation began with `*Hand 2` and is separate from run 1. Long-run queue order and explicit calculation success or failure remain unconfirmed. The unintended Complete Save remains untouched. |
 
 ## Blockers
 
@@ -107,22 +115,26 @@ completion remain TO CONFIRM through observed testing.
   accessible name and access key are empty. Its numeric Automation ID has not
   been shown stable. A supported keyboard path or stable identifier is
   required before this critical step is safe to automate.
-- Rename and Viewer save controls have not been inspected.
-- Queue acceptance, queue ordering, running, completion, failure, Viewer save,
-  and saved-output verification have not been observed.
+- Rename, Nash, and Viewer Save controls have not had their accessible
+  properties inspected.
+- Long-run queue order and explicit completion or failure states have not been
+  observed.
+- The transition to the next simulation has not been demonstrated.
 
 ## Verdict
 
 - Feasibility: TO CONFIRM
 - Confidence: TO CONFIRM
 - Basis: The selected HU tree was configured and created without a visible
-  error. The required Nash configurations are defined. The queued lifecycle
-  remains untested, and the script-picker control does not yet have a safe
-  durable target.
+  error. Rename, both Nash submissions, running targets, Viewer Save, and
+  read-only output verification were observed. Long-run queue behaviour,
+  explicit completion or failure detection, and safe accessible targets remain
+  unconfirmed. The script-picker control does not yet have a safe durable
+  target.
 
 ## Next action
 
-Inspect the rename, Nash Calculation, queue, and Viewer save controls for the
-existing HU hand. Record their accessible properties and observable
-queue states. Do not select OK in a Nash dialog until Euan confirms that this
-specific `HU-1` test should start the long-running calculations.
+Inspect the accessible properties of Rename Hand, Nash Calculation, Progress,
+and Save As without starting another calculation. Map a safe path for selecting
+`*.hrcv Viewer Save`. Do not start an automated or long-running test until the
+controls are mapped and Euan authorises that specific test.
