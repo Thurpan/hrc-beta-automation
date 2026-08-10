@@ -42,6 +42,11 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 - Save Viewer output as a new `.hrcv` file under
   `\\VAULT\sims\Preflop\<table-group>`. Do not guess or create a missing
   table-size folder.
+- Save the strategy export as a new `.zip` file in the same table-size folder.
+  Use the simulation name as the base filename.
+- Verify the Viewer output and strategy archive before closing the completed
+  hand tab. Do not inspect strategy contents unless the task requires it and
+  Euan authorises the inspection.
 
 ## One workflow pattern
 
@@ -49,8 +54,9 @@ Validate one representative workflow pattern first. The pattern can then run
 for multiple simulations in the user-specified order.
 
 Map tree creation, rename, both Nash configurations, queue order, running,
-completion or failure, Viewer save, saved-output verification, and transition
-to the next simulation.
+completion or failure, Viewer save, saved-output verification, strategy export,
+strategy-archive verification, Viewer-only hand-tab closure, and transition to
+the next simulation.
 
 Do not design beyond this repeatable workflow until the representative
 lifecycle has a supported feasibility verdict.

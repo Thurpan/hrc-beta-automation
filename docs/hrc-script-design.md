@@ -39,8 +39,9 @@ material, but it is generated advice rather than an official API contract.
 The HU candidate loaded and created a tree on the licensed host `EM-3960X`.
 A short demonstration covered rename, two Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and read-only Viewer output
-verification. Long-run queue behaviour and explicit completion or failure
-detection remain unverified.
+verification. A follow-up demonstration created a non-empty strategy-export
+archive and closed the saved source tab. Long-run queue behaviour, explicit
+completion or failure detection, and Viewer-only tab closure remain unverified.
 
 ## Source boundaries
 

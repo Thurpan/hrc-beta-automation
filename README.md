@@ -43,25 +43,35 @@ machine evidence and Euan's licence confirmation supersede that reference.
 Use this lifecycle for each simulation:
 
 1. Create the tree for the next setup in the simulation run order.
-1. Rename the hand through `Hand` → `Rename Hand`. Use names such as `HU-1` or
+2. Rename the hand through `Hand` → `Rename Hand`. Use names such as `HU-1` or
    `5m-10-30-30-20-12.5`.
-1. Queue a full-tree Nash calculation with `HRC 4.0 (Default)`. Run until the
+3. Queue a full-tree Nash calculation with `HRC 4.0 (Default)`. Run until the
    confidence interval (CI) reaches `10.0`. Keep Reset Regret and Reset
    Strategies clear.
-1. Queue a second full-tree Nash calculation with `HRC 4.0 (Default)`. Run
+4. Queue a second full-tree Nash calculation with `HRC 4.0 (Default)`. Run
    until CI reaches `1.0`. Select Reset Strategies and keep Reset Regret clear.
-1. Queue a Viewer Save as an `.hrcv` file under
+5. Queue a Viewer Save as an `.hrcv` file under
    `\\VAULT\sims\Preflop\<table-group>`. Save As defaults to
    `*.hrcz Complete Save`; select `*.hrcv Viewer Save` and confirm the `.hrcv`
    extension before Save. Example folders include `HU` and `5m`.
-1. Move to the next simulation and repeat the workflow.
+6. After the queued operations finish successfully, export the strategies
+   through `Hand` → `Export Strategies`. Use `Complete Export`, Depth `16`,
+   clear `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save
+   `<simulation-name>.zip` in the same table-group folder with
+   `*.zip Archived Json`.
+7. Move to the next simulation and repeat the workflow.
 
-After tree creation, queue steps 2 through 5 without waiting for the previous
-operation to finish. The two Nash calculations can take a long time.
+After tree creation, submit steps 2 through 5 without waiting for the previous
+operation to finish. The two Nash calculations can take a long time. Wait for
+these queued operations to finish successfully before step 6.
+
+After step 6, verify the new Viewer file and strategy archive. Both files must
+exist and must not be empty. Then close the completed hand tab before step 7.
 
 Treat an operation as queued only when HRC shows it in the expected order.
 Stop the workflow if an operation fails or the Viewer output cannot be
-verified.
+verified. Also stop if the strategy archive cannot be verified or the
+completed tab cannot be closed safely.
 
 ## HRC tree-building candidates
 
@@ -76,23 +86,27 @@ They use separate preflop policies from the sizing workbook and a shared
 postflop policy. The HU candidate loaded successfully and created a `1 bb`
 heads-up tree on `EM-3960X`. This result proves only script loading and tree
 creation. A short HU demonstration covered rename, both Nash submissions, an
-accidental Complete Save, a corrected Viewer Save, and output verification.
-Long-run queue behaviour, completion or failure detection, and the tree policy
-remain unverified. The three-through-six-player candidate has not been
-validated inside HRC.
+accidental Complete Save, a corrected Viewer Save, and output verification. A
+follow-up demonstration created a non-empty strategy-export archive and closed
+the saved hand tab. Long-run queue behaviour, completion or failure detection,
+and the tree policy remain unverified. The three-through-six-player candidate
+has not been validated inside HRC.
 
 ## Current next action
 
 Map accessible properties and safe automation paths for rename, both Nash
-submissions, and Viewer Save. Then validate queue order and explicit
-completion or failure detection on a separately authorised long-running test.
+submissions, Viewer Save, strategy export, and completed-tab closure. Confirm
+the close behaviour after a Viewer-only save. Then validate queue order and
+explicit completion or failure detection on a separately authorised
+long-running test.
 
 ## Definition of done
 
 Feasibility discovery is complete when observed evidence supports a clear
 verdict for the representative workflow. The evidence must cover rename, both
 Nash configurations, queue order, completion or failure, Viewer save, and
-saved-output verification.
+saved-output verification. It must also cover strategy export, strategy-archive
+verification, and Viewer-only hand-tab closure before the next simulation.
 
 A feasible workflow must complete the full lifecycle once. Do not repeat a
 long-running calculation only to obtain a second feasibility sample.
