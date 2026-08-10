@@ -3,11 +3,16 @@ from math import prod
 from pathlib import Path
 
 STACK_OPTIONS = [
-    10, 12.5, 15, 20, 30, 40, 100, 50, 7,
-    5, 17.5, 22.5, 35, 45, 60, 70, 80, 25,
+    10, 12.5, 15, 20, 30, 40, 100, 50, 7.5,
+    5, 17.5, 22.5, 35, 45, 60, 25, 70, 80
 ]
 PLAYER_COUNT = 5
-OUTPUT_FILE = Path("stack_size_options.txt")
+OUTPUT_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "stack-sizes"
+    / "stack_size_options.txt"
+)
 
 STACK_SORT_ORDER = {stack: rank for rank, stack in enumerate(STACK_OPTIONS, start=1)}
 
@@ -29,6 +34,7 @@ def main():
 
     sorted_setups = sorted(setups, key=stack_sort_key)
 
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT_FILE.open("w", encoding="utf-8") as file:
         file.writelines(
             "-".join(map(str, setup)) + "\n" for setup in sorted_setups

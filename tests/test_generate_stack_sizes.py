@@ -12,6 +12,13 @@ class GenerateStackSetupsTests(unittest.TestCase):
     def test_uses_five_players(self):
         self.assertEqual(generator.PLAYER_COUNT, 5)
 
+    def test_writes_to_the_stack_size_data_directory(self):
+        repository_root = Path(__file__).resolve().parents[1]
+        self.assertEqual(
+            generator.OUTPUT_FILE,
+            repository_root / "data" / "stack-sizes" / "stack_size_options.txt",
+        )
+
     def test_writes_expected_setups_and_status(self):
         expected_output = (
             "5-5-5\n"
@@ -73,8 +80,14 @@ class StackSortKeyTests(unittest.TestCase):
             sorted(generator.STACK_SORT_ORDER.values()),
             list(range(1, len(generator.STACK_OPTIONS) + 1)),
         )
-        self.assertEqual(
+        self.assertIn(7.5, generator.STACK_OPTIONS)
+        self.assertNotIn(7, generator.STACK_OPTIONS)
+        self.assertLess(
             generator.STACK_SORT_ORDER[25],
+            generator.STACK_SORT_ORDER[70],
+        )
+        self.assertEqual(
+            generator.STACK_SORT_ORDER[80],
             len(generator.STACK_OPTIONS),
         )
 
