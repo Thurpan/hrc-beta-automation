@@ -3,8 +3,9 @@
 ## Status
 
 This document records the current inputs and decisions for the project HRC
-tree-building scripts. Separate 3–6-max and heads-up (HU) candidates are ready
-for offline review, but neither candidate has been validated in HRC.
+tree-building scripts. The heads-up (HU) candidate loaded and created a `1 bb`
+tree in HRC. Its tree policy remains unverified. The 3–6-max candidate remains
+unvalidated in HRC.
 
 The design combines three sources:
 
@@ -35,8 +36,9 @@ Use [`hrc-scripting.md`](hrc-scripting.md) for the documented HRC API,
 execution model, and product limits. The shared prototype is useful working
 material, but it is generated advice rather than an official API contract.
 
-No script has been loaded into HRC. No tree or calculation has been created.
-All runtime behaviour remains unverified on the licensed host `EM-3960X`.
+The HU candidate loaded and created a tree on the licensed host `EM-3960X`.
+No Nash calculation or Viewer save has been observed. Runtime behaviour beyond
+HU script loading and tree creation remains unverified.
 
 ## Source boundaries
 
@@ -287,10 +289,11 @@ Inspect the tree preview for the returned and normalised sizes.
 Tree size is a material risk. Each candidate combines an unconditional preflop
 all-in option, multiple postflop sizes, low-SPR alternatives, an SPR `5`
 postflop all-in, an unlimited bets-per-street field, and unrestricted postflop
-flat calls. The source screenshot estimates 19,888,053 nodes and 131.7 GB with
-flop, turn, and river abstractions of `1024`, `256`, and `256`. Recalculate the
-estimate after loading the candidate. Do not start a calculation from this
-estimate without Euan's approval.
+flat calls. A source screenshot estimates 19,888,053 nodes and 131.7 GB with
+flop, turn, and river abstractions of `1024`, `256`, and `256`. Treat these
+figures as unverified source context. They do not describe the observed HU
+tree, and no post-Finish statistics page is required by the operational
+workflow.
 
 ## Validation cases
 
@@ -326,7 +329,9 @@ The HU suite also verifies:
   all-in; and
 - the complete shared HU postflop policy.
 
-Complete these checks in HRC on `EM-3960X`:
+Complete these candidate tree checks in HRC on `EM-3960X`. Use the workflow in
+the project [`README.md`](../README.md) for calculation and Viewer save
+operations.
 
 1. Verify a non-straddled disposable setup for the candidate under test.
 1. Test the 3–6-max candidate once at each configured table size.
@@ -343,5 +348,4 @@ Complete these checks in HRC on `EM-3960X`:
 1. Compare the postflop node estimate with the source screenshot.
 1. Record observable evidence in `feasibility.md`.
 
-Do not start an expensive calculation without Euan's approval. Save only to a
-new disposable filename.
+Do not start a calculation as part of these candidate tree checks.

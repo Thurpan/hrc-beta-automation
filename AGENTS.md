@@ -30,24 +30,37 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 
 ## HRC data safety
 
-- Use a disposable workflow with a new filename.
+- Use a new output filename for every simulation.
 - Never overwrite or delete existing HRC data.
 - Do not reveal poker data that is not necessary for feasibility evidence.
-- Ask Euan before using poker inputs when no clearly safe disposable workflow is available.
-- Ask Euan before starting an expensive calculation.
+- Ask Euan before using poker inputs when no clearly safe non-overwriting
+  workflow is available.
+- Ask Euan before starting an expensive calculation unless the current request
+  explicitly authorises the run or batch. One batch authorisation covers its
+  specified simulations.
 - Verify saved output without changing existing output.
+- Save Viewer output as a new `.hrcv` file under
+  `\\VAULT\sims\Preflop\<table-group>`. Do not guess or create a missing
+  table-size folder.
 
-## One-workflow limit
+## One workflow pattern
 
-Select only one representative workflow. Map configuration, start, running, completion or failure, save, and saved-output verification.
+Validate one representative workflow pattern first. The pattern can then run
+for multiple simulations in the user-specified order.
 
-Do not design broader or unattended automation until the selected workflow has a supported feasibility verdict.
+Map tree creation, rename, both Nash configurations, queue order, running,
+completion or failure, Viewer save, saved-output verification, and transition
+to the next simulation.
+
+Do not design beyond this repeatable workflow until the representative
+lifecycle has a supported feasibility verdict.
 
 ## Validation expectations
 
 Map the visible label, accessible name, control type, automation ID, supported patterns, keyboard path, required action, observable outcomes, and safety for each step.
 
-Test the full lifecycle manually. Repeat it once only when the workflow is quick and safe.
+Test the full lifecycle manually once. Do not repeat a long calculation only
+for feasibility evidence.
 
 Stop and record the exact blocker when any critical step requires blind clicking. Stop when completion cannot be distinguished from failure. Stop when saved output cannot be verified.
 

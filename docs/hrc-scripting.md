@@ -775,9 +775,11 @@ the maximum active-player limit, and postflop abstractions. Do not implement a
 policy category that is still marked `TBD` unless the first iteration isolates
 it explicitly for review.
 
-## Safe validation sequence for a future script
+## Safe first-time validation sequence for a future script
 
-Follow this sequence on the licensed host only.
+Follow this candidate tree validation sequence on the licensed host only. Use
+the project [`README.md`](../README.md) for authorised calculation and Viewer
+save operations.
 
 1. Confirm the HRC version and Pro entitlement without exposing licence data.
 1. Start from a fresh copy of the current official default script.
@@ -802,8 +804,7 @@ Follow this sequence on the licensed host only.
 1. Check each street and each value below, on, and above every SPR threshold.
 1. Verify that normalised sizes are legal and not unintentionally duplicated.
 1. Record observable evidence in `feasibility.md`.
-1. Ask Euan before starting an expensive calculation.
-1. Save only to a new disposable filename.
+1. Stop after recording the generated-tree evidence.
 
 Do not infer correctness from a successful script load. Verify the generated
 tree. Stop at any critical step that requires an unidentified control or blind
