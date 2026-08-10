@@ -15,6 +15,10 @@ The shared page was reviewed on 10 August 2026. The reviewed candidate is
 identified by share ID `6a799f62-3738-83eb-9798-a1a36aafd84a`. Re-review the
 page before relying on these findings if its content changes.
 
+The final JavaScript block from that review is stored verbatim in
+[`shared-chatgpt-prototype.js`](../reference/hrc/shared-chatgpt-prototype.js).
+It is a reference snapshot, not an approved script to load into HRC.
+
 Use [`hrc-scripting.md`](hrc-scripting.md) for the documented HRC API,
 execution model, and product limits. The shared prototype is useful working
 material, but it is generated advice rather than an official API contract.
