@@ -62,8 +62,8 @@ The stack-size planning artefacts are stored together:
 | Artefact | Purpose |
 | --- | --- |
 | [`Sizes_for_hrc_script.xlsx`](../data/stack-sizes/Sizes_for_hrc_script.xlsx) | Current position, action, and effective-stack sizing matrix. |
-| [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated five-player stack combinations for future automation input. |
-| [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured stack options. |
+| [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated heads-up, three-player, and five-player simulation run order. |
+| [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured run-order batches. |
 | [`shared-chatgpt-prototype.js`](../reference/hrc/shared-chatgpt-prototype.js) | Verbatim shared-thread snapshot. Refresh it only from the shared source. Do not apply project fixes. |
 | [`tree-building-3m-6m-candidate.js`](../scripts/hrc/tree-building-3m-6m-candidate.js) | Standalone 3–6-max working candidate. |
 | [`tree-building-hu-candidate.js`](../scripts/hrc/tree-building-hu-candidate.js) | Standalone HU working candidate. |
@@ -88,11 +88,28 @@ The HU sheet has 68 exact stack columns from 1 bb through 80 bb. It contains
 six policy rows: SB and BB rows for opens, 3-bets, and 4-bets. A cell can
 contain `allin`, one fixed-bb size, or two comma-separated fixed-bb sizes.
 
-The generator uses the same set of 18 stack values. Therefore, a configuration
-from `stack_size_options.txt` always produces an effective stack that matches a
-workbook column exactly. The generator omits a setup with only one largest
-stack. Under the agreed convention, capping that stack at the next-largest
-stack produces the same effective stacks for every active player.
+The generator writes the batches in this order:
+
+1. Heads-up equal-stack setups from 1 to 80 big blinds.
+1. Three-player setups from the first four-option priority list.
+1. Five-player setups from the first three-option priority list.
+1. Three-player setups from the seven-option core list.
+1. Five-player setups from the seven-option core list.
+1. Three-player setups from the full 18-option list.
+1. Five-player setups from the full 18-option list.
+
+Each batch uses its own configured option order to calculate setup priority.
+The generator omits an exact setup if an earlier batch already contains it.
+The number of hyphen-delimited stacks identifies the player count.
+
+The final three-player and five-player batches use the workbook's 18 stack
+values. Therefore, each multiway effective stack matches a workbook column.
+The heads-up batch uses the HU sheet's 68 exact stack columns.
+
+The generator also omits a setup with only one largest stack. Under the agreed
+convention, capping that stack at the next-largest stack produces the same
+effective stacks for every active player. For heads-up setups, this rule leaves
+one equal-stack simulation for each configured size.
 
 ## Effective-stack convention
 
