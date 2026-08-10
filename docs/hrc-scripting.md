@@ -50,9 +50,10 @@ flowchart LR
 
 One script can support calculations with different and mixed stack sizes. The
 script receives the current pot and stack state at every decision. It can
-select a sizing rule by position, previous actions, pairwise stack depth, or
-stack-to-pot ratio (SPR). This is more maintainable than a separate fixed
-script for every stack size when the underlying rule set is shared.
+select a sizing rule by position, previous actions, the project's dynamic
+effective stack, or stack-to-pot ratio (SPR). This is more maintainable than a
+separate fixed script for every stack size when the underlying rule set is
+shared.
 
 The most important limitation is that the documented API exposes no hole
 cards, ranges, board cards, or board texture. Postflop rules can depend on the
@@ -295,38 +296,47 @@ ratios instead of absolute internal amounts where possible.
 The blind and ante getters return the full nominal value even if a short player
 cannot post that amount in full.
 
-### Reconstructing stack depth
+### Project effective-stack convention
 
 The API does not provide a named `getStartingStack(player)` or
 `getEffectiveStack(playerA, playerB)` method.
 
-The documented chip components support this derived calculation:
+For this project, calculate a player's total stack from the documented chip
+components:
 
 ```text
 player total = active chips + dead chips + remaining chips
-pairwise effective stack in bb = min(player A total, player B total) / nominal big blind
+largest non-folded opponent total = maximum player total among other players who have not folded
+project effective stack = minimum of the active player total and largest non-folded opponent total
+project effective stack in bb = project effective stack / nominal big blind
 ```
 
-This is an inference from the public API, not an official HRC helper. Confirm
-it against the HRC tree preview and table-state view before using it as a rule
-input.
+Recalculate this value for the active player at every callback. A fold can
+therefore change the effective stack even when no chips move. Folded chips stay
+in the pot, but the folded player no longer qualifies as an opponent.
 
-For a normal 3-bet, a practical pair is the active player and the most recent
-raiser. For a 4-bet response, the most recent raiser is the 3-bettor. A squeeze
-or multiway pot requires an explicit policy. Possible policies include:
+Include every opponent who has not folded, including a player who is all-in.
+Do not use `countPlayersLive()` to build the opponent set. That method excludes
+all-in players as well as folded players.
 
-- effective against the last raiser;
-- effective against the shortest live opponent;
-- the active player's own starting stack; or
-- a rule based on current SPR instead of starting stack.
+For example, CO and BU each have 100 bb. SB and BB each have 10 bb. CO's
+effective stack is initially 100 bb because BU remains eligible. If CO folds,
+BU's effective stack is 10 bb because only the two 10 bb blinds remain.
 
-These policies are not equivalent. Select one before writing stack-tiered
-sizing rules.
+This convention is a project decision. It is not the active player's uncapped
+stack, the shortest opponent, the last raiser's stack, remaining chips, or
+SPR. The last raiser can still determine the action class or positional rule,
+but does not determine the stack bucket. Treat a decision with no non-folded
+opponent as an invalid state instead of assigning it to a zero-stack bucket.
+
+This calculation is an inference from the public API. Confirm it against the
+HRC tree preview and table-state view before using it in a calculation.
 
 `ctx.sizingAllIn()` gives HRC's effective all-in bet or raise-to size at the
-current decision. It can be useful as a current legal cap. The documentation
-does not define which opponent determines that value in every multiway state.
-That detail is `TO CONFIRM`.
+current decision. Use it only as HRC's legal raise-to cap. It is not the
+project effective-stack metric. The documentation does not define which
+opponent determines that value in every multiway state. That detail is
+`TO CONFIRM`.
 
 ## Sizing helpers
 
@@ -423,7 +433,7 @@ At a 3-bet decision, the script can inspect:
 
 - the active 3-bettor;
 - the opener from `getLastRaiseAction()`;
-- both players' chip components;
+- every player's chip components and folded state;
 - whether the 3-bettor has postflop position;
 - blind positions;
 - the open raise amount;
@@ -442,8 +452,8 @@ Relative formats already adapt to some changing inputs:
 - geometric postflop sizes adapt to SPR.
 
 Explicit stack buckets are required only when poker policy changes at a stack
-threshold. Define exact lower and upper boundary ownership to avoid gaps or
-overlaps.
+threshold. Select the bucket from the project effective stack. Define exact
+lower and upper boundary ownership to avoid gaps or overlaps.
 
 ### Squeezes and isolation raises
 
@@ -472,7 +482,7 @@ The script can control three structural responses:
 - `getSizingsPreflop(ctx)` supplies the available 4-bet sizes.
 
 The callback can branch on the responder, 3-bettor, original opener, IP or OOP
-status, action history, stack depth, and SPR.
+status, action history, project effective stack, and SPR.
 
 At this bet count, scan the active player's latest current-street action to
 classify the responder:
@@ -542,6 +552,7 @@ and all-in below a configured SPR.
 That example treats a state as heads-up when `countPlayersLive()` is two. The
 method excludes folded and all-in players, so this means two players still
 capable of acting, not necessarily only two players eligible for the pot.
+Do not reuse this count for the project effective-stack calculation.
 
 The [tree configuration guide](https://www.holdemresources.net/docs/tree-config/)
 recommends keeping postflop trees simple when the primary goal is reliable
@@ -738,7 +749,8 @@ do not treat its product-limit values as current without a separate check.
 - `TO CONFIRM`: Duplicate sizes after minimum, maximum, or all-in
   normalisation.
 - `TO CONFIRM`: Exact multiway opponent selection used by `sizingAllIn()` and
-  `getStackPotRatio()`.
+  `getStackPotRatio()`. This does not change the project's separate
+  effective-stack convention.
 - `TO CONFIRM`: Mixed-unit preflop parser combinations needed by the final
   rules.
 - `TO CONFIRM`: Position and bet-count semantics for every required straddle
@@ -752,29 +764,16 @@ No public script logger, debugger, standalone runner, unit-test runner, CLI
 assignment method, or validation command is documented. The HRC estimate and
 preview are the documented validation surface.
 
-## Sizing policy decisions required before implementation
+## Project sizing policy
 
-Complete this policy before writing a project script.
+Record project decisions in [`hrc-script-design.md`](hrc-script-design.md).
+That document is the single project-policy record.
 
-| Decision | Required detail | Status |
-| --- | --- | --- |
-| Supported table sizes | Heads-up, three-handed, five-handed, six-handed, or other. | TBD |
-| Straddles | Off, single, double, button, or unsupported. | TBD |
-| Stack basis | Active player, active-versus-last-raiser, shortest live opponent, or SPR. | TBD |
-| Stack buckets | Exact thresholds and inclusive boundary rules. | TBD |
-| Opens | Size set by position and stack bucket. | TBD |
-| Isolation raises | First-limper and extra-limper adjustments by IP or OOP. | TBD |
-| 3-bets | Size set by 3-bettor, opener, IP or OOP, and stack bucket. | TBD |
-| Squeezes | Size set by caller count, positions, and stack bucket. | TBD |
-| 4-bet responses | Call availability and raise sizes by responder, 3-bettor, and stack bucket. | TBD |
-| 5-bets and later | Non-all-in options, all-in only, or no raise. | TBD |
-| Limps and flats | Counts by bet level, cold calls, closing calls, and SB complete. | TBD |
-| All-in threshold | Replacement threshold for large non-all-in raises. | TBD |
-| Add-all-in rule | SPR thresholds preflop and postflop. | TBD |
-| Postflop sizes | Street, bet or raise, c-bet, donk, IP or OOP, and player-count rules. | TBD |
-| Postflop horizon | Last betting street by number of live players. | TBD |
-| Max active players | Must remain consistent with allowed calls. | TBD |
-| Abstractions | Flop, turn, and river bucket counts selected in the UI. | TBD |
+The policy must cover table sizes, position mapping, straddles, stack mapping,
+all preflop action classes, call availability, all-in rules, postflop rules,
+the maximum active-player limit, and postflop abstractions. Do not implement a
+policy category that is still marked `TBD` unless the first iteration isolates
+it explicitly for review.
 
 ## Safe validation sequence for a future script
 
@@ -787,6 +786,12 @@ Follow this sequence on the licensed host only.
 1. Wait for the tree estimate to complete.
 1. Stop if HRC reports a script or tree error.
 1. Review the tree preview for every required position and bet level.
+1. Verify the project effective stack for every active player in the supplied
+   100/100/10/10 example.
+1. Inspect the branch where the deep CO folds. Verify that BU changes from
+   100 bb to 10 bb.
+1. Verify that folded opponents are excluded and non-folded all-in opponents
+   remain eligible.
 1. Check a value immediately below, on, and above each stack threshold.
 1. Check regular 3-bets, squeezes, and 4-bet responses separately.
 1. Check original raisers, prior callers, and cold players when facing 3-bets.
@@ -809,6 +814,9 @@ coordinate click.
 Use one reviewed rule specification as the source of truth. Keep stack buckets,
 position rules, call rules, all-in rules, and postflop rules separate in that
 specification.
+
+Use [`hrc-script-design.md`](hrc-script-design.md) as the current design and
+decision record. It compares the sizing workbook with the shared prototype.
 
 When implementation is authorised, prefer one reusable script that selects the
 correct rule for each decision. Generate separate scripts only when two
