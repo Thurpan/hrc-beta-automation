@@ -57,13 +57,13 @@ of `7`, `7.5`, and `7.5`.
 
 ## Project artefacts
 
-The stack-size planning artefacts are stored together:
+The simulation inputs and run-order artefacts are stored together:
 
 | Artefact | Purpose |
 | --- | --- |
 | [`Sizes_for_hrc_script.xlsx`](../data/stack-sizes/Sizes_for_hrc_script.xlsx) | Current position, action, and effective-stack sizing matrix. |
-| [`stack_size_options.txt`](../data/stack-sizes/stack_size_options.txt) | Generated heads-up, three-player, and five-player simulation run order. |
-| [`generate_stack_sizes.py`](../scripts/generate_stack_sizes.py) | Recreates `stack_size_options.txt` from the configured run-order batches. |
+| [`simulation_run_order.txt`](../data/stack-sizes/simulation_run_order.txt) | Generated heads-up, three-player, and five-player simulation run order. |
+| [`generate_simulation_run_order.py`](../scripts/generate_simulation_run_order.py) | Recreates `simulation_run_order.txt` from the configured run-order batches. |
 | [`shared-chatgpt-prototype.js`](../reference/hrc/shared-chatgpt-prototype.js) | Verbatim shared-thread snapshot. Refresh it only from the shared source. Do not apply project fixes. |
 | [`tree-building-3m-6m-candidate.js`](../scripts/hrc/tree-building-3m-6m-candidate.js) | Standalone 3–6-max working candidate. |
 | [`tree-building-hu-candidate.js`](../scripts/hrc/tree-building-hu-candidate.js) | Standalone HU working candidate. |

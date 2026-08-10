@@ -29,11 +29,11 @@ RUN_ORDER_BATCHES = (
     (5, FULL_STACK_OPTIONS),
 )
 
-OUTPUT_FILE = (
+SIMULATION_RUN_ORDER_FILE = (
     Path(__file__).resolve().parents[1]
     / "data"
     / "stack-sizes"
-    / "stack_size_options.txt"
+    / "simulation_run_order.txt"
 )
 
 
@@ -76,10 +76,10 @@ def generate_setups(player_count, stack_options):
     )
 
 
-def generate_run_order(batches):
+def generate_simulation_run_order(batches):
     """Append ordered batches while keeping only each setup's first occurrence."""
 
-    run_order = []
+    simulation_run_order = []
     seen_setups = set()
 
     for player_count, stack_options in batches:
@@ -88,22 +88,26 @@ def generate_run_order(batches):
                 continue
 
             seen_setups.add(setup)
-            run_order.append(setup)
+            simulation_run_order.append(setup)
 
-    return run_order
+    return simulation_run_order
 
 
 def main():
-    run_order = generate_run_order(RUN_ORDER_BATCHES)
+    simulation_run_order = generate_simulation_run_order(RUN_ORDER_BATCHES)
 
-    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_FILE.open("w", encoding="utf-8") as file:
+    SIMULATION_RUN_ORDER_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with SIMULATION_RUN_ORDER_FILE.open("w", encoding="utf-8") as file:
         file.writelines(
-            "-".join(map(str, setup)) + "\n" for setup in run_order
+            "-".join(map(str, setup)) + "\n"
+            for setup in simulation_run_order
         )
 
-    print(f"Generated {len(run_order)} unique stack setups.")
-    print(f"Saved to {OUTPUT_FILE}")
+    print(
+        f"Generated {len(simulation_run_order)} unique simulation "
+        "run-order entries."
+    )
+    print(f"Saved to {SIMULATION_RUN_ORDER_FILE}")
 
 
 if __name__ == "__main__":

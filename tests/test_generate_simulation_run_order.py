@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-import scripts.generate_stack_sizes as generator
+import scripts.generate_simulation_run_order as generator
 
 
 class RunOrderConfigurationTests(unittest.TestCase):
@@ -59,11 +59,11 @@ class RunOrderConfigurationTests(unittest.TestCase):
             with self.subTest(stack_options=stack_options):
                 self.assertEqual(len(stack_options), len(set(stack_options)))
 
-    def test_writes_to_the_stack_size_data_directory(self):
+    def test_writes_to_the_simulation_run_order_file(self):
         repository_root = Path(__file__).resolve().parents[1]
         self.assertEqual(
-            generator.OUTPUT_FILE,
-            repository_root / "data" / "stack-sizes" / "stack_size_options.txt",
+            generator.SIMULATION_RUN_ORDER_FILE,
+            repository_root / "data" / "stack-sizes" / "simulation_run_order.txt",
         )
 
 
@@ -101,9 +101,9 @@ class GenerateStackSetupsTests(unittest.TestCase):
             generator.generate_setups(3, (5, 10, 10))
 
 
-class GenerateRunOrderTests(unittest.TestCase):
+class GenerateSimulationRunOrderTests(unittest.TestCase):
     def test_appends_batches_and_omits_previous_setups(self):
-        run_order = generator.generate_run_order(
+        run_order = generator.generate_simulation_run_order(
             (
                 (3, (5, 10)),
                 (3, (5, 10, 15)),
@@ -141,7 +141,7 @@ class GenerateRunOrderTests(unittest.TestCase):
         )
 
         with TemporaryDirectory() as temporary_directory:
-            output_file = Path(temporary_directory) / "setups.txt"
+            output_file = Path(temporary_directory) / "simulation_run_order.txt"
             stdout = StringIO()
 
             with (
@@ -150,7 +150,7 @@ class GenerateRunOrderTests(unittest.TestCase):
                     "RUN_ORDER_BATCHES",
                     ((2, (1, 2)), (3, (5, 10))),
                 ),
-                patch.object(generator, "OUTPUT_FILE", output_file),
+                patch.object(generator, "SIMULATION_RUN_ORDER_FILE", output_file),
                 redirect_stdout(stdout),
             ):
                 generator.main()
@@ -161,7 +161,8 @@ class GenerateRunOrderTests(unittest.TestCase):
             )
             self.assertEqual(
                 stdout.getvalue(),
-                f"Generated 7 unique stack setups.\nSaved to {output_file}\n",
+                "Generated 7 unique simulation run-order entries.\n"
+                f"Saved to {output_file}\n",
             )
 
 
