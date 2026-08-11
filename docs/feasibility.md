@@ -66,33 +66,42 @@ sequence or changes the intended cell.
 These findings originated as static evidence from calculator plug-in `4.1.1`.
 Run 16 later live-confirmed the supervised Nash grid bootstrap, editing, a
 visible Reset Strategies checkmark, Cancel-button invocation, and `Alt+F4`
-closure without submission. Standalone operation and machine-readable read-back
-remain TO CONFIRM.
+closure without submission. Run 17 then confirmed exact supervised per-cell raw
+read-back and the required reset pair `false,true`, followed by restoration to
+`false,false` before closing.
+Standalone foreground, native-focus, and delivery assertions remain TO CONFIRM.
 
 - Nash Calculation uses the exact native shell title `Nash Calculation` and
   explicitly gives `OK` initial focus. Enter immediately after opening the
   dialog is therefore unsafe because it can submit a calculation. Run 16 used
   Enter only after the CI cell editor was visibly active.
-- Its two-column NatTable contains `CFR Algorithm`, `Scope`, `Run Sampling`,
-  `Samples (mio.)`, `CI Target`, `Reset Regret`, and `Reset Strategies`. The
-  corresponding configured values use combo, integer, double, and checkbox
-  editors. Static model inspection encodes one reset mode. The handler edits a
-  cloned configuration, installs it only after OK, and clears the retained reset
-  mode after an accepted submission. A submitted reset choice is therefore
-  one-shot. Run 16 produced ambiguous selection styling across both reset cells;
-  it did not show both reset modes active. Automation must read back the exact
-  checkbox state and must not infer it from cell highlighting.
+- Its two-column NatTable model has seven rows: `CFR Algorithm`, `Scope`,
+  `Run Sampling`, `Samples (mio.)`, `CI Target`, `Reset Regret`, and
+  `Reset Strategies`. Six value rows are visible at once because Samples and CI
+  Target are conditional on the sampling mode. The configured values use combo,
+  integer, double, and checkbox editors. Static model inspection encodes one
+  logical reset mode, but the raw Boolean presentation is asymmetric:
+  `false,false` means no reset; `false,true` means Reset Strategies;
+  `true,true` means Reset Regret; and `true,false` is unreachable in the
+  inspected model. The handler edits a cloned configuration. After OK, it
+  derives the reset action and immediately stores a retained clone with reset
+  mode cleared before it queues sampling. A reset passed to that calculation is
+  therefore one-shot. Run 16 produced ambiguous
+  selection styling across both reset cells; it did not establish either raw
+  value. Automation must read back the exact pair and must not infer it from cell
+  highlighting.
 - Nash retains most accepted settings across openings. A runner must read and
   explicitly verify every required value rather than trust initial defaults or
   values left by the previous calculation.
 - The Nash NatTable has the same default selection, edit, and raw-copy
   bindings. Run 16 live-confirmed supervised grid entry, `Ctrl+A`, mandatory
-  `Ctrl+Home`, row movement, and editing. It did not test `Ctrl+C` raw read-back.
-  Escape can cancel an active cell editor, but it does not dismiss Nash
-  Calculation from the grid. From initial OK focus, Tab visibly focused Cancel
-  and Space invoked it. `Alt+F4` closed the dialog from the grid without
-  submission. Never press Enter while OK or the default button owns focus.
-  Exact native focus and copied values remain TO CONFIRM.
+  `Ctrl+Home`, row movement, and editing. Run 17 used `Ctrl+C` to read each value
+  cell exactly. One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only the origin
+  label, so it is not a supported atomic snapshot route. Escape can cancel an
+  active cell editor, but it does not dismiss Nash Calculation from the grid. From
+  initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4`
+  closed the dialog from the grid without submission. Never press Enter while OK
+  or the default button owns focus. Exact native focus remains TO CONFIRM.
 - Export Strategies has an exact in-dialog title and instruction, but static
   inspection did not establish a matching native shell caption. It must be
   identified by ownership plus the exact descendant title, message, scope
@@ -113,6 +122,41 @@ remain TO CONFIRM.
 - Static export status includes the job name `Exporting ranges to <filename>`
   and OK, cancellation, and error results. Their accessible live presentation
   remains TO CONFIRM.
+
+### Installed Finish inspection
+
+These are static findings only. They do not establish a live-safe Finish action
+or upgrade the feasibility verdict.
+
+- Hand Setup is a JFace WizardDialog hosted in an owned native `#32770` window.
+  Its standard button has raw native caption `&Finish`. Page transitions do not
+  explicitly assign focus, and a focused push button can become SWT's current
+  default. Generic Enter is therefore not a durable Finish route.
+- The button's raw native caption is `&Finish`; its normalised visible caption is
+  `Finish`. The live UIA Name is TO CONFIRM and is expected to be checked as
+  `Finish`, not `&Finish`.
+- A direct UI Automation Invoke on that unique visible enabled button, or one
+  guarded `SendMessageTimeout` `BM_CLICK`, is a live hypothesis. Read-only
+  pattern discovery must choose UIA Invoke when supported; otherwise it must
+  choose `BM_CLICK` before any actuation. Never send `BM_CLICK` after an Invoke
+  attempt with an unknown outcome. A direct unique-control action does not
+  require native keyboard focus. Foreground and focus assertions are required
+  only if a keyboard fallback is attempted.
+- Finish closes the wizard before the background Hand Setup Job reaches a
+  terminal result. Wizard closure, or even a Job OK result on its own, is not
+  sufficient success. Positive success requires exactly one new hand-editor tab.
+  An explicit tree-creation failure or cancellation is a terminal non-success.
+  If none of those states appears before timeout, stop without retrying.
+- The inspected error text for one tree-creation failure path is
+  `An error occured while creating the game tree. This is typically caused by
+  all players having forced actions, please check the hand setup.` Its live
+  presentation remains TO CONFIRM.
+- Static inspection used calculator plug-in SHA-256
+  `F9FA329B80C265356E6D29C1E98DAF1EFFB06D1536C92BDACEFD0C1EEE90562A`,
+  JFace SHA-256
+  `E0E28699ECD8783597B3E481D18CFA5A1889FFB9F3007260BD2DD78311779BC4`,
+  and SWT SHA-256
+  `5315B5A2E1260CEB125B421CBCD467935ED9666374E57C38AECBAA04E01DFC85`.
 
 ## Data-preserving NatTable bootstrap on 11 August 2026
 
@@ -290,8 +334,8 @@ the hand, export strategies, create an output file, or close the hand tab.
 - A separate correctly bootstrapped route navigated to Reset Strategies. Space
   produced the required visible second-run state: CI `1.0`, no Reset Regret
   checkmark, and a Reset Strategies checkmark. `Alt+F4` closed the dialog without
-  submission. Run 16 did not press OK, so it did not live-test one-shot reset
-  clearing after an accepted submission.
+  submission. Run 16 did not press OK, so it did not live-test post-OK retained
+  reset clearing.
 - In an earlier attempt, omitting `Ctrl+Home` after `Ctrl+A` left both reset
   cells under ambiguous selection styling. This did not establish either
   checkbox value and did not show both reset modes active. Navigation back
@@ -303,10 +347,44 @@ the hand, export strategies, create an output file, or close the hand tab.
 
 The supervised route now proves candidate load and post-load state, current
 equal-`2 bb` Preview, observed Nash grid entry, CI editing, a Reset Strategies
-checkmark, and non-submitting close routes. Standalone feasibility still requires verified
-native foreground and focus, machine-readable cell read-back, a durable Finish
-operation, exact reset-state verification, safe OK submission, and observable
-acceptance, rejection, running, completion, and failure states.
+checkmark, and non-submitting close routes. Run 17 later added machine-readable
+per-cell read-back and exact supervised reset verification. Standalone
+feasibility still requires verified native foreground and focus, a durable
+Finish operation, guarded OK submission, and observable acceptance, rejection,
+queueing, running, cancellation, completion, and failure states.
+
+## Machine-readable Nash read-back on 12 August 2026
+
+This follow-up used the existing unsaved `*Hand 7`. It did not submit a Nash
+calculation, rename or save the hand, export strategies, create an output file,
+or close the hand tab.
+
+- `Alt+R` opened Nash Calculation. `Shift+Tab`, `Ctrl+A`, mandatory
+  `Ctrl+Home`, and Right entered the value column from initial OK focus.
+- Row movement and `Ctrl+C` returned these exact raw values in order:
+  `HRC 4.0 (Default)`, `Full Tree`, `Until CI value is reached`, `1.0`,
+  `false`, and `false`.
+- On Reset Strategies, Space displayed a checkmark and `Ctrl+C` returned
+  `true`. While that checkmark remained visible, Up and `Ctrl+C` returned
+  Reset Regret `false`; Down and `Ctrl+C` returned Reset Strategies `true`.
+  This directly verified the required reset pair `false,true`. Space then
+  cleared Reset Strategies, and `Ctrl+C` returned `false`.
+- `Alt+F4` closed the dialog without submission after the reset pair had been
+  restored to `false,false`. An earlier close-and-reopen also showed CI `1.0`
+  and both reset boxes clear, but the reset change had been restored before
+  closing; this does not test cancellation of a changed reset value.
+- One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only `CFR Algorithm`. The
+  supervised runner path must navigate to each value cell and validate the
+  exact raw value. The currently supported route must not rely on whole-grid
+  copy. Run 16 edited CI to `10.0` separately but did not copy it after editing.
+- Progress stayed `No operations to display at this time.` The `*Hand 7` tab
+  remained open. HRC kept its existing window bounds.
+
+This run confirms machine-readable per-cell Nash read-back and exact supervised
+reset-pair verification. It does not confirm native foreground or focus,
+standalone delivery, OK submission, post-OK retained reset clearing,
+or accepted, rejected, queued, running, cancelled, completed, and failed
+post-states.
 
 ## Idle control-map discovery on 11 August 2026
 
@@ -531,16 +609,17 @@ showed the expected basename without `[Errors]`, reported two nodes, and
 expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. This directly
 revalidates the current candidate at equal `2 bb`.
 
-## Selected workflow
+## Historical workflows and reserved runner smoke
 
-- Workflow: Create and rename one true heads-up Monte Carlo tree, queue two
+- Historical selected workflow definition: Create and rename one true heads-up Monte
+  Carlo tree, queue two
   Nash calculations, queue a Viewer save, export the strategies, close the
   completed tab, and continue to the next simulation.
-- Selection reason: This is the smallest equal-stack setup in the generated
+- Historical selection reason: This was the smallest equal-stack setup in the generated
   simulation run order.
-- Selected inputs: Two players with `1 bb` starting stacks from the generated
+- Historical selected inputs: Two players with `1 bb` starting stacks from the generated
   simulation run order.
-- Viewer output filename: `HU-1.hrcv`. The demonstration also created an
+- Historical Viewer output filename: `HU-1.hrcv`. The demonstration also created an
   unintended `HU-1.hrcz` Complete Save. It was present and unmodified when
   last checked; its later state is TO CONFIRM.
 - Strategy export filename: `HU-1.zip`. The demonstration created this file in
@@ -563,6 +642,16 @@ revalidates the current candidate at equal `2 bb`.
 - `HU-2` outputs: `HU-2.hrcv` was `9,015` bytes and `HU-2.zip` was `3,301`
   bytes. Both persisted after Viewer-only closure. No `HU-2.hrcz` file was
   present.
+- Reserved runner smoke: equal `2 bb` HU with base name
+  `AUTO-HU-2-20260812-01`. Its only permitted output directory is
+  `\\VAULT\sims\Preflop\HU`, producing new
+  `AUTO-HU-2-20260812-01.hrcv` and `AUTO-HU-2-20260812-01.zip` files. A
+  read-only preflight on 12 August 2026 found both targets and the matching
+  `.hrcz` absent. The runner must repeat the exact absence preflight immediately
+  before any write and stop on any existing target or overwrite prompt. The
+  smoke is reserved for post-gate project-owned runner validation; it must not be
+  consumed during feasibility discovery. Any further pre-runner Nash submission
+  requires separate authorisation.
 - Expected cost and duration: The small demonstration calculations transitioned
   quickly. Euan reports that production calculations can take a long time.
   Exact production durations remain TO CONFIRM.
@@ -628,12 +717,11 @@ completion, or failure states.
 | Select script file | Both candidate filenames; `File name:`; `Open` | Same as visible labels | List item; edit; button | Multiway item `0`; HU item `1`; filename edit `1148`; Open `1`; Cancel `2` in the observed dialogs | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | From the observed File name caret, type the exact filename and press Enter | Select the applicable candidate only after verifying the exact folder, filename, and expected candidate hash. | The exact current worktree HU candidate and hash were verified before entry. Opening it produced the expected basename, no `[Errors]`, Total Nodes `2`, and enabled Finish. The pre-conversion HU file and reported corrected multiway file also produced their separately recorded post-load states. | A wrong path, missing file, hash mismatch, Script Error, or unchanged estimate must stop the workflow. The provider reported Search while the visible caret was in File name. | TO CONFIRM through the target runner: the supervised end-to-end load worked, but reliable native focus, active-field and filename read-back, Open activation, and post-load detection remain unresolved. |
 | Detect tree-script error | `Script Error`; error text; `OK`; `[Errors]` | The exact error and OK were exposed | Dialog; text; button | Error text `924558`; OK `859030` in this session | TO CONFIRM | TO CONFIRM | Record the exact error and stop before Finish. | Not applicable | The five-player candidate reported `Error: Effective stack does not match a configured workbook column: 100000`; Finish was disabled and Total Nodes was `0`. | TO CONFIRM: the visible failure is distinguishable, but durable automated detection is unproven. |
 | Verify tree preview | `Preview`; `Action`; `Amt [BB]`; `Player`; `Street` | The current tree exposed selectable action-only items. Amount, player, and street were visible but absent from item names. | Tab; tree; tree items | HU tree `923428` earlier; current Preview tab `661798`; current tree `989272`; stability TO CONFIRM | Tree items were selectable; a durable expand operation remains TO CONFIRM. | Shift+Tab reached Preview from Scripting; Right expanded the selected HU root in the latest supervised run | Expand and inspect the documented candidate paths before Finish. | Both the pre-conversion and exact current HU candidates showed `R 2.00 SB PRE` with only `C 1.00 BB PRE` at equal `2 bb`. The listed five-player multiway paths matched the current candidate manifest for that setup. | Any unexpected branch, amount, player, or street must stop the workflow. | NO for automation: supervised keyboard and screenshot inspection worked, but provider focus was wrong and the accessible item names omitted three required columns. Evidence remains path-scoped. |
-| Finish tree setup | `Finish` | `Finish` | Button | `268480` in the earlier session; stability TO CONFIRM | TO CONFIRM | Enter worked in run 6; valid Tab and Space did not activate Finish in run 16 | Finish tree creation after the estimate completes. | Enter closed Hand Setup and opened `*Hand 6` in run 6. A current-frame screenshot-located Finish click created `*Hand 7` in run 16. | In run 16, keyboard input appeared routed to the background and Hand Setup remained open. A script error, disabled Finish, or unchanged Hand Setup must stop the workflow. | NO: the latest run required a discovery-only current-frame coordinate. A standalone runner needs exact owned-dialog/native-focus assertions and a durable operation with post-state detection. |
+| Finish tree setup | `Finish`; raw native caption `&Finish` statically | Live UIA Name TO CONFIRM; expected `Finish` | Button | `268480` in the earlier session; stability TO CONFIRM | UIA Invoke or guarded native `BM_CLICK` are static candidates; TO CONFIRM LIVE | Enter worked in run 6 but is not durable; valid Tab and Space did not activate Finish in run 16 | Require the exact owned Hand Setup `#32770` and exactly one visible enabled button with raw caption `&Finish`, normalised visible caption `Finish`, and the expected live UIA Name. Through read-only pattern discovery, choose UIA Invoke if supported; otherwise choose one guarded `BM_CLICK` before actuation. Never try the second method after an unknown first outcome, and never retry. | Positive success is exactly one new hand-editor tab after the wizard closes. Enter opened `*Hand 6` in run 6; a discovery-only current-frame click created `*Hand 7` in run 16. | Wizard closure is not success. An explicit tree-creation error or cancellation is terminal non-success. If no new hand tab or explicit terminal state appears before timeout, stop without retrying. | NO: the direct unique-control candidates and terminal post-states require live validation. Native foreground/focus assertions are required for a keyboard fallback, not for a verified direct invocation. |
 | Rename | `Hand`; `Rename Hand`; `Rename to:`; `OK`; `Cancel` | Same as visible labels | Menu item; edit; buttons | Menu command `143`; edit `793498`; OK `8263114`; Cancel `1445454` | TO CONFIRM | `Ctrl+H, R`; Escape cancelled the dialog | Open Rename Hand, replace the current name with `HU-1`, and select OK. | The production demonstration changed `*Hand 2` to `*HU-1`. The 11 August inspection opened the labelled dialog and cancelled without a rename. | A rejected value or unchanged tab must be detected. | TO CONFIRM: controls are named, but setting the value and verifying rejection remain untested through the target runner. |
-| Submit CI 10 | `Run Nash Calculation`; `Nash Calculation`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices and a transient CI editor | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later OK/Cancel IDs changed; CI editor `3087194`; stability disproven | Default NatTable selection/edit bindings worked live; machine-readable raw cell read-back remains TO CONFIRM | `Alt+R`; from initially focused OK use `Shift+Tab`, `Ctrl+A`, mandatory `Ctrl+Home`, Right; Down by row; F2 edits; `Alt+F4` closes without submission | Explicitly read and set `HRC 4.0 (Default)`, Full Tree, Until CI value is reached, CI Target `10.0`, Reset Regret clear, and Reset Strategies clear. Only then select OK. | The live probe exposed the exact combo choices and committed CI `1.0` → `10.0`. `Alt+F4` closed without submission; reopening showed CI `1.0` and visually clear reset boxes. The earlier demonstration separately showed Progress with `MC-CFR [Target CI < 10.00]`. | Omitting `Ctrl+Home` after `Ctrl+A` caused ambiguous multi-cell/reset highlighting. Escape did not close the grid. A rejected or failed submission must be distinguishable. | NO for submission: supervised configuration and non-submitting closure are observed, but native focus, machine-readable read-back, reset-state certainty, OK submission, and rejection/failure detection remain unproven through the target runner. |
-| Submit CI 1 | `Run Nash Calculation`; `Reset Strategies`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later IDs changed; stability disproven | Default NatTable selection/edit bindings worked live; machine-readable raw cell read-back remains TO CONFIRM | Use the same mandatory bootstrap; navigate from origin to Reset Strategies; Space toggles the selected reset cell; `Alt+F4` closes without submission | Explicitly read and keep the same algorithm, scope, and sampling mode. Set CI Target to `1.0`, select Reset Strategies, keep Reset Regret clear, read back every value, and only then select OK. | A correctly bootstrapped live probe showed CI `1.0`, no Reset Regret checkmark, and a Reset Strategies checkmark. `Alt+F4` closed without submission. The earlier demonstration separately showed Progress with `MC-CFR [Target CI < 1.00]`. | Both reset cells appeared highlighted during ambiguous navigation; the active reset value was not established. Static mutual exclusion does not identify which value is active. Any non-exact read-back must stop. | NO for submission: the required visible state and non-submitting closure are observed, but native focus, machine-readable read-back, exact reset verification, OK submission, and rejection/failure detection remain unproven through the target runner. |
-| Detect running | `Progress`; `HU-1: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Read the Progress pane without changing the operation. | The operation name, target CI, activity bar, and stop button were visible. | TBD | TO CONFIRM: the visible running state is observed, but accessible state is not. |
-| Detect completion or failure | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
+| Submit CI 10 | `Run Nash Calculation`; `Nash Calculation`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices and a transient CI editor | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later OK/Cancel IDs changed; CI editor `3087194`; stability disproven | Default NatTable selection, edit, and raw-copy bindings worked live. `Ctrl+C` returned the exact selected-cell value. | `Alt+R`; from initially focused OK use `Shift+Tab`, `Ctrl+A`, mandatory `Ctrl+Home`, Right; Down by row; use `Ctrl+C` for each value; F2 edits; `Alt+F4` closes without submission | Explicitly read and set `HRC 4.0 (Default)`, Full Tree, Until CI value is reached, CI Target `10.0`, Reset Regret clear, and Reset Strategies clear. Read back each value before selecting OK. | Per-cell raw copy returned the exact retained values, including CI `1.0` and reset pair `false,false`. The earlier probe separately committed CI `10.0`, but did not copy it after editing and closed without submission. The earlier demonstration showed Progress with `MC-CFR [Target CI < 10.00]`. | Whole-grid `Ctrl+A`, `Ctrl+C` copied only `CFR Algorithm`. Omitting `Ctrl+Home` caused ambiguous highlighting. A malformed value, rejected edit, failed submission, or unrecognised post-state must stop. | NO for submission: exact supervised per-cell read-back is confirmed, but native focus, CI `10.0` post-edit copy, OK submission, and accepted, rejected, queued, running, cancelled, completed, or failed detection remain unproven through the target runner. |
+| Submit CI 1 | `Run Nash Calculation`; `Reset Strategies`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later IDs changed; stability disproven | Default NatTable selection, edit, checkbox, and raw-copy bindings worked live. | Use the same mandatory bootstrap; navigate from origin to both reset rows; Space toggles the selected reset cell; `Ctrl+C` reads each raw Boolean; `Alt+F4` closes without submission | Explicitly read and keep the same algorithm, scope, and sampling mode. Set CI Target to `1.0`, select Reset Strategies, keep Reset Regret clear, read back every value, and only then select OK. | With Reset Strategies visibly checked, per-cell copies returned the exact required pair `Reset Regret = false`, `Reset Strategies = true`. Strategies was restored to `false` before `Alt+F4`. The earlier demonstration showed Progress with `MC-CFR [Target CI < 1.00]`. | Any reset pair other than required `false,true`, any malformed read-back, failed submission, or unrecognised post-state must stop. Cell highlighting is not a value oracle. | NO for submission: exact supervised reset-pair verification is confirmed, but native focus, OK submission, post-OK one-shot clearing, and accepted, rejected, queued, running, cancelled, completed, or failed detection remain unproven through the target runner. |
+| Detect accepted, rejected, queued, running, cancelled, completed, or failed Nash state | `Progress`; `HU-1: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]`; further labels TBD | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Read the dialog and Progress surfaces without changing the operation. | The operation name, target CI, activity bar, and stop button were visible in an earlier demonstration. | Exact rejection, cancellation, completion, and failure or unknown-timeout outcomes are TBD. | TO CONFIRM: visible running targets are observed, but machine-readable acceptance, queue order, cancellation, terminal success, and failure states are not. |
 | Viewer save | `File`; `Save As`; `File name:`; `Save as type:`; `*.hrcv Viewer Save`; `Save` | Standard dialog labels were exposed | Dialog; edits; combo box; buttons | Filename `1001`; type host `FileTypeControlHost`; Save `1`; Cancel `2` | Standard dialog patterns; exact set TO CONFIRM | `Ctrl+Alt+S` opens Save As; Escape cancelled | Preflight the exact `.hrcv` and matching `.zip` targets as absent. Open Save As, select `*.hrcv Viewer Save`, confirm the simulation filename with an `.hrcv` extension, browse to the applicable table-size folder, recheck the exact `.hrcv` target, and select Save. | `HU-1.5.hrcv` was submitted earlier. On 11 August, Save As opened at the HU folder with `*.hrcv Viewer Save` retained and was cancelled. | A prior run defaulted to `*.hrcz Complete Save`. The type can vary and must be read before Save. Cancel and stop on any existing target or overwrite prompt. | TO CONFIRM: the standard dialog is strong, but type selection and long-run queue behaviour remain untested through the target runner. |
 | Verify Viewer output | `<simulation-name>.hrcv` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new file without opening or modifying it. | `HU-1.hrcv`, `HU-1.5.hrcv`, and `HU-2.hrcv` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
 | Submit strategy export | `Hand`; `Export Strategies`; `Complete Export`; `Depth:`; `PrettyPrint JSON`; `Node Filter Threshold %`; `OK` | Scope and some settings were unnamed; Depth and buttons were exposed | Combo box; spinner; edit; tree; buttons; settings NatTable known statically | Scope `1055578`; Depth spinner `334010`; Depth edit `334742`; OK `596422`; Cancel `399476` | TO CONFIRM LIVE; static native-control and NatTable routes exist | `Ctrl+H`, then `E` opened the dialog; Escape cancelled. Static alternate menu route and settings read-back remain TO CONFIRM LIVE. | Preflight and recheck the exact `.zip` target as absent. Explicitly select and read back Complete Export, set and read back visible Depth `16`, clear PrettyPrint JSON, keep threshold `0.1`, and select OK. Save `<simulation-name>.zip` in the applicable table-size folder with `*.zip Archived Json`. | The shortcut opened the dialog with the expected retained values and expanded two-node range tree. Earlier runs created non-empty archives. Static inspection says Complete Export is unlimited-depth despite the visible Depth value. | Settings may persist after Cancel. `PrettyPrint JSON` and threshold were not reliably named live. No explicit export-success or failure message was captured. Cancel and stop on any existing target or overwrite prompt. | NO until every required setting, focus target, retained-value read-back, and failure state has a live durable path. |
@@ -648,7 +736,7 @@ completion, or failure states.
 | Configured | Hand Setup closed. An unsaved `*Hand 1` tab opened with strategy, range, and HU table views. Progress showed no active operation. | The tree exposed `*Hand 1`, `Strategy Table`, `Hand Settings`, and `Run Nash Calculation (Alt+R)`. | CONFIRMED | Tree creation completed. The calculation was not started. |
 | Five-player inputs accepted | Basic Hand Data showed `HJ`, `CO`, `BU`, `SB`, and `BB` with `10`, `20`, `30`, `40`, and `50` bb. `Alt+N` opened Betting Setup. | The transient stack editor was unnamed and provider focus data was wrong. | CONFIRMED visually | This confirms the manual setup only. It does not confirm safe stack automation or a multiway tree. |
 | HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for both the pre-conversion revision and exact current worktree candidate at equal `2 bb` | No SB completion branch was present. This does not validate the `5 bb` boundary, other HU stacks, or multiway behaviour. |
-| Nash configurations inspected without submission | The grid exposed the exact algorithm, scope, sampling, CI, and reset values. CI `10.0` was committed in the editor; the required CI `1.0`, no Reset Regret checkmark, and Reset Strategies checkmark were also displayed. | Base accessibility exposed the buttons; F2 exposed combo items and a transient CI editor. | CONFIRMED for supervised configuration and non-submitting close routes only | From initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4` closed from the grid without submission. No OK submission occurred and Progress stayed idle. |
+| Nash configurations inspected without submission | The grid exposed the exact algorithm, scope, sampling, CI, and reset values. Per-cell raw copy returned the retained values. With Reset Strategies checked, the required pair read `false,true`; Strategies was then restored to `false`. | Base accessibility exposed the buttons; F2 exposed combo items and a transient CI editor. `Ctrl+C` returned raw selected-cell values. | CONFIRMED for supervised configuration, per-cell read-back, reset-pair verification, and non-submitting close routes | One whole-grid copy returned only the origin label. From initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4` closed from the grid without submission. CI `10.0` was not copied after its separate edit. No OK submission occurred and Progress stayed idle. |
 | Multiway retest estimate | Scripting showed `tree-building-3m-6m-candidate.js` without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. | No accessibility tree was available in the contemporaneous capture. | CONFIRMED visually for the observed five-player setup | Euan reported loading the corrected worktree candidate. At the time of this estimate capture, Preview had not yet been inspected and Finish was not selected. The following row records the later Preview inspection. |
 | Multiway representative Preview | The root and selected opening, squeeze, 3-bet, 4-bet, 5-bet, call-cap, SB-completion, and low-SPR flop paths were expanded. | Preview tab `661798`; tree `989272`; named headers; selectable action-only items. | CONFIRMED visually for the listed paths | Every displayed value matched the current candidate manifest for the reported corrected load. This is not exhaustive tree validation, and the accessible item names omitted amount, player, and street. |
 | Player-count choices exposed | Pressing `Tab` seven times from the newly opened Basic Hand Data page, then `Ctrl+A` and `Ctrl+Home`, selected the cell displaying `Auto`; Space opened `Auto`, `HU`, and table sizes `3-max` through `10-max`. Escape closed the list without changing the setup. | Every item had a distinct accessible name and was selectable. The latest list ID in that run was `11606852`; earlier openings used `95687566` and `18224586`. Provider focus still pointed to the background Range edit. | CONFIRMED for one non-coordinate focus-and-open route | Run 12 did not activate a choice. Run 13 later confirmed HU row removal and retained blind stacks; other choice effects and standalone delivery remain TO CONFIRM. |
@@ -693,6 +781,7 @@ completion, or failure states.
 | 14 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | The disposable in-memory stack values changed; no wizard advance, tree, calculation, or file was created. | A new setup showed `Auto` with the retained SB/BB row set. The confirmed keyboard route selected HU, entered `4100` and `5100`, visibly read back `41.0 bb` and `51.0 bb`, and cancelled the blank next-row editor. Invalid `abc` stayed red and uncommitted; Escape restored `4100`. `Alt+F4` returned to `Home`. | This proves the combined supervised HU keyboard path, two different-valid-value commits, visual derived-value checks, blank-row cancellation, and one rejected-input recovery. It does not prove machine-readable cell verification, multiway choice/edit behaviour, reliable focus metadata, or standalone operation. |
 | 15 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No script was selected or loaded; no tree was finished, calculation submitted, or file written. | From the visible focus rectangle on `Back`, four Tabs reached `Preflop`, two Rights selected `Scripting`, and two Tabs plus Space opened the standard Open dialog at the exact worktree candidate folder. Escape restored the visible focus rectangle to the unnamed folder button; Space reopened the same folder and Escape cancelled again. `Alt+F4` returned to `Home`. | This proves one supervised non-coordinate route and one same-setup reopen after cancellation. `Ctrl+PageDown` did nothing. Provider focus disagreed with the visible File name caret, so native foreground/focus, active-field, exact-candidate, post-load, and standalone assertions remain TO CONFIRM. |
 | 16 | 11 August 2026 | None | CURRENT HU PREVIEW AND NASH-GRID DISCOVERY | No Nash operation or file write occurred. | The full supervised keyboard route selected HU, entered equal `2 bb` stacks, opened the exact worktree candidate after hash verification, showed no `[Errors]`, reported two nodes, and expanded the exact two-node Preview. A discovery-only current-frame Finish click created `*Hand 7`. Nash probes configured CI `10.0` and the required CI `1.0` plus Reset Strategies checkmark, then closed without submission. | Valid keyboard input did not activate Finish and appeared to reach the background. Nash required `Ctrl+A` followed by `Ctrl+Home`; omitting the second key caused ambiguous multi-cell/reset highlighting. From initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4` closed from the grid without submission. Progress stayed idle and `*Hand 7` remained open. |
+| 17 | 12 August 2026 | None | NASH RAW READ-BACK DISCOVERY | No Nash operation or file write occurred. | On existing `*Hand 7`, the supervised grid route returned the six exact retained values through per-cell `Ctrl+C`. With Reset Strategies visibly checked, copies returned `Reset Regret = false` and `Reset Strategies = true`. Strategies was restored to `false` and copied again before closing without submission. | One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only `CFR Algorithm`; it is not the supported snapshot route. CI `10.0` was edited separately in run 16 but not copied after editing. Native foreground and focus were not independently asserted. Progress stayed idle, HRC kept its bounds, and `*Hand 7` remained open. |
 
 ## Blockers
 
@@ -720,11 +809,17 @@ completion, or failure states.
   owned foreground dialog, native starting focus, every Tab and Right
   transition, exact folder, active `File name` field, exact filename read-back,
   preflight hash, Open activation, and post-load or Script Error detection.
-- Finish is a critical blocker. Enter worked in run 6, but in run 16 valid Tab
-  and Space input appeared routed to the background. A one-use current-frame
-  screenshot-located click created `*Hand 7`; that discovery action is not a
-  production route. The target runner must prove the owned dialog, native focus,
-  exact Finish operation, and resulting hand or error state without coordinates.
+- Finish is a critical blocker. Enter worked in run 6, but is not durable; in
+  run 16 valid Tab and Space input appeared routed to the background. A one-use
+  current-frame screenshot-located click created `*Hand 7`; that discovery
+  action is not a production route. Static inspection supplies a unique visible
+  enabled button with raw native caption `&Finish` and visible caption `Finish`,
+  plus direct UIA Invoke or guarded `BM_CLICK`
+  hypotheses. A live probe must prove the exact owned dialog and direct action,
+  then require exactly one new hand-editor tab or an explicit failure or
+  cancellation. Wizard closure alone is not success. An unknown timeout must
+  stop without retry. Native foreground and focus are required only for a
+  keyboard fallback.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
   runtime evaluation and produced a non-zero tree estimate in the observed
   five-player setup. The capture exposed only the basename. The inspected
@@ -735,13 +830,15 @@ completion, or failure states.
 - The live Nash probe confirmed initial OK focus, Tab focus on Cancel followed
   by Space invocation, `Shift+Tab` entry to the NatTable, the mandatory
   `Ctrl+A`, `Ctrl+Home`, Right bootstrap, exact combo choices, CI editing, a
-  Reset Strategies checkmark, and `Alt+F4` closure without submission. Omitting
-  `Ctrl+Home` produced ambiguous multi-cell/reset highlighting. Later reset-row
-  navigation was also visually ambiguous. Base accessibility still exposed
-  only OK and Cancel. The target
-  runner needs native-focus assertions, machine-readable read-back of every
-  setting, exact reset-state verification, safe OK submission, and accepted,
-  rejected, running, completed, and failed post-states.
+  Reset Strategies checkmark, and `Alt+F4` closure without submission. Run 17
+  added exact per-cell raw-copy values. With Reset Strategies checked, the
+  required reset pair copied as `false,true`; Strategies was restored to
+  `false` before closing. One whole-grid copy returned only the origin label.
+  Omitting `Ctrl+Home` produced ambiguous highlighting. Base accessibility still
+  exposed only OK and Cancel. The target runner needs native-focus assertions,
+  per-cell parser and transition checks, CI `10.0` post-edit read-back, safe OK
+  submission, and machine-readable accepted, rejected, queued, running,
+  cancelled, completed, and failed post-states.
 - Export Strategies did not expose reliably named PrettyPrint JSON and
   threshold controls. Its settings can persist after Cancel. Static inspection
   shows that Complete Export is unlimited-depth even though Depth remains
@@ -787,7 +884,12 @@ completion, or failure states.
   unproven. The same run visibly configured both required Nash states without
   submitting either. It invoked Cancel once from initial OK focus and used
   `Alt+F4` to close the grid probes without submission. Reset-cell highlighting
-  became ambiguous when the mandatory origin-collapse step was omitted.
+  became ambiguous when the mandatory origin-collapse step was omitted. Run 17
+  then copied each retained Nash value exactly. With Reset Strategies checked,
+  it verified the required raw pair `false,true`, then restored Strategies to
+  `false`. One whole-grid copy did not produce the settings matrix, so future
+  automation must validate each cell. The separate CI `10.0` edit was not copied
+  after editing.
   The `5 bb` boundary, the first supported stack above it, and dynamic post-fold
   behaviour remain unconfirmed. Long-run queue behaviour, explicit completion
   or failure detection, and several critical accessible targets also remain
@@ -795,19 +897,48 @@ completion, or failure states.
 
 ## Next action
 
-Continue supervised discovery on the representative HU workflow. Establish a
-durable, non-coordinate Finish operation with exact owned-window, native-focus,
-and post-state checks. Establish machine-readable read-back for every Nash
-setting, including the exact reset state, while cancelling rather than
-submitting. Treat any focus, transition, value, hash, reset-state, or post-state
-mismatch as a stop.
+Continue supervised discovery on the representative HU workflow. Live-test the
+static, non-coordinate Finish hypothesis against the exact owned Hand Setup and
+unique visible enabled `Finish` button, with raw native caption `&Finish` and
+live UIA Name checked separately. Require exactly one new hand-editor tab
+or an explicit failure or cancellation after the action. Treat dialog closure as
+insufficient, stop on an unknown timeout, and never retry after an unknown
+outcome. Native foreground and focus are required for any keyboard fallback,
+not for a verified direct invocation.
 
-After those controls are safe, validate an authorised cheap Nash submission and
-its accepted or rejected post-state. Then resolve export, hand-tab close, and
-`Don't Save`. Verify the Save As destination, Viewer type, filename, and
-extension on every save. Map accessible Progress states that distinguish queue
-order, successful completion, and failure. Complete the representative HU
-lifecycle before any further multiway discovery. Do not add automation source,
-application dependencies, or build commands until feasibility has a supported
-verdict. Do not start an automated or long-running test until these
-controls are mapped and Euan authorises that specific test.
+Integrate the confirmed per-cell Nash route with exact native-focus,
+clipboard-transition, and CI `10.0` post-edit read-back assertions. Before any
+further pre-runner OK action, use static, non-submitting, and prior demonstration
+evidence to define machine-readable candidate detectors and stop rules for
+accepted, rejected, queued, running, cancelled, completed, and failed states.
+Treat any focus, transition, value, hash, reset-pair, or post-state mismatch as a
+stop. A separate pre-runner live submission requires separate authorisation.
+
+Resolve every other known critical control before releasing the implementation
+gate: Rename value and post-state; Viewer Save destination, type, filename,
+extension, submission, and cancellation; every Export setting and read-back;
+the exact hand-tab close target; matching `Save Resource` prompt; Cancel and
+`Don't Save`; return to Home; and the next-simulation transition. Use
+non-writing, Cancel-only, prior demonstration, and static evidence wherever
+possible. Do not risk the reserved smoke against a known blocker.
+
+The current project goal authorises exactly one new-output, equal-`2 bb` HU
+end-to-end smoke. Keep it reserved until those critical mappings are complete;
+do not consume it during feasibility discovery. Only after the evidence supports
+a positive feasibility verdict should the project-owned runner be implemented.
+Use that runner for the single reserved smoke
+`AUTO-HU-2-20260812-01`, after repeating the exact no-overwrite preflight under
+`\\VAULT\sims\Preflop\HU`. Require a job-identity-matched accepted, queued,
+running, or explicit successful-terminal state after each Nash submission while
+preserving CI `10.0` before CI `1.0`. Queue Viewer Save immediately without
+waiting for Nash completion. Wait for both Nash jobs and Viewer Save to finish
+successfully before strategy export. Disappearance or idle alone is never
+success. Verify the new non-empty `.hrcv` and `.zip`, then validate the exact
+matching `Save Resource` prompt, `Don't Save`, return to Home, and the next-
+simulation transition. Negative states not encountered during the smoke remain
+`TO CONFIRM`; any unrecognised state stops it. Verify the Save As destination,
+Viewer type, filename, and extension on every save.
+
+Complete the representative HU lifecycle before any further multiway discovery.
+Do not add automation source, application dependencies, or build commands until
+feasibility has a supported verdict.

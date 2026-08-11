@@ -207,19 +207,52 @@ selection styling. This did not establish either checkbox value or show both
 reset modes active. Every value therefore requires explicit read-back before
 submission. No Nash calculation was submitted and no file was written.
 
+A sixth non-submitting check established exact per-cell Nash read-back. After
+the same mandatory grid bootstrap, `Ctrl+C` returned `HRC 4.0 (Default)`,
+`Full Tree`, `Until CI value is reached`, `1.0`, `false`, and `false` from the
+six currently visible value cells. Space changed Reset Strategies from raw
+`false` to `true`; while it displayed a checkmark, per-cell copies returned the
+required reset pair `Reset Regret = false`, `Reset Strategies = true`. Space
+then restored Reset Strategies to raw `false` before `Alt+F4` closed the dialog
+without submission. One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only
+`CFR Algorithm`, so the currently supported route must navigate and validate
+each cell. The separate CI `10.0` edit was not copied after editing. Progress
+remained idle and no file was written.
+
 These checks prove the keyboard portions of the supervised route,
 different-valid-value entry, visual read-back, one rejected-input recovery,
 exact candidate load, current equal-`2 bb` Preview, and observed Nash
-configuration and non-submitting close routes. They do not yet provide
-machine-readable stack or Nash read-back. They also do not establish a reliable
+configuration, per-cell machine-readable Nash read-back, exact Reset Strategies
+verification, and non-submitting close routes. They do not yet provide
+machine-readable stack read-back. They also do not establish a reliable native
 foreground and focus contract or a durable Finish operation. The live provider
-continued to disagree with visible focus. Continue supervised discovery of
-Finish and machine-readable Nash read-back. Then validate an authorised,
-controlled submission and its post-states. Follow it with export, tab close,
-`Don't Save`, and Progress completion or failure. Do not add the project-owned
-automation runner until feasibility has a supported verdict. Retain separate
-Preview checks for other table sizes and boundary stacks. Verify the Save As
-destination, Viewer type, filename, and extension every time.
+continued to disagree with visible focus. Continue supervised discovery of a
+uniquely identified, non-coordinate Finish action and require exactly one new
+hand tab or an explicit failure or cancellation; dialog closure alone is not
+success. Native foreground and focus are required for any keyboard fallback,
+not for a directly invoked, uniquely identified Finish button.
+
+Before any further pre-runner Nash OK action, use static, non-submitting, and
+prior demonstration evidence to define machine-readable candidate detectors and
+stop rules for accepted, rejected, queued, running, cancelled, completed, and
+failed states. Resolve the remaining Rename, Viewer Save, Export, exact
+tab-close, `Save Resource`, `Don't Save`, and next-simulation controls through
+non-writing or Cancel-only probes. A separate live submission would require
+separate authorisation.
+
+Reserve the one authorised equal-`2 bb` HU lifecycle smoke for the project-owned
+runner after feasibility supports the implementation gate. In that workflow,
+require a job-identity-matched accepted, queued, running, or explicit successful-
+terminal state after each Nash submission, while preserving CI `10.0` before CI
+`1.0`. Queue Viewer Save immediately without waiting for Nash completion. Wait
+for both Nash jobs and Viewer Save to finish successfully before strategy
+export. Disappearance or idle alone is never success. Verify both new non-empty
+outputs before the exact matching `Save Resource` prompt, `Don't Save`, and the
+next-simulation transition. Negative states not encountered during that smoke
+remain `TO CONFIRM`; any unrecognised state stops it. Do not add the runner until
+feasibility has a supported verdict. Retain separate Preview checks for other
+table sizes and boundary stacks. Verify the Save As destination, Viewer type,
+filename, and extension every time.
 
 ## Definition of done
 

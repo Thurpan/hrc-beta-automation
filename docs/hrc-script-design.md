@@ -12,7 +12,8 @@ branch. This directly confirms that revision's below-cutoff behaviour at equal
 `8fc4d2d79aefee249db4ea3cbecb2516f19b7a2bfbfcf85f3f12a6e23e54db6a`.
 The current HU candidate has SHA-256
 `e127ed9285d4f77253ad3c9ad3ac45afdb105f7d930ed3c45208d604fce845ec`.
-It needs a small HRC Preview recheck without a Nash calculation. The inclusive
+HRC loaded this exact candidate after hash verification. At equal `2 bb`, its
+Preview showed the same two-node branch and no SB completion. The inclusive
 `5 bb` boundary, the first supported stack above it, dynamic post-fold
 behaviour, and the remaining tree policy remain unverified.
 
@@ -76,8 +77,9 @@ archive and closed the saved source tab. A Viewer-only follow-up confirmed the
 `Save Resource` prompt and used `Don't Save`. The non-empty `.hrcv` and `.zip`
 files persisted, and no matching `.hrcz` file was present. The supervised
 `HU-2` run repeated the Viewer-only output and close path with the shallow fix.
-The current HU candidate needs a Preview recheck. Long-run queue behaviour and
-explicit completion or failure detection remain unverified.
+The exact current HU candidate later repeated the equal-`2 bb` two-node Preview.
+Long-run queue behaviour and explicit completion or failure detection remain
+unverified.
 
 ## Source boundaries
 
@@ -283,8 +285,8 @@ Do not treat an offline-tested decision as HRC-validated:
 | Maximum active players | A UI-forced fold can change the effective stack and sizing bucket. | `TO CONFIRM` in HRC. |
 | Effective stack outside workbook columns | Throw instead of rounding or capping. | Both grids are tested offline. |
 | Opening sizes | Use the RFI rows from the applicable workbook sheet. | All embedded cells match. The five-player Preview matched the visible HJ, CO, BU, and SB root sizes; other stacks and table sizes remain unverified. |
-| BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan and offline tested. Five-player Preview matched `X 0.00/R 3.00/R 40.0` after SB completion; the current HU candidate remains unverified. |
-| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The five-player root offered only an SB completion at `40 bb`. The current HU candidate, inclusive boundary, and other configurations remain unverified. |
+| BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan and offline tested. Five-player Preview matched `X 0.00/R 3.00/R 40.0` after SB completion. The equal-`2 bb` HU case suppresses completion, so this HU branch was not exercised. |
+| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. At equal `2 bb`, the exact current HU candidate showed the SB raise to `2.00 BB` with only the BB call. The five-player root offered an SB completion at `40 bb`. The inclusive boundary and other configurations remain unverified. |
 | SB limp-reraise | In 3–6-max, treat the BB raise as the original open. In HU, use `3bet / SB`. | Confirmed HU meaning; offline tested; HRC unverified. |
 | 3-bet sizes | Use the applicable workbook rows, including `3m-6m!P29 = 7.5`. | All embedded cells match. Five-player Preview matched representative IP, SB, and BB sizes and their legal all-in alternatives; other configurations remain unverified. |
 | Squeeze sizes | Use the project effective stack for the base table. Use `min(squeezer total, first-caller total)` for the separate 40 bb increment threshold. Ignore calls before the original raise. | Agreed and offline tested. Five-player Preview matched the below-40 bb one- and two-caller increments; the `>=40 bb` boundary and other configurations remain unverified. |
@@ -292,7 +294,7 @@ Do not treat an offline-tested decision as HRC-validated:
 | HU 3-bet selection | Route by the first raiser and whether the SB completed before that raise. Do not classify comma-pair or legally normalised raises as scalar open categories. | Corrected and offline tested; HRC unverified. |
 | 4-bet sizes | Multiway selects blind-versus-blind, IP, or OOP rows. HU selects the SB or BB fixed-bb row from the action line. | Both candidates are offline tested. Five-player Preview matched the SB OOP `11.25 bb` request displayed as `11.3`, plus its all-in alternative; HU and other configurations remain unverified. |
 | 5-bets and later | Return all-in only in both candidates. | Agreed; multiple later raise levels tested. |
-| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The five-player Preview showed the open and 4-bet call caps, cold-call suppression, and SB completion at `40 bb`. The current HU candidate, exact boundaries, dynamic post-fold cases, responses after a 5-bet, and other configurations remain unverified. |
+| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. At equal `2 bb`, the exact current HU candidate showed the SB raise to `2.00 BB` with only the BB call. The five-player Preview showed the open and 4-bet call caps, cold-call suppression, and SB completion at `40 bb`. Exact boundaries, dynamic post-fold cases, responses after a 5-bet, and other configurations remain unverified. |
 | Preflop all-in additions | Always offer all-in. Replace a requested size at 50% of the distance from active chips to HRC's all-in raise-to size. | The 50% rule is agreed and offline tested. Representative legal all-in alternatives were visible in five-player Preview; the replacement boundary remains unverified. |
 | Postflop sizes | Use the screenshot's HU and multiway fixed pot fractions. Replace normal rows with low-SPR rows at HU SPR `<= 2.5` and multiway SPR `<= 1.5`. Add all-in at SPR `<= 5`. | All matrix rows and boundaries are tested offline. Two five-player low-SPR rows matched after HRC legal normalisation; other rows and boundaries remain unverified. |
 | Limited donks | Allow a donk only when the player made a previous bet or raise. Use the low-SPR bet row when low SPR applies. | Screenshot-aligned and offline tested. |
