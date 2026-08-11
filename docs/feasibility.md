@@ -117,9 +117,11 @@ Nash calculation, or write an output file.
   `tree-building-3m-6m-candidate.js` as item ID `0`, `File name:` as `1148`,
   and `Open` as `1`. Euan used `Alt+N`, entered the exact filename, and pressed
   Enter.
-- The loaded file and the worktree candidate had the same SHA-256 hash. HRC
-  showed `Error: Effective stack does not match a configured workbook column:
-  100000`. The Script Error OK button had session ID `859030`.
+- The loaded file and the then-current pre-correction worktree candidate had
+  the same SHA-256 hash,
+  `128110cc73abd5bfd45167d426935e8d43923ae8648deffbc0251f4d03178782`.
+  HRC showed `Error: Effective stack does not match a configured workbook
+  column: 100000`. The Script Error OK button had session ID `859030`.
 - After the error was dismissed, Scripting showed `[Errors]`, Total Nodes `0`,
   Total Tree Size `0.00GB`, and disabled Finish.
 
@@ -135,6 +137,11 @@ The unchanged candidate under `C:\Projects\hrc-beta-automation` has SHA-256
 The corrected worktree candidate has SHA-256
 `fa2612bd1d3b01a8aa6419fc3697450cf708adff73fc6d085e2223ff605d7c63`.
 The retest must load the corrected worktree file explicitly.
+The HRC-tested pre-conversion HU candidate had SHA-256
+`8fc4d2d79aefee249db4ea3cbecb2516f19b7a2bfbfcf85f3f12a6e23e54db6a`.
+The current HU candidate has SHA-256
+`e127ed9285d4f77253ad3c9ad3ac45afdb105f7d930ed3c45208d604fce845ec`.
+It needs a small HRC Preview recheck without a Nash calculation.
 
 ## Selected workflow
 
@@ -153,11 +160,12 @@ The retest must load the corrected worktree file explicitly.
 - Viewer-only close filenames: `HU-1.5.hrcv` and `HU-1.5.zip`. Both files were
   present and non-empty after `Don't Save` closed the unsaved `*HU-1.5` tab.
   No matching `.hrcz` file was present in the HU folder.
-- Shallow-tree follow-up: `HU-2` used the HU candidate from source commit
-  `9b24166`. Hand Setup reported two nodes at equal `2 bb` stacks. A later
-  preview of the identical candidate showed an SB raise to `2.00 BB` with only
-  a BB call of `1.00 BB`. No SB completion branch was present. This confirms
-  shallow-completion suppression at equal `2 bb` in HU. The inclusive `5 bb`
+- Shallow-tree follow-up: `HU-2` used the pre-conversion HU candidate from
+  source commit `9b24166`. Hand Setup reported two nodes at equal `2 bb`
+  stacks. A later preview of the same revision showed an SB raise to `2.00 BB`
+  with only a BB call of `1.00 BB`. No SB completion branch was present. This
+  confirms shallow-completion suppression for that revision at equal `2 bb`.
+  The current HU candidate needs a Preview recheck. The inclusive `5 bb`
   boundary, the first supported stack above it, dynamic post-fold behaviour,
   and all multiway behaviour remain TO CONFIRM.
 - `HU-2` outputs: `HU-2.hrcv` was `9,015` bytes and `HU-2.zip` was `3,301`
@@ -209,12 +217,12 @@ completion, or failure states.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Start tree setup | `New: Monte Carlo Hand` | `New: Monte Carlo Hand` | Link | `3342566` | TO CONFIRM | `Hand` → `Start New Calculation` shows `Ctrl+W, H`; operation TO CONFIRM | Open a new Monte Carlo hand from `Home`. | Hand Setup opened on Basic Hand Data after one refreshed retry. | The first semantic click returned an unknown outcome and left `Home` visible. | TO CONFIRM: the named Home link worked after refresh, but retry handling and the next-simulation route remain unproven. |
 | Configure HU stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
-| Add multiway player rows | Empty BB-column cells | Empty | Table cell; transient edit after activation | Transient edit `6690946` for the HJ cell in one session | TO CONFIRM | TO CONFIRM | Select one empty BB cell for each required player row. Do not use the yellow arrow buttons. | HRC populated five rows in visible order `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, or misordered row must stop the workflow. | NO: only manual cell selection is observed. No durable initial cell target exists. |
+| Add multiway player rows | Empty BB-column cells | Empty | Table cell; transient edit after activation | TBD; no ID was observed for an empty BB cell | TO CONFIRM | TO CONFIRM | Select one empty BB cell for each required player row. Do not use the yellow arrow buttons. | HRC populated five rows in visible order `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, or misordered row must stop the workflow. | NO: only manual cell selection is observed. No durable initial cell target exists. |
 | Configure multiway stacks | `BB`; `Chips` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | After manual activation, Tab moved right and Enter moved down. | Enter the ordered stack values in BB cells and read back every position, BB value, and chip value. | HRC showed `10`, `20`, `30`, `40`, and `50` bb as `1000`, `2000`, `3000`, `4000`, and `5000` chips. | Any value or position mismatch must stop the workflow. | NO: initial targeting and read-back are unproven, the edit is unnamed, and provider focus data was wrong. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Select scripting | `Scripting` | `Scripting` | Tab item | Parent tab ID `334064`; item ID empty | SelectionItem and LegacyIAccessible in the earlier inspection | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | All visible tab items shared one element index in the 11 August provider. | TO CONFIRM: visual selection worked for discovery, but no durable semantic target is proven. |
 | Open script picker | Folder icon beside `Script:` | Empty | Button | `1903002`, `334110`, and `464974` in three sessions; `Script:` edit `334118` and `858296` in two sessions | Invoke and LegacyIAccessible in the earlier inspection | No access key was exposed. | Open the script file picker. | A screenshot-located discovery click opened the standard `Open` dialog. | Semantic invocation failed. The numeric ID changed in every inspected session. | NO: no stable name, identifier, or keyboard path has been observed. |
-| Select script file | Both candidate filenames; `File name:`; `Open` | Same as visible labels | List item; edit; button | Multiway item `0`; HU item `1`; filename edit `1148`; Open `1`; Cancel `2` in the observed dialogs | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | `Alt+N`, type exact filename, Enter | Select the applicable candidate and open it. | The HU filename loaded and changed Total Nodes to `2`. The multiway filename reached script evaluation. | A wrong path, missing file, Script Error, or unchanged estimate must stop the workflow. | TO CONFIRM: the keyboard route worked, but durable focus detection and the unnamed picker remain unresolved. |
+| Select script file | Both candidate filenames; `File name:`; `Open` | Same as visible labels | List item; edit; button | Multiway item `0`; HU item `1`; filename edit `1148`; Open `1`; Cancel `2` in the observed dialogs | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | `Alt+N`, type exact filename, Enter | Select the applicable candidate and open it. | The pre-conversion HU file loaded and changed Total Nodes to `2`. The pre-correction multiway file reached script evaluation. | A wrong path, missing file, Script Error, or unchanged estimate must stop the workflow. | TO CONFIRM: the keyboard route worked, but durable focus detection and the unnamed picker remain unresolved. |
 | Detect tree-script error | `Script Error`; error text; `OK`; `[Errors]` | The exact error and OK were exposed | Dialog; text; button | Error text `924558`; OK `859030` in this session | TO CONFIRM | TO CONFIRM | Record the exact error and stop before Finish. | Not applicable | The five-player candidate reported `Error: Effective stack does not match a configured workbook column: 100000`; Finish was disabled and Total Nodes was `0`. | TO CONFIRM: the visible failure is distinguishable, but durable automated detection is unproven. |
 | Verify shallow preview | `Preview`; `Action`; `Amt [BB]`; `Player`; `Street` | Preview tree exposed `R` and child `C` | Tab; tree; tree items | Parent tab `334064`; tree `923428` | TO CONFIRM | TO CONFIRM | Expand the root and inspect every branch before Finish. | At equal `2 bb`, Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. No SB completion branch was present. | Any unexpected branch, amount, player, or street must stop the workflow. | TO CONFIRM: the read-only evidence is direct at equal `2 bb`, but durable expansion and all other stack cases remain unproven. |
 | Finish tree setup | `Finish` | `Finish` | Button | `268480` | TO CONFIRM | Enter while `Finish` is the visible default | Finish tree creation after the estimate completes. | Hand Setup closed and unsaved `*Hand 6` opened. | A script error, disabled Finish, or unchanged Hand Setup must stop the workflow. | TO CONFIRM: Enter worked for the two-node test, but explicit failure handling remains unproven. |
@@ -236,7 +244,7 @@ completion, or failure states.
 | --- | --- | --- | --- | --- |
 | Configured | Hand Setup closed. An unsaved `*Hand 1` tab opened with strategy, range, and HU table views. Progress showed no active operation. | The tree exposed `*Hand 1`, `Strategy Table`, `Hand Settings`, and `Run Nash Calculation (Alt+R)`. | CONFIRMED | Tree creation completed. The calculation was not started. |
 | Five-player inputs accepted | Basic Hand Data showed `HJ`, `CO`, `BU`, `SB`, and `BB` with `10`, `20`, `30`, `40`, and `50` bb. `Alt+N` opened Betting Setup. | The transient stack editor was unnamed and provider focus data was wrong. | CONFIRMED visually | This confirms the manual setup only. It does not confirm safe stack automation or a multiway tree. |
-| HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for equal `2 bb` | No SB completion branch was present. This does not validate the `5 bb` boundary or multiway behaviour. |
+| HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for the pre-conversion revision at equal `2 bb` | No SB completion branch was present. The current HU candidate needs a Preview recheck. This does not validate the `5 bb` boundary or multiway behaviour. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
 | Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
 | CI 10 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 10.00`. | TBD | CONFIRMED visually | A red stop button and activity bar were visible. |
@@ -262,9 +270,9 @@ completion, or failure states.
 | 2 | 10 August 2026, 23:08–23:10 BST | `HU-1.hrcv`; unintended `HU-1.hrcz` | PARTIAL DEMONSTRATION | Progress changed to no operation displayed within the observation period. Explicit completion and production duration remain TO CONFIRM. | The demonstration renamed `*Hand 2` to `*HU-1`, submitted both Nash configurations, showed both running targets, made an accidental Complete Save, corrected it with Viewer Save, and verified the Viewer file. | This observation began with `*Hand 2` and is separate from run 1. Long-run queue order and explicit calculation success or failure remain unconfirmed. The unintended Complete Save remains untouched. |
 | 3 | 10 August 2026, 23:18 BST | `HU-1.zip` | PARTIAL DEMONSTRATION | The export and close transition completed within the observation period. | The demonstration kept Complete Export, changed Depth from `2` to `16`, kept PrettyPrint JSON clear, and kept the threshold at `0.1`. It saved a non-empty archive and then closed the source tab. | The source tab was `HU-1.hrcz` from run 2. The archive contents and close behaviour after a Viewer-only save remain unverified. |
 | 4 | 10 August 2026, 23:35–23:36 BST | `HU-1.5.hrcv`; `HU-1.5.zip` | PARTIAL DEMONSTRATION | Viewer Save submission, non-empty output creation, and Viewer-only tab closure were observed. | The demonstration began on `*HU-1.5`, submitted Viewer Save and strategy export, selected `Don't Save` in the close prompt, and returned to `Home`. Both files were non-empty after close, and no matching `.hrcz` file was present. | Euan reported that rename and both Nash runs were already complete before observation. Their completion was not independently observed. File contents were not opened. |
-| 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | Run 5 did not inspect Preview or confirm the cutoff; run 6 later confirmed the equal-`2 bb` case. Euan assisted with strategy export. The archive contents were not opened. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
-| 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The identical HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. A later same-day follow-up confirmed `Alt+N` as the keyboard route. Nash settings remained inaccessible. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` remains open because it has no verified outputs. |
-| 7 | 11 August 2026 | None | SCRIPT ERROR | No tree was finished and no Nash operation or file write occurred. | Euan configured five rows as `HJ 10`, `CO 20`, `BU 30`, `SB 40`, and `BB 50` bb. `Alt+N` advanced to Betting Setup. Loading the byte-identical multiway candidate produced `Error: Effective stack does not match a configured workbook column: 100000`. | The pre-script default estimate was `448527` nodes and `3.1GB`; it was not a candidate result. After the error, Total Nodes was `0` and Finish was disabled. Offline regression coverage was added, but the corrected candidate remains HRC-unverified. |
+| 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The pre-conversion HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | Run 5 did not inspect Preview or confirm the cutoff; run 6 later confirmed the equal-`2 bb` case for that revision. Euan assisted with strategy export. The archive contents were not opened. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
+| 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The same pre-conversion HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. A later same-day follow-up confirmed `Alt+N` as the keyboard route. Nash settings remained inaccessible. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` remains open because it has no verified outputs. The current HU candidate needs a small Preview recheck. |
+| 7 | 11 August 2026 | None | SCRIPT ERROR | No tree was finished and no Nash operation or file write occurred. | Euan configured five rows as `HJ 10`, `CO 20`, `BU 30`, `SB 40`, and `BB 50` bb. `Alt+N` advanced to Betting Setup. Loading the then-byte-identical pre-correction multiway candidate produced `Error: Effective stack does not match a configured workbook column: 100000`. | The pre-script default estimate was `448527` nodes and `3.1GB`; it was not a candidate result. After the error, Total Nodes was `0` and Finish was disabled. Offline regression coverage was added, but the corrected candidate remains HRC-unverified. |
 
 ## Blockers
 
@@ -304,15 +312,17 @@ completion, or failure states.
   non-zero archive creation, read-only archive verification, and source-tab
   closure were also observed. The Viewer-only close prompt, `Don't Save`
   result, and persistence of both output files were observed. A separate
-  `2 bb` HU preview directly showed the SB raise to `2.00 BB` with only the BB call;
-  no SB completion branch was present. This confirms the HU rule at `2 bb`.
+  `2 bb` Preview of the pre-conversion HU revision directly showed the SB raise
+  to `2.00 BB` with only the BB call. No SB completion branch was present. This
+  confirms that revision's HU rule at `2 bb`; the current HU candidate needs a
+  Preview recheck.
   The five-player row order, manual stack entry, and `Alt+N` transition were
-  observed. The multiway candidate then stopped with the exact `100000` Script
-  Error, so no multiway tree or policy was validated. The `5 bb` boundary, the
-  first supported stack above it, and dynamic post-fold behaviour remain
-  unconfirmed. Long-run queue
-  behaviour, explicit completion or failure detection, and several critical
-  accessible targets also remain unconfirmed.
+  observed. The HRC-tested pre-correction multiway candidate then stopped with
+  the exact `100000` Script Error, so no multiway tree or policy was validated.
+  The `5 bb` boundary, the first supported stack above it, and dynamic post-fold
+  behaviour remain unconfirmed. Long-run queue behaviour, explicit completion
+  or failure detection, and several critical accessible targets also remain
+  unconfirmed.
 
 ## Next action
 

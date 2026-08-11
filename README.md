@@ -88,13 +88,17 @@ Two standalone, offline-reviewed candidates live under `scripts/hrc/`:
   for a true two-player configuration.
 
 They use separate preflop policies from the sizing workbook and a shared
-postflop policy. The HU candidate loaded successfully and created a `1 bb`
-heads-up tree on `EM-3960X`. This result proves only script loading and tree
-creation. A `2 bb` follow-up used the shallow-completion fix from `9b24166`.
-HRC reported two nodes. During a later inspection of the identical candidate,
-expanded Preview showed `R 2.00 SB PRE` with exactly one child,
-`C 1.00 BB PRE`; no SB completion branch was present. This directly confirms
-the HU candidate's below-cutoff behaviour at equal `2 bb`. The inclusive
+postflop policy. The pre-conversion HU candidate loaded successfully and
+created a `1 bb` heads-up tree on `EM-3960X`. A `2 bb` follow-up used the
+shallow-completion fix from `9b24166`. HRC reported two nodes. During a later
+inspection of that revision, expanded Preview showed `R 2.00 SB PRE` with
+exactly one child, `C 1.00 BB PRE`; no SB completion branch was present. This
+directly confirms that revision's below-cutoff behaviour at equal `2 bb`. Its
+SHA-256 was
+`8fc4d2d79aefee249db4ea3cbecb2516f19b7a2bfbfcf85f3f12a6e23e54db6a`.
+The current HU candidate has SHA-256
+`e127ed9285d4f77253ad3c9ad3ac45afdb105f7d930ed3c45208d604fce845ec`.
+It needs a small HRC Preview recheck; no Nash run is required. The inclusive
 `5 bb` boundary, the first supported stack above it, dynamic post-fold
 behaviour, and all multiway behaviour remain unverified in HRC.
 
@@ -105,25 +109,29 @@ closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
 created no matching `.hrcz` file, and returned to `Home` after `Don't Save`.
 Long-run queue behaviour, completion or failure detection, and the remaining
 tree policy are unverified. The three-through-six-player candidate has not
-produced a tree inside HRC. A supervised five-player setup confirmed the visible
-order `HJ`, `CO`, `BU`, `SB`, `BB` and accepted stacks of `10`, `20`, `30`,
-`40`, and `50` bb. The candidate then stopped with `Error: Effective stack does
-not match a configured workbook column: 100000`; Finish remained disabled.
-The reported amount is the supported `10 bb` stack in HRC units. The candidate
-now converts state values with the nominal big blind instead of an action-sizing
-helper. Offline regression tests pass. The corrected candidate still requires
-an HRC tree-estimate and Preview check.
+produced a tree inside HRC. A supervised five-player setup displayed the visible
+order `HJ`, `CO`, `BU`, `SB`, `BB`, showed stacks of `10`, `20`, `30`, `40`,
+and `50` bb, and advanced to Betting Setup. The HRC-tested pre-correction
+candidate then stopped with `Error: Effective stack does not match a configured
+workbook column: 100000`; Finish remained disabled. Its SHA-256 was
+`128110cc73abd5bfd45167d426935e8d43923ae8648deffbc0251f4d03178782`.
+The reported amount is the supported `10 bb` stack in HRC units. The corrected
+candidate converts state values with the nominal big blind and has SHA-256
+`fa2612bd1d3b01a8aa6419fc3697450cf708adff73fc6d085e2223ff605d7c63`.
+Offline regression tests pass. It still requires an HRC tree-estimate and
+Preview check.
 
 ## Current next action
 
-Reload the corrected three-through-six-player candidate in the current
-five-player setup. Select the file under this worktree, not the unchanged copy
-under `C:\Projects\hrc-beta-automation`. Confirm that HRC produces a tree
-estimate without an error, then inspect Preview without selecting Finish. Next,
-find durable paths for creating player rows, targeting and reading stack cells,
-and opening the unnamed script picker. Retain the existing Nash, export,
-tab-close, and Progress-state blockers. Verify the Save As destination, Viewer
-type, filename, and extension every time.
+Reload the corrected
+[`tree-building-3m-6m-candidate.js`](scripts/hrc/tree-building-3m-6m-candidate.js)
+in the current five-player setup. Verify its `fa2612bd...` SHA-256 first. Do not
+select the unchanged copy under `C:\Projects\hrc-beta-automation`. Confirm that
+HRC produces a tree estimate without an error, then inspect Preview without
+selecting Finish. Next, find durable paths for creating player rows, targeting
+and reading stack cells, and opening the unnamed script picker. Retain the
+existing Nash, export, tab-close, and Progress-state blockers. Verify the Save
+As destination, Viewer type, filename, and extension every time.
 
 ## Definition of done
 
