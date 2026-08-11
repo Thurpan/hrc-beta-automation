@@ -21,6 +21,8 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 | Accessibility Insights availability | No executable was present in the two standard `Program Files` locations checked. Other installation methods were not checked. | Checked the standard 64-bit and 32-bit installation paths. | TO CONFIRM |
 | Microsoft Inspect availability | The x64 `inspect.exe` is available in Windows Kits `10.0.26100.0`. Its file version is `7.2.0.0`. | Inspected the installed Windows Kits executable and its version metadata. | CONFIRMED |
 | Read-only HRC window capture | Codex can capture the current HRC window directly by using its live window handle. Euan does not need to send each screenshot manually. | A direct capture showed the open CI `10.0` Nash Calculation dialog and the HRC Progress pane. | CONFIRMED for discovery only; this does not identify or operate controls. |
+| Codex activation side effect | A Codex discovery activation call restored HRC from its maximised state and changed its window bounds. A later native focus-only call preserved the current bounds. | Compared the HRC window rectangle before and after each focus method during the `HU-2` run. | CONFIRMED for the discovery tool only; do not make that activation call part of automation. |
+| Coordinate-target failure | An unverified coordinate intended for the hand-tab close control selected the tree root row instead. No setting or output changed. The later close used a point that first showed the exact `Close` tooltip. | Compared the expected target with the captured cursor position and the resulting HRC state during the `HU-2` run. | CONFIRMED for discovery; raw coordinates are not a safe automation path. |
 
 ## Corrected context
 
@@ -46,6 +48,13 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 - Viewer-only close filenames: `HU-1.5.hrcv` and `HU-1.5.zip`. Both files were
   present and non-empty after `Don't Save` closed the unsaved `*HU-1.5` tab.
   No matching `.hrcz` file was present in the HU folder.
+- Shallow-tree follow-up: `HU-2` used the HU candidate from source commit
+  `9b24166`. Hand Setup reported two nodes at equal `2 bb` stacks. This result
+  is consistent with the below-cutoff HU rule. The preflop branch list was not
+  inspected, so runtime cutoff behaviour remains TO CONFIRM.
+- `HU-2` outputs: `HU-2.hrcv` was `9,015` bytes and `HU-2.zip` was `3,301`
+  bytes. Both persisted after Viewer-only closure. No `HU-2.hrcz` file was
+  present.
 - Expected cost and duration: The small demonstration calculations transitioned
   quickly. Euan reports that production calculations can take a long time.
   Exact production durations remain TO CONFIRM.
@@ -101,10 +110,10 @@ completion, or failure states.
 | Detect running | `Progress`; `HU-1: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Read the Progress pane without changing the operation. | The operation name, target CI, activity bar, and stop button were visible. | TBD | TO CONFIRM: the visible running state is observed, but accessible state is not. |
 | Detect completion or failure | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TO CONFIRM |
 | Viewer save | `File`; `Save As`; `Save as type:`; `*.hrcv Viewer Save`; `Save` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Ctrl+Alt+S` opens Save As. | Open Save As, select `*.hrcv Viewer Save`, confirm the simulation filename with an `.hrcv` extension, browse to the applicable table-size folder, and select Save. | `HU-1.5.hrcv` was submitted in the HU folder. HRC returned to the main view and the tab remained `*HU-1.5`. | The default `*.hrcz Complete Save` can create the wrong output type if it is not changed. | TO CONFIRM: the visible flow is observed, but accessible properties and long-run queue behaviour are not. |
-| Verify Viewer output | `<simulation-name>.hrcv` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new file without opening or modifying it. | `HU-1.hrcv` and `HU-1.5.hrcv` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
+| Verify Viewer output | `<simulation-name>.hrcv` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new file without opening or modifying it. | `HU-1.hrcv`, `HU-1.5.hrcv`, and `HU-2.hrcv` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
 | Submit strategy export | `Hand`; `Export Strategies`; `Complete Export`; `Depth:`; `PrettyPrint JSON`; `Node Filter Threshold %`; `OK` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | The menu shows `Ctrl+H, E`; shortcut operation is TO CONFIRM. | Change the initial Depth value from `2` to `16`. Keep `Complete Export`, clear `PrettyPrint JSON`, keep the threshold at `0.1`, and select OK. Save `<simulation-name>.zip` in the applicable table-size folder with `*.zip Archived Json`. | `HU-1.5.zip` was submitted in the HU folder. HRC returned to the unsaved `*HU-1.5` tab. | No explicit export-success or failure message was captured. | TO CONFIRM: the visible flow is observed, but accessible properties and failure states are not. |
-| Verify strategy archive | `<simulation-name>.zip` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new archive without opening or modifying it. | `HU-1.zip` and `HU-1.5.zip` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
-| Close completed hand tab | `Close`; `Save Resource`; `Save '<simulation-name>'?`; `Don't Save`; `Home` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Close the unsaved hand tab after both outputs are verified. Confirm that both output base filenames and the prompt name match the completed simulation. Only then select `Don't Save`. | `Don't Save` closed `*HU-1.5`. Only `Home` remained, and both output files persisted. | The effects of `Save` and `Cancel` are TO CONFIRM. Any filename or prompt mismatch must stop the transition without discarding the hand. | TO CONFIRM: the visible path is observed, but accessible properties and a reliable keyboard path are not. |
+| Verify strategy archive | `<simulation-name>.zip` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new archive without opening or modifying it. | `HU-1.zip`, `HU-1.5.zip`, and `HU-2.zip` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
+| Close completed hand tab | `Close`; `Save Resource`; `Save '<simulation-name>'?`; `Don't Save`; `Home` | `Save Resource`; `Save 'HU-2'?`; `Save`; `Don't Save`; `Cancel` in the `HU-2` session | The three dialog buttons exposed class `Button` and UIA control type `Pane` in the `HU-2` session. | Numeric session values only; stability TO CONFIRM | `Don't Save` did not expose InvokePattern in the `HU-2` session. | TO CONFIRM | Close the unsaved hand tab after both outputs are verified. Confirm that both output base filenames and the prompt name match the completed simulation. Only then select `Don't Save`. | `Don't Save` closed `*HU-1.5` and `*HU-2`. Only `Home` remained, and both output files persisted in each Viewer-only run. | The effects of `Save` and `Cancel` are TO CONFIRM. Any filename or prompt mismatch must stop the transition without discarding the hand. | TO CONFIRM: the semantic prompt and button names were accessible once, but a supported durable operation and tab-close target remain unproven. |
 | Start next simulation | `Hand`; `Start New Calculation` | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | `Ctrl+W, H` | Start the next simulation only after both outputs are verified and the completed tab is closed. | TBD | TBD | TO CONFIRM: the menu item and shortcut are visible, but the action was not demonstrated. |
 
 ## Observable states
@@ -124,7 +133,7 @@ completion, or failure states.
 | Viewer output verified | The new `.hrcv` file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED | File contents were not opened or modified. |
 | Strategy archive created | The export dialog accepted the required settings and `HU-1.zip` path. HRC returned to the source tab. | File existence was verified separately. | CONFIRMED for non-zero file creation only | No explicit export-success message was visible. |
 | Strategy archive metadata verified | The new `.zip` file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED | The archive was not opened. Its structure, JSON content, and strategy completeness remain unverified. |
-| Viewer-only close prompt | `Save Resource` asked `Save 'HU-1.5'?` and showed `Save`, `Don't Save`, and `Cancel`. | TO CONFIRM | CONFIRMED visually | Viewer Save and strategy export did not clear the leading asterisk on `*HU-1.5`. |
+| Viewer-only close prompt | `Save Resource` asked `Save 'HU-1.5'?` and later `Save 'HU-2'?`. Both prompts showed `Save`, `Don't Save`, and `Cancel`. | The `HU-2` prompt and button names were readable through UI Automation. `Don't Save` did not expose InvokePattern. | CONFIRMED visually; accessible operation TO CONFIRM | Viewer Save and strategy export did not clear the leading asterisk on either unsaved tab. |
 | Completed tab closed | `Don't Save` was selected. The source tab disappeared and only `Home` remained. | File metadata was verified after the close. | CONFIRMED | The `.hrcv` and `.zip` files persisted. No matching `.hrcz` file was present. |
 | Next simulation started | TBD | TBD | TO CONFIRM | The transition to the next simulation was not demonstrated. |
 
@@ -136,6 +145,7 @@ completion, or failure states.
 | 2 | 10 August 2026, 23:08–23:10 BST | `HU-1.hrcv`; unintended `HU-1.hrcz` | PARTIAL DEMONSTRATION | Progress changed to no operation displayed within the observation period. Explicit completion and production duration remain TO CONFIRM. | The demonstration renamed `*Hand 2` to `*HU-1`, submitted both Nash configurations, showed both running targets, made an accidental Complete Save, corrected it with Viewer Save, and verified the Viewer file. | This observation began with `*Hand 2` and is separate from run 1. Long-run queue order and explicit calculation success or failure remain unconfirmed. The unintended Complete Save remains untouched. |
 | 3 | 10 August 2026, 23:18 BST | `HU-1.zip` | PARTIAL DEMONSTRATION | The export and close transition completed within the observation period. | The demonstration kept Complete Export, changed Depth from `2` to `16`, kept PrettyPrint JSON clear, and kept the threshold at `0.1`. It saved a non-empty archive and then closed the source tab. | The source tab was `HU-1.hrcz` from run 2. The archive contents and close behaviour after a Viewer-only save remain unverified. |
 | 4 | 10 August 2026, 23:35–23:36 BST | `HU-1.5.hrcv`; `HU-1.5.zip` | PARTIAL DEMONSTRATION | Viewer Save submission, non-empty output creation, and Viewer-only tab closure were observed. | The demonstration began on `*HU-1.5`, submitted Viewer Save and strategy export, selected `Don't Save` in the close prompt, and returned to `Home`. Both files were non-empty after close, and no matching `.hrcz` file was present. | Euan reported that rename and both Nash runs were already complete before observation. Their completion was not independently observed. File contents were not opened. |
+| 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | The two-node result is consistent with the below-cutoff HU rule, but the preflop branch list was not inspected. Runtime cutoff behaviour remains TO CONFIRM. Euan assisted with strategy export. The archive contents were not opened. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
 
 ## Blockers
 
@@ -158,16 +168,18 @@ completion, or failure states.
   read-only output verification were observed. Strategy-export submission,
   non-zero archive creation, read-only archive verification, and source-tab
   closure were also observed. The Viewer-only close prompt, `Don't Save`
-  result, and persistence of both output files were observed. Long-run queue
-  behaviour, explicit completion or failure detection, and safe accessible
-  targets remain unconfirmed. The script-picker control does not yet have a
-  safe durable target.
+  result, and persistence of both output files were observed. A separate
+  `2 bb` HU run produced a two-node result consistent with the shallow cutoff.
+  Long-run queue behaviour, explicit completion or failure detection, runtime
+  cutoff behaviour, and safe accessible targets remain unconfirmed. The
+  script-picker control does not yet have a safe durable target.
 
 ## Next action
 
 Inspect the accessible properties of Rename Hand, Nash Calculation, Progress,
-Save As, Export Strategies, the hand-tab close control, `Save Resource`, and
-`Don't Save` without starting another calculation. Map safe paths for selecting
-`*.hrcv Viewer Save` and discarding the editable hand. Do not start an automated
-or long-running test until the controls are mapped and Euan authorises that
-specific test.
+Save As, Export Strategies, and the hand-tab close control without starting
+another calculation. Confirm whether the observed `Save Resource` names remain
+stable. Find a supported durable operation for `Don't Save`. Map safe paths for
+selecting `*.hrcv Viewer Save` and discarding the editable hand. Do not start an
+automated or long-running test until the controls are mapped and Euan
+authorises that specific test.

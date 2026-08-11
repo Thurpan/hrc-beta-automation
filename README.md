@@ -89,14 +89,20 @@ Two standalone, offline-reviewed candidates live under `scripts/hrc/`:
 They use separate preflop policies from the sizing workbook and a shared
 postflop policy. The HU candidate loaded successfully and created a `1 bb`
 heads-up tree on `EM-3960X`. This result proves only script loading and tree
-creation. A short HU demonstration covered rename, both Nash submissions, an
-accidental Complete Save, a corrected Viewer Save, and output verification. A
-follow-up demonstration created a non-empty strategy-export archive and closed
-the saved hand tab. A Viewer-only follow-up preserved verified `.hrcv` and
-`.zip` files after `Don't Save` closed the unsaved hand. No matching `.hrcz`
-file was present. Long-run queue behaviour, completion or failure detection,
-and the tree policy remain unverified. The three-through-six-player candidate
-has not been validated inside HRC.
+creation. A `2 bb` follow-up used the shallow-completion fix from `9b24166`.
+HRC reported a two-node tree. This result is consistent with the below-cutoff
+HU rule, but the preflop branch list was not inspected. The runtime cutoff,
+including the inclusive `5 bb` boundary and all multiway behaviour, remains
+unverified in HRC.
+
+A short HU demonstration covered rename, both Nash submissions, an accidental
+Complete Save, a corrected Viewer Save, and output verification. Later runs
+created non-empty strategy-export archives and verified Viewer-only tab
+closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
+created no matching `.hrcz` file, and returned to `Home` after `Don't Save`.
+Long-run queue behaviour, completion or failure detection, and the remaining
+tree policy are unverified. The three-through-six-player candidate has not
+been validated inside HRC.
 
 ## Current next action
 
