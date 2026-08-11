@@ -132,12 +132,15 @@ unverified.
 
 ## Current next action
 
-Find durable paths for creating multiway player rows, targeting and reading
-stack cells, and opening the unnamed script picker. The current Preview check is
-representative only; retain separate checks for other table sizes and boundary
-stacks. Retain the existing Nash, export, tab-close, and Progress-state
-blockers. Verify the Save As destination, Viewer type, filename, and extension
-every time.
+Once an existing stack cell had focus, supervised observation showed keyboard
+movement, edit mode, a same-value commit, advance, and cancellation. Find a
+durable non-coordinate route into that grid, then prove blank-row creation,
+different-valid-value entry, accessible value read-back, and rejected-input
+handling. Also find a durable path for the unnamed script picker. The current
+Preview check is representative only; retain separate checks for other table
+sizes and boundary stacks. Retain the existing Nash, export, tab-close, and
+Progress-state blockers. Verify the Save As destination, Viewer type, filename,
+and extension every time.
 
 ## Definition of done
 

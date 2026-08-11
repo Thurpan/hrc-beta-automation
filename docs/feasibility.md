@@ -85,6 +85,44 @@ run still required Euan's manual pointer click because `Alt+N` had not yet been
 tested. Delivery and post-state detection through the standalone runner remain
 TO CONFIRM.
 
+## Stack-grid keyboard discovery on 11 August 2026
+
+This discovery reused the existing unsaved five-player setup. It did not add or
+remove a player row, change a stack, finish a tree, submit a calculation, or
+write a file. HRC remained in its restored, non-maximised window. The discovery
+ended on Basic Hand Data with the same five visible stack values.
+
+- `Alt+B` returned from Betting Setup to Basic Hand Data. `Alt+N` advanced back
+  to Betting Setup. The provider continued to report background Range edit
+  `69008` as focused instead of a Hand Setup control.
+- A semantic click on the exposed `Back` button did not change the page. A
+  secondary accessibility action also failed. These failures reinforce that
+  the owned Hand Setup dialog cannot yet be driven reliably through the current
+  semantic target.
+- On Basic Hand Data, the accessibility tree exposed unnamed panes and toolbar
+  buttons but no stack-grid cells. Tab and reverse-Tab did not establish a
+  visible, repeatable route into the grid.
+- For discovery only, a screenshot-located click focused the existing HJ Chips
+  cell. Once a grid cell had focus, Up and Down moved between player rows, and
+  Left and Right moved between columns.
+- `Ctrl+Home` selected the `Auto` header. Down selected the first player row,
+  and Right selected its first Chips cell. `Ctrl+End` selected the bottom-right
+  grid cell.
+- `F2` entered edit mode and selected the current value. A single pointer click
+  on a populated value did the same. Escape cancelled editing without changing
+  the value.
+- The no-change test typed `1000` into the already-`1000` HJ Chips cell and
+  pressed Enter. HRC accepted the same value, moved to the CO Chips cell, and
+  selected its visible `2000` value for editing. Escape left CO unchanged. The
+  visible values remained HJ `1000`, CO `2000`, BU `3000`, SB `4000`, and BB
+  `5000` chips.
+
+This confirms supervised keyboard movement, edit mode, same-value commit,
+advance, and cancellation only after an existing grid cell has focus. It does
+not prove a durable non-coordinate entry target, blank-row creation,
+different-valid-value entry, accessible value read-back, validation of rejected
+input, or safe operation through a standalone runner.
+
 ## Five-player setup discovery on 11 August 2026
 
 This discovery stopped at a Script Error. It did not finish a tree, submit a
@@ -271,7 +309,7 @@ completion, or failure states.
 | Start tree setup | `New: Monte Carlo Hand` | `New: Monte Carlo Hand` | Link | `3342566` | TO CONFIRM | `Hand` → `Start New Calculation` shows `Ctrl+W, H`; operation TO CONFIRM | Open a new Monte Carlo hand from `Home`. | Hand Setup opened on Basic Hand Data after one refreshed retry. | The first semantic click returned an unknown outcome and left `Home` visible. | TO CONFIRM: the named Home link worked after refresh, but retry handling and the next-simulation route remain unproven. |
 | Configure HU stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
 | Add multiway player rows | Empty BB-column cells | Empty | Table cell; transient edit after activation | TBD; no ID was observed for an empty BB cell | TO CONFIRM | TO CONFIRM | Select one empty BB cell for each required player row. Do not use the yellow arrow buttons. | HRC populated five rows in visible order `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, or misordered row must stop the workflow. | NO: only manual cell selection is observed. No durable initial cell target exists. |
-| Configure multiway stacks | `BB`; `Chips` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | After manual activation, Tab moved right and Enter moved down. | Enter the ordered stack values in BB cells and read back every position, BB value, and chip value. | HRC showed `10`, `20`, `30`, `40`, and `50` bb as `1000`, `2000`, `3000`, `4000`, and `5000` chips. | Any value or position mismatch must stop the workflow. | NO: initial targeting and read-back are unproven, the edit is unnamed, and provider focus data was wrong. |
+| Configure multiway stacks | `BB`; `Chips`; `Auto` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | After a cell was focused: arrows moved by row or column; `Ctrl+Home`, Down, Right reached the first Chips cell; `F2` entered edit mode; Enter accepted the same value and moved down; Escape cancelled. | Enter the ordered stack values and read back every position, BB value, and chip value. | A same-value `1000` commit in HJ Chips moved to CO Chips with `2000` selected; Escape preserved it. All five visible values remained unchanged. | Any value or position mismatch must stop the workflow. Tab and reverse-Tab did not provide a repeatable initial grid focus. | NO: post-focus navigation and a same-value sequence were observed, but initial targeting, blank-row creation, different-valid-value entry, accessible read-back, rejected-input handling, and provider focus data remain unsafe. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Select scripting | `Scripting` | `Scripting` | Tab item | Parent tab ID `334064`; item ID empty | SelectionItem and LegacyIAccessible in the earlier inspection | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | All visible tab items shared one element index in the 11 August provider. | TO CONFIRM: visual selection worked for discovery, but no durable semantic target is proven. |
 | Open script picker | Folder icon beside `Script:` | Empty | Button | `1903002`, `334110`, and `464974` in three sessions; `Script:` edit `334118` and `858296` in two sessions | Invoke and LegacyIAccessible in the earlier inspection | No access key was exposed. | Open the script file picker. | A screenshot-located discovery click opened the standard `Open` dialog. | Semantic invocation failed. The numeric ID changed in every inspected session. | NO: no stable name, identifier, or keyboard path has been observed. |
@@ -300,6 +338,7 @@ completion, or failure states.
 | HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for the pre-conversion revision at equal `2 bb` | No SB completion branch was present. The current HU candidate needs a Preview recheck. This does not validate the `5 bb` boundary or multiway behaviour. |
 | Multiway retest estimate | Scripting showed `tree-building-3m-6m-candidate.js` without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. | No accessibility tree was available in the contemporaneous capture. | CONFIRMED visually for the observed five-player setup | Euan reported loading the corrected worktree candidate. At the time of this estimate capture, Preview had not yet been inspected and Finish was not selected. The following row records the later Preview inspection. |
 | Multiway representative Preview | The root and selected opening, squeeze, 3-bet, 4-bet, 5-bet, call-cap, SB-completion, and low-SPR flop paths were expanded. | Preview tab `661798`; tree `989272`; named headers; selectable action-only items. | CONFIRMED visually for the listed paths | Every displayed value matched the current candidate manifest for the reported corrected load. This is not exhaustive tree validation, and the accessible item names omitted amount, player, and street. |
+| Multiway stack keyboard edit | With HJ Chips focused, `F2` exposed `1000`; typing the same value and pressing Enter moved to CO Chips with `2000` selected. Escape preserved CO. | Stack cells were absent from the accessibility tree, and the provider continued to report background edit `69008` as focused. | CONFIRMED after an existing cell was focused | This confirms post-focus movement, edit mode, same-value commit, advance, and cancel without a net value change. It does not prove different-valid-value entry or provide a durable initial focus route or accessible read-back. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
 | Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
 | CI 10 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 10.00`. | TBD | CONFIRMED visually | A red stop button and activity bar were visible. |
@@ -329,6 +368,7 @@ completion, or failure states.
 | 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The same pre-conversion HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. A later same-day follow-up confirmed `Alt+N` as the keyboard route. Nash settings remained inaccessible. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` remains open because it has no verified outputs. The current HU candidate needs a small Preview recheck. |
 | 7 | 11 August 2026 | None | SCRIPT ERROR | No tree was finished and no Nash operation or file write occurred. | Euan configured five rows as `HJ 10`, `CO 20`, `BU 30`, `SB 40`, and `BB 50` bb. `Alt+N` advanced to Betting Setup. Loading the then-byte-identical pre-correction multiway candidate produced `Error: Effective stack does not match a configured workbook column: 100000`. | The pre-script default estimate was `448527` nodes and `3.1GB`; it was not a candidate result. After the error, Total Nodes was `0` and Finish was disabled. Offline regression coverage was added, but the corrected candidate was still HRC-unverified at the end of run 7. |
 | 8 | 11 August 2026 | None | TREE ESTIMATE AND PARTIAL PREVIEW | No tree was finished and no Nash operation or file write occurred. | Euan reported loading the corrected worktree candidate. A contemporaneous capture showed its basename without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. Root and representative deeper Preview paths matched the current candidate manifest. | The prior `100000` error did not recur. Preview evidence is path-scoped, Finish was not selected, and the visible basename did not expose the full loaded path. Other stacks, table sizes, boundaries, later streets, and unexpanded paths remain TO CONFIRM. |
+| 9 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No row, stack, calculation, tree, or file was changed. | `Alt+B` and `Alt+N` moved between the two setup pages. After a one-use screenshot-located focus, arrows, `Ctrl+Home`, `F2`, Enter, and Escape supported an observed grid-edit sequence. A same-value HJ Chips commit advanced to CO Chips; all five values remained unchanged. | No durable non-coordinate entry into the grid was found. Stack cells were absent from the accessibility tree, Tab routes failed, provider focus remained wrong, and blank-row creation and different-valid-value entry were not tested. The setup remains open on Basic Hand Data. |
 
 ## Blockers
 
@@ -337,8 +377,11 @@ completion, or failure states.
   Setup reliably; earlier automated keyboard input reached the background
   window.
 - Five-player row creation required manual selection of empty BB-column cells.
-  Stack entry used a transient unnamed edit. Initial cell targeting, value
-  read-back, and provider focus data are not safe for automation.
+  Once an existing cell was focused, keyboard movement, edit mode, a same-value
+  commit, advance, and cancellation were observed. No durable non-coordinate
+  route into the grid was found; blank-row creation, different-valid-value
+  entry, accessible value read-back, rejected-input handling, and provider
+  focus data are not safe for automation.
 - The script-picker button has no accessible name or access key. Its numeric ID
   changed in every inspected session. Semantic invocation failed.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
@@ -388,10 +431,13 @@ completion, or failure states.
 
 ## Next action
 
-Find durable paths for creating player rows, targeting and reading stack cells,
-and opening the unnamed script picker. Retain separate Preview checks for other
-table sizes, boundary stacks, later streets, and unexpanded paths. Retain the
-Nash, export, hand-tab close, and `Don't Save` blockers.
+Find a durable non-coordinate focus route into the stack grid, then prove
+blank-row creation, different-valid-value entry, accessible value read-back,
+and rejected-input handling. Build on the observed post-focus keyboard sequence
+without adopting pointer coordinates. Also find a durable path for the unnamed
+script picker. Retain separate Preview checks for other table sizes, boundary
+stacks, later streets, and unexpanded paths. Retain the Nash, export, hand-tab
+close, and `Don't Save` blockers.
 Verify the Save As destination, Viewer type, filename, and extension on every
 save. Then map accessible Progress states that distinguish queue order,
 successful completion, and failure. Do not start an automated or long-running
