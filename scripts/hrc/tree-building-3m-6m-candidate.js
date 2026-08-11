@@ -484,6 +484,13 @@ function normalizeAndUniqueSizings(ctx, sizings) {
 // =====================================================================
 
 
+//Convert a stack or threshold, not an action size, to HRC amount units.
+function amountFromBigBlinds(ctx, amount) {
+
+	return Number(ctx.getSizeBigBlind()) * amount;
+}
+
+
 //Starting stack:
 //
 // active chips + dead chips + remaining chips
@@ -671,8 +678,11 @@ function getStackBucketIndex(
 		i++
 	) {
 
+		// sizingBigBlinds() calculates an action for the current node. It is
+		// not a raw big-blind-to-amount conversion.
 		let stackValue =
-			ctx.sizingBigBlinds(
+			amountFromBigBlinds(
+				ctx,
 				PREFLOP_STACK_GRID[i]
 			);
 
@@ -828,7 +838,8 @@ function getOriginalOpenInfo(ctx) {
 			if (expectedValue != "allin") {
 
 				expectedAmount =
-					ctx.sizingBigBlinds(
+					amountFromBigBlinds(
+						ctx,
 						Number(expectedValue)
 					);
 			}
@@ -956,7 +967,7 @@ function getSqueezeAdjustmentBb(ctx) {
 
 
 	let fortyBb =
-		ctx.sizingBigBlinds(40);
+		amountFromBigBlinds(ctx, 40);
 
 
 	let atLeast40bb =
@@ -2004,7 +2015,8 @@ function canFlatCallPreflop(ctx) {
 
 		return (
 			getEffectiveStack(ctx) >
-			ctx.sizingBigBlinds(
+			amountFromBigBlinds(
+				ctx,
 				PREFLOP_SB_COMPLETION_CUTOFF_BB
 			)
 		);

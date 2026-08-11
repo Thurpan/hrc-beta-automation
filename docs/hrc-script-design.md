@@ -10,7 +10,18 @@ two-node tree. A later inspection of the identical candidate showed
 branch. This directly confirms the HU candidate's below-cutoff behaviour at
 equal `2 bb`. The inclusive `5 bb` boundary, the first supported stack above
 it, dynamic post-fold behaviour, and the remaining tree policy remain
-unverified. The 3–6-max candidate remains unvalidated in HRC.
+unverified. In a five-player HRC setup, the 3–6-max candidate stopped before
+tree creation with `Error: Effective stack does not match a configured workbook
+column: 100000`. The amount was the configured HJ `10 bb` stack in HRC units.
+The candidate now uses the nominal big blind for raw state comparisons. Offline
+regression tests pass; the corrected candidate remains unvalidated in HRC.
+
+The five-player Basic Hand Data page displayed
+`Monte Carlo [Advanced, max. 4 players]`. Euan explained that this limit applies
+to some postflop calculations. HRC accepted the five preflop rows and advanced
+to Betting Setup. Before the project candidate loaded, the default setup
+reported `448527` nodes and `3.1GB`. Do not treat that default estimate as a
+project-candidate result or as validation of multiway postflop behaviour.
 
 The design combines three sources:
 
@@ -212,9 +223,9 @@ suite does not prove HRC runtime behaviour.
 | Preflop all-in replacement | 40% of the distance from active chips to HRC's all-in raise-to size. | 50% of that distance. | Euan's direct decision. | Offline boundary tests pass; HRC unverified. |
 | Workbook cell `P29` | Uses `7.5`; workbook previously contained `75`. | Uses corrected workbook value `7.5`. | Euan's instruction to fix the audited issues. | Workbook and all 396 embedded table cells compare equal. |
 | Effective-stack terminal state | Falls back to the player's full stack. | Throws when no non-folded opponent exists. | Agreed project convention. | Offline error-path test passes. |
-| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. | Workbook values are exact policy inputs. | All 18 multiway and 68 HU columns, plus invalid values, are tested. |
-| Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested; straddles require UI verification. |
-| Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification. | Ordinary, all-in, normalised, scaled-unit, and invalid-amount tests pass. |
+| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. Convert raw stack values with the nominal big blind, not an action-sizing helper. | Workbook values are exact policy inputs and the observed `100000` failure. | All 18 multiway and 68 HU columns, invalid values, and the observed five-player stack vector are tested. HRC retest is pending. |
+| Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested. HRC accepted and advanced a non-straddled five-row setup, but the candidate did not produce a tree. |
+| Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected nominal open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification and state-safe unit conversion. | Ordinary, all-in, normalised, scaled-unit, divergent-helper, and invalid-amount tests pass. |
 | HU action classification | No separate HU policy. | Routes by the full action line. It distinguishes the SB open from an SB completion followed by a BB raise. | Euan's confirmed HU row meanings. | Both 3-bet and both 4-bet lines are tested. |
 | Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both disable SB completion at a dynamic effective stack of 5 bb or less and allow one non-cold closing response to a 5-bet or later all-in. | Euan's direct decisions and the fix for reachable excess-call branches. | Completion boundaries, call topology, and later all-in responses are tested offline. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call, directly confirming HU below-cutoff suppression for that case. The boundary and multiway behaviour remain unverified. |
 | Blind-versus-blind 4-bet | Selects by current player and last raiser only. | Also requires the original opener to be a blind. | Fix for non-blind squeeze lines. | Genuine and false-positive lines are tested. |
@@ -250,7 +261,7 @@ Do not treat an offline-tested decision as HRC-validated:
 | --- | --- | --- |
 | Effective-stack basis | Cap the active player by the largest non-folded opponent. Recalculate at every decision. Include all-in opponents. | Agreed; offline tested; HRC unverified. |
 | Supported setup | Use the 3–6-max candidate for three through six configured players. Use the HU candidate for exactly two. | Current project scope; both guards tested. |
-| 3–6-max position mapping | Use BB, SB, and BTN helpers explicitly. Use the shared UTG–CO row for every remaining seat. | Every position at 3m, 4m, 5m, and 6m is tested offline. |
+| 3–6-max position mapping | Use BB, SB, and BTN helpers explicitly. Use the shared UTG–CO row for every remaining seat. | Every position at 3m, 4m, 5m, and 6m is tested offline. HRC displayed `HJ`, `CO`, `BU`, `SB`, `BB` for the five-player setup; scripting-helper values remain unverified. |
 | HU position mapping | Use only the SB and BB helpers. Do not depend on a numeric button index. | Offline tested; HRC's two-player helper values remain `TO CONFIRM`. |
 | Straddles | Do not use either candidate with a straddled setup. The API does not expose a reliable straddle detector. | Manual UI precondition. |
 | Maximum active players | A UI-forced fold can change the effective stack and sizing bucket. | `TO CONFIRM` in HRC. |
@@ -278,6 +289,13 @@ Do not treat an offline-tested decision as HRC-validated:
 
 The effective-stack convention is not pending. It applies to all project stack
 references. HRC's SPR and legal all-in helpers remain separate runtime inputs.
+
+Use `Number(ctx.getSizeBigBlind()) * amountBb` for raw stack, history, and
+threshold comparisons. Use `sizingBigBlinds()` or `sizingsPreflop()` only when
+the script emits an action. The five-player failure exposed this candidate
+risk when a valid `10 bb` stack reached the exact-bucket guard as `100000`.
+The pending HRC retest will determine whether the correction resolves that
+runtime error.
 
 ## Implementation boundaries
 
@@ -348,6 +366,9 @@ the project [`README.md`](../README.md) for calculation and Viewer save
 operations.
 
 1. Verify a non-straddled disposable setup for the candidate under test.
+1. Reload the corrected 3–6-max candidate in the observed five-player setup.
+   Load the worktree file rather than the unchanged copy under `C:\Projects`.
+   Confirm that the previous `100000` error does not recur before continuing.
 1. Test the 3–6-max candidate once at each configured table size.
 1. Test the HU candidate in a true two-player setup.
 1. Load only the applicable candidate without starting a calculation.

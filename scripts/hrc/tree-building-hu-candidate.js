@@ -227,6 +227,12 @@ function getPlayerStartingStack(ctx, player) {
 }
 
 
+// Convert a stack or threshold, not an action size, to HRC amount units.
+function amountFromBigBlinds(ctx, amount) {
+    return Number(ctx.getSizeBigBlind()) * amount;
+}
+
+
 function getEffectiveStackForPlayer(ctx, player) {
     let state = ctx.getPotState();
     let playerStack = getPlayerStartingStack(ctx, player);
@@ -249,7 +255,10 @@ function getEffectiveStackForPlayer(ctx, player) {
 
 function getStackBucketIndex(ctx, effectiveStack) {
     for (let i = 0; i < HU_STACK_GRID.length; i++) {
-        if (effectiveStack == ctx.sizingBigBlinds(HU_STACK_GRID[i]))
+        // sizingBigBlinds() calculates an action for the current node. It is
+        // not a raw big-blind-to-amount conversion.
+        let stackValue = amountFromBigBlinds(ctx, HU_STACK_GRID[i]);
+        if (effectiveStack == stackValue)
             return i;
     }
 
@@ -498,7 +507,10 @@ function canFlatCallPreflop(ctx) {
         return (
             player == ctx.getPlayerIndexSmallBlind() &&
             getEffectiveStackForPlayer(ctx, player) >
-                ctx.sizingBigBlinds(PREFLOP_SB_COMPLETION_CUTOFF_BB)
+                amountFromBigBlinds(
+                    ctx,
+                    PREFLOP_SB_COMPLETION_CUTOFF_BB
+                )
         );
     }
 

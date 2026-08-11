@@ -353,6 +353,18 @@ The context provides helpers that convert relative rules into HRC amounts.
 | `sizingsPreflop(text)` | Parse one or more preflop sizes using HRC's UI syntax. |
 | `sizingsPostflop(text)` | Parse one or more postflop sizes using HRC's UI syntax. |
 
+These helpers calculate actions at the current decision point. Do not use
+`sizingBigBlinds(n)` as a general big-blind-to-amount conversion for stack,
+history, or threshold comparisons. Use the nominal blind instead:
+
+```js
+const amount = Number(ctx.getSizeBigBlind()) * amountInBigBlinds;
+```
+
+Keep `sizingBigBlinds(...)` and `sizingsPreflop(...)` for bet or raise actions.
+This keeps decision-state action calculation separate from raw amount
+comparison.
+
 In multiway pots, `sizingGeometric(...)` assumes that only two players continue
 after the next bet or raise.
 

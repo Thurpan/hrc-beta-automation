@@ -147,6 +147,7 @@ function makeContext(overrides = {}) {
         getPlayerIndexButton: () => overrides.button ?? 2,
         getPlayerIndexSmallBlind: () => overrides.smallBlind ?? 3,
         getPotState: () => state,
+        getSizeBigBlind: () => overrides.bbUnit ?? 1,
         getStackPotRatio: () => overrides.spr ?? 10,
         getStreet: () => overrides.street ?? PREFLOP,
         isClosingAction: () => overrides.closingAction ?? false,
@@ -155,7 +156,9 @@ function makeContext(overrides = {}) {
             overrides.isPlayerInPosition?.(player, raiser) ?? false
         ),
         sizingAllIn: () => overrides.allin ?? 100,
-        sizingBigBlinds: (amount) => amount * (overrides.bbUnit ?? 1),
+        sizingBigBlinds: overrides.sizingBigBlinds ?? (
+            (amount) => amount * (overrides.bbUnit ?? 1)
+        ),
         sizingMinimum: () => overrides.minimum ?? 0,
         sizingPot: (fraction) => fraction * (overrides.potUnit ?? 100),
         sizingsPreflop: (text) => {
@@ -293,6 +296,20 @@ test("requires every effective stack to match an exact workbook bucket", () => {
 });
 
 
+test("uses the nominal blind rather than a legal sizing for stack buckets", () => {
+    const bbUnit = 10000;
+    const ctx = makeContext({
+        bbUnit,
+        sizingBigBlinds: () => 0,
+    });
+
+    assert.equal(
+        hrc.getStackBucketIndex(ctx, 10 * bbUnit),
+        hrc.PREFLOP_STACK_GRID.indexOf(10),
+    );
+});
+
+
 test("keeps all preflop tables aligned to the 18 stack columns", () => {
     assert.equal(hrc.PREFLOP_STACK_GRID.length, 18);
 
@@ -358,6 +375,30 @@ test("routes every five-player opening position at 100bb", () => {
             [expectedSize, 100],
         );
     }
+});
+
+
+test("routes the observed five-player setup in scaled HRC chip units", () => {
+    const bbUnit = 10000;
+    const stacks = [10, 20, 30, 40, 50].map(
+        (stack) => stack * bbUnit,
+    );
+    const ctx = makeContext({
+        activePlayer: 0,
+        betCount: 1,
+        bbUnit,
+        state: makePotState({
+            stacks,
+            active: [0, 0, 0, 0.5 * bbUnit, bbUnit],
+        }),
+        allin: 10 * bbUnit,
+        sizingBigBlinds: () => 0,
+    });
+
+    assert.deepEqual(
+        Array.from(hrc.getSizingsPreflop(ctx)),
+        [2 * bbUnit, 10 * bbUnit],
+    );
 });
 
 
@@ -645,6 +686,7 @@ test("classifies ordinary opens in scaled HRC chip units", () => {
         }),
         allin: 100 * bbUnit,
         bbUnit,
+        sizingBigBlinds: () => 0,
     });
 
     assert.equal(hrc.getOriginalOpenInfo(ctx).isConfiguredOrdinary, true);
@@ -759,12 +801,14 @@ test("applies squeeze increments at the 40bb pairwise boundary", () => {
         flatCallCount: 1,
         actions,
         state: makePotState({stacks: [100, 39.9, 100, 100, 100]}),
+        sizingBigBlinds: () => 0,
     });
     const atBoundary = makeContext({
         activePlayer: 4,
         flatCallCount: 1,
         actions,
         state: makePotState({stacks: [100, 40, 100, 100, 100]}),
+        sizingBigBlinds: () => 0,
     });
 
     assert.equal(hrc.getSqueezeAdjustmentBb(below), 0.5);
@@ -876,6 +920,7 @@ test("disables SB completion at 5bb dynamic effective stack or less", () => {
             bigBlind: 2,
             betCount: 1,
             state: makePotState({stacks}),
+            sizingBigBlinds: () => 0,
         });
 
         assert.equal(hrc.canFlatCallPreflop(ctx), expected, label);

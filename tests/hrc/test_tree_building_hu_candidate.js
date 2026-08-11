@@ -161,13 +161,16 @@ function makeContext(overrides = {}) {
         getPlayerIndexButton: () => overrides.button ?? 0,
         getPlayerIndexSmallBlind: () => overrides.smallBlind ?? 0,
         getPotState: () => state,
+        getSizeBigBlind: () => overrides.bbUnit ?? 1,
         getStackPotRatio: () => overrides.spr ?? 10,
         getStreet: () => overrides.street ?? PREFLOP,
         isClosingAction: () => overrides.closingAction ?? false,
         isDonkBet: () => overrides.donk ?? false,
         isPlayerInPosition: () => false,
         sizingAllIn: () => overrides.allin ?? 100,
-        sizingBigBlinds: (amount) => amount * (overrides.bbUnit ?? 1),
+        sizingBigBlinds: overrides.sizingBigBlinds ?? (
+            (amount) => amount * (overrides.bbUnit ?? 1)
+        ),
         sizingMinimum: () => overrides.minimum ?? 0,
         sizingPot: (fraction) => fraction * (overrides.potUnit ?? 100),
     };
@@ -280,6 +283,20 @@ test("uses every exact HU effective-stack bucket", () => {
     assert.throws(
         () => hu.getStackBucketIndex(makeContext(), 31),
         /does not match a configured workbook column/,
+    );
+});
+
+
+test("uses the nominal blind rather than a legal sizing for HU stack buckets", () => {
+    const bbUnit = 10000;
+    const ctx = makeContext({
+        bbUnit,
+        sizingBigBlinds: () => 0,
+    });
+
+    assert.equal(
+        hu.getStackBucketIndex(ctx, 10 * bbUnit),
+        hu.HU_STACK_GRID.indexOf(10),
     );
 });
 
@@ -575,12 +592,14 @@ test("disables HU SB completion at 5bb effective stack or less", () => {
         betCount: 1,
         bbUnit: 100,
         state: makePotState({stacks: [500, 500]}),
+        sizingBigBlinds: () => 0,
     });
     const scaledAbove = makeContext({
         activePlayer: 0,
         betCount: 1,
         bbUnit: 100,
         state: makePotState({stacks: [550, 550]}),
+        sizingBigBlinds: () => 0,
     });
     assert.equal(hu.canFlatCallPreflop(scaledCutoff), false);
     assert.equal(hu.canFlatCallPreflop(scaledAbove), true);
