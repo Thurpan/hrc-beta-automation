@@ -132,7 +132,8 @@ a decision-point action-sizing helper. The project candidates now use the
 nominal big blind for state, history, and threshold comparisons. Regression
 tests cover the observed five-player stack vector and a deliberately divergent
 action-sizing helper.
-The unchanged candidate under `C:\Projects\hrc-beta-automation` has SHA-256
+At the time of the failing run, the candidate under
+`C:\Projects\hrc-beta-automation` had SHA-256
 `128110cc73abd5bfd45167d426935e8d43923ae8648deffbc0251f4d03178782`.
 The corrected worktree candidate has SHA-256
 `fa2612bd1d3b01a8aa6419fc3697450cf708adff73fc6d085e2223ff605d7c63`.
@@ -296,8 +297,7 @@ completion, or failure states.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
   runtime evaluation and produced a non-zero tree estimate in the observed
   five-player setup. The capture exposed only the basename. Preview has not
-  been inspected, so branch policy remains unverified. The file under
-  `C:\Projects\hrc-beta-automation` remains the unchanged pre-fix copy.
+  been inspected, so branch policy remains unverified.
 - Nash Calculation exposed only OK and Cancel. The required algorithm, scope,
   sampling, CI, Reset Regret, and Reset Strategies controls were absent from
   the accessibility tree. The first run cannot rely on the retained CI value.
