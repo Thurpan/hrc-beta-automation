@@ -110,11 +110,15 @@ SHA-256 was
 `8fc4d2d79aefee249db4ea3cbecb2516f19b7a2bfbfcf85f3f12a6e23e54db6a`.
 The current HU candidate has SHA-256
 `e127ed9285d4f77253ad3c9ad3ac45afdb105f7d930ed3c45208d604fce845ec`.
-It needs a small HRC Preview recheck; no Nash run is required. The inclusive
-`5 bb` boundary and the first supported stack above it remain unverified for
-HU. Multiway HRC evidence is limited to the representative five-player paths
-described below; other stacks, table sizes, boundaries, dynamic post-fold
-cases, later streets, and unexpanded branches remain unverified.
+The exact worktree file and hash were verified before a later supervised load.
+HRC showed the expected basename without `[Errors]`, reported two nodes, and
+expanded Preview showed the same `R 2.00 SB PRE` → `C 1.00 BB PRE` path with no
+SB completion branch. This directly revalidates the current candidate at equal
+`2 bb`. The inclusive `5 bb` boundary and the first supported stack above it
+remain unverified for HU. Multiway HRC evidence is limited to the
+representative five-player paths described below; other stacks, table sizes,
+boundaries, dynamic post-fold cases, later streets, and unexpanded branches
+remain unverified.
 
 A short HU demonstration covered rename, both Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and output verification. Later runs
@@ -178,21 +182,44 @@ on `Back`, four Tab presses reached the `Preflop` tab; two Right presses selecte
 folder button, and Space opened the dialog a second time. Both dialogs were
 cancelled; no script was loaded and no tree or file was created.
 
-This proves the combined supervised keyboard route, different-valid-value
-entry, visual read-back, and one rejected-input recovery. It does not yet give
-the future standalone runner a machine-readable cell-value check, and the live
-accessibility provider still reported the background Range edit as focused.
-This run used no pointer for that observed script-picker sequence; cross-setup,
-cross-session, and standalone durability remain TO CONFIRM. The target runner
-must still verify the owned foreground dialog, native focus and every
-transition, the exact folder and active File name field, the candidate filename
-and hash, and HRC's resulting load or error state. Next, establish exact
-machine-readable stack read-back and a verified foreground and focus contract,
-then validate one multiway table-size choice. Revalidate the script-picker
-sequence through that target runner. The current Preview check is representative
-only; retain separate checks for other table sizes and boundary stacks. Retain
-the existing Nash, export, tab-close, and Progress-state blockers. Verify the
-Save As destination, Viewer type, filename, and extension every time.
+A fifth disposable check repeated the HU selection and stack-entry route with
+equal `2 bb` stacks, then followed the same Scripting and Open-dialog path. The
+exact worktree candidate hash was checked before its filename was typed and
+opened. HRC displayed the expected basename without `[Errors]`, reported two
+nodes, and enabled Finish. Expanded Preview directly showed
+`R 2.00 SB PRE` with only `C 1.00 BB PRE`. Valid Tab and Space input did not
+activate Finish and appeared to reach the background window; one current-frame
+screenshot-located Finish click was used for discovery only and created
+`*Hand 7`. A standalone runner must not use that coordinate path.
+
+On `*Hand 7`, a supervised non-submitting Nash probe established that `Alt+R`
+opens Nash Calculation with OK initially focused. Tab moved the visible focus
+rectangle to Cancel; Space invoked it and closed the dialog without submission.
+From OK, `Shift+Tab`, `Ctrl+A`, mandatory `Ctrl+Home`, then Right entered the
+settings value column. `F2` exposed the exact algorithm, scope, and sampling
+choices. The CI editor accepted and committed a change from `1.0` to `10.0`.
+The correct grid route also displayed the required second-run state with CI
+`1.0`, no Reset Regret checkmark, and a Reset Strategies checkmark. `Alt+F4`
+closed the dialog without submission. After the CI `10.0` probe, reopening
+showed CI `1.0` and both reset boxes visually clear, so the observed CI edit was
+not retained. Omitting `Ctrl+Home` once left both reset cells under ambiguous
+selection styling. This did not establish either checkbox value or show both
+reset modes active. Every value therefore requires explicit read-back before
+submission. No Nash calculation was submitted and no file was written.
+
+These checks prove the keyboard portions of the supervised route,
+different-valid-value entry, visual read-back, one rejected-input recovery,
+exact candidate load, current equal-`2 bb` Preview, and observed Nash
+configuration and non-submitting close routes. They do not yet provide
+machine-readable stack or Nash read-back. They also do not establish a reliable
+foreground and focus contract or a durable Finish operation. The live provider
+continued to disagree with visible focus. Continue supervised discovery of
+Finish and machine-readable Nash read-back. Then validate an authorised,
+controlled submission and its post-states. Follow it with export, tab close,
+`Don't Save`, and Progress completion or failure. Do not add the project-owned
+automation runner until feasibility has a supported verdict. Retain separate
+Preview checks for other table sizes and boundary stacks. Verify the Save As
+destination, Viewer type, filename, and extension every time.
 
 ## Definition of done
 
