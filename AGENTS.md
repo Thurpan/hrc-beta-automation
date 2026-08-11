@@ -65,6 +65,10 @@ completion or failure, Viewer save, saved-output verification, strategy export,
 strategy-archive verification, Viewer-only hand-tab closure, and transition to
 the next simulation.
 
+After selecting a table size, overwrite and read back every active seat. If
+committing the final active stack opens the next blank-row editor, cancel that
+editor and verify that no extra player row was added before advancing.
+
 Do not design beyond this repeatable workflow until the representative
 lifecycle has a supported feasibility verdict.
 

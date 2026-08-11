@@ -45,7 +45,8 @@ Use this lifecycle for each simulation:
 1. Create the tree for the next setup in the simulation run order. Select the
    required table size, overwrite every active seat's stack, and read back the
    exact position order and values. Do not rely on a new setup or a table-size
-   change to reset prior inputs.
+   change to reset prior inputs. If the final stack commit opens the next blank
+   row, cancel that editor and verify that no extra player was added.
 2. Rename the hand through `Hand` → `Rename Hand`. Use names such as `HU-1` or
    `5m-10-30-30-20-12.5`.
 3. Queue a full-tree Nash calculation with `HRC 4.0 (Default)`. Run until the
@@ -157,13 +158,26 @@ setup was closed without advancing. This proves one non-coordinate table-size
 selection and also proves that a size change cannot be treated as a stack
 reset. Every active seat must be overwritten and read back before advancing.
 
-Next, join the confirmed keyboard bootstrap to the earlier post-focus
-stack-grid navigation and prove different-valid-value entry, accessible value
-read-back, and rejected-input handling. Also find a durable path for the
-unnamed script picker. The current Preview check is representative only;
-retain separate checks for other table sizes and boundary stacks. Retain the
-existing Nash, export, tab-close, and Progress-state blockers. Verify the Save
-As destination, Viewer type, filename, and extension every time.
+A third disposable check completed that supervised keyboard path. A new setup
+reopened as `Auto` while retaining only the earlier `SB` and `BB` rows and their
+values. The same bootstrap selected `HU`; `Down`, `Right`, and `F2` then opened
+SB Chips. Enter committed fabricated test values `4100` and `5100`, visibly
+recalculated them as `41.0 bb` and `51.0 bb`, and advanced through the two
+active rows. The final commit opened the blank next-row Chips editor; Escape
+cancelled it without adding a row. A deliberately invalid `abc` value stayed
+red in the editor, did not commit or advance on Enter, and Escape restored
+`4100 / 41.0 bb`. The setup was then closed without advancing or writing data.
+
+This proves the combined supervised keyboard route, different-valid-value
+entry, visual read-back, and one rejected-input recovery. It does not yet give
+the future standalone runner a machine-readable cell-value check, and the live
+accessibility provider still reported the background Range edit as focused.
+Next, establish exact machine-readable read-back and a verified foreground and
+focus contract, then validate one multiway table-size choice and the unnamed
+script picker. The current Preview check is representative only; retain
+separate checks for other table sizes and boundary stacks. Retain the existing
+Nash, export, tab-close, and Progress-state blockers. Verify the Save As
+destination, Viewer type, filename, and extension every time.
 
 ## Definition of done
 
