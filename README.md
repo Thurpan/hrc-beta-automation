@@ -99,8 +99,10 @@ SHA-256 was
 The current HU candidate has SHA-256
 `e127ed9285d4f77253ad3c9ad3ac45afdb105f7d930ed3c45208d604fce845ec`.
 It needs a small HRC Preview recheck; no Nash run is required. The inclusive
-`5 bb` boundary, the first supported stack above it, dynamic post-fold
-behaviour, and all multiway behaviour remain unverified in HRC.
+`5 bb` boundary and the first supported stack above it remain unverified for
+HU. Multiway HRC evidence is limited to the representative five-player paths
+described below; other stacks, table sizes, boundaries, dynamic post-fold
+cases, later streets, and unexpanded branches remain unverified.
 
 A short HU demonstration covered rename, both Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and output verification. Later runs
@@ -120,18 +122,22 @@ candidate converts state values with the nominal big blind and has SHA-256
 Offline regression tests pass. After Euan reported loading the corrected
 candidate, a live capture showed its basename without `[Errors]`. HRC reported
 `1815589` nodes and `12.3GB`, and enabled Finish. The capture did not expose the
-full loaded path. Preview and the multiway policy remain unverified.
+full loaded path. Path-scoped Preview inspection covered the visible root
+actions and representative opening, 3-bet, 4-bet, 5-bet, squeeze, call-cap,
+SB-completion, and low-SPR flop paths. The displayed values matched the
+candidate's workbook-derived policy for this `10/20/30/40/50 bb` five-player
+setup. This is not exhaustive validation of the tree. Other stacks, table
+sizes, boundaries, later streets, Finish, calculations, and output remain
+unverified.
 
 ## Current next action
 
-Inspect Preview for the corrected
-[`tree-building-3m-6m-candidate.js`](scripts/hrc/tree-building-3m-6m-candidate.js)
-in the current five-player setup without selecting Finish. Verify the visible
-preflop branches before treating the estimate as policy validation. Next, find
-durable paths for creating player rows, targeting and reading stack cells, and
-opening the unnamed script picker. Retain the existing Nash, export, tab-close,
-and Progress-state blockers. Verify the Save As destination, Viewer type,
-filename, and extension every time.
+Find durable paths for creating multiway player rows, targeting and reading
+stack cells, and opening the unnamed script picker. The current Preview check is
+representative only; retain separate checks for other table sizes and boundary
+stacks. Retain the existing Nash, export, tab-close, and Progress-state
+blockers. Verify the Save As destination, Viewer type, filename, and extension
+every time.
 
 ## Definition of done
 

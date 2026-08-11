@@ -26,8 +26,11 @@ candidate uses the nominal big blind for raw state comparisons and has SHA-256
 Offline regression tests pass. After Euan reported loading the corrected
 candidate in the same five-player setup, a live capture showed its basename
 without `[Errors]`, reported `1815589` nodes and `12.3GB`, and enabled Finish.
-The capture did not expose the full loaded path. Preview and the multiway branch
-policy remain unverified.
+The capture did not expose the full loaded path. Root and representative deeper
+Preview paths matched the candidate's workbook-derived policy for this
+five-player stack vector. This is path-scoped evidence, not exhaustive tree
+validation. Other table sizes, stacks, boundaries, later streets, Finish, Nash,
+and output remain unverified.
 
 The five-player Basic Hand Data page displayed
 `Monte Carlo [Advanced, max. 4 players]`. Euan explained that this limit applies
@@ -236,11 +239,11 @@ suite does not prove HRC runtime behaviour.
 | Preflop all-in replacement | 40% of the distance from active chips to HRC's all-in raise-to size. | 50% of that distance. | Euan's direct decision. | Offline boundary tests pass; HRC unverified. |
 | Workbook cell `P29` | Uses `7.5`; workbook previously contained `75`. | Uses corrected workbook value `7.5`. | Euan's instruction to fix the audited issues. | Workbook and all 396 embedded table cells compare equal. |
 | Effective-stack terminal state | Falls back to the player's full stack. | Throws when no non-folded opponent exists. | Agreed project convention. | Offline error-path test passes. |
-| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. Convert raw stack values with the nominal big blind, not an action-sizing helper. | Workbook values are exact policy inputs and the observed `100000` failure. | All 18 multiway and 68 HU columns, invalid values, and the observed five-player stack vector are tested. After the reported corrected load, HRC produced an estimate for that vector; Preview remains pending. |
-| Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested. HRC accepted a non-straddled five-row setup. After the reported corrected load, it produced a non-zero estimate. Finish and Preview remain untested for that setup. |
-| Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected nominal open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification and state-safe unit conversion. | Ordinary, all-in, normalised, scaled-unit, divergent-helper, and invalid-amount tests pass. |
+| Stack buckets | Rounds up and caps unsupported values. | Requires an exact workbook stack column. Convert raw stack values with the nominal big blind, not an action-sizing helper. | Workbook values are exact policy inputs and the observed `100000` failure. | All 18 multiway and 68 HU columns, invalid values, and the observed five-player stack vector are tested. After the reported corrected load, HRC produced an estimate and matching representative paths for that vector. Other vectors remain pending. |
+| Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested. HRC accepted a non-straddled five-row setup and displayed the expected five-player root positions. Finish and other table sizes remain untested. |
+| Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected nominal open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification and state-safe unit conversion. | Ordinary, all-in, normalised, scaled-unit, divergent-helper, and invalid-amount tests pass. Preview matched one ordinary HJ open through a configured 4-bet and an HJ all-in open through legal responses. |
 | HU action classification | No separate HU policy. | Routes by the full action line. It distinguishes the SB open from an SB completion followed by a BB raise. | Euan's confirmed HU row meanings. | Both 3-bet and both 4-bet lines are tested. |
-| Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both disable SB completion at a dynamic effective stack of 5 bb or less and allow one non-cold closing response to a 5-bet or later all-in. | Euan's direct decisions and the fix for reachable excess-call branches. | Completion boundaries, call topology, and later all-in responses are tested offline. At equal `2 bb`, HRC Preview directly confirmed HU below-cutoff suppression for the pre-conversion revision. The current HU candidate, the boundary, and multiway behaviour remain unverified. |
+| Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both disable SB completion at a dynamic effective stack of 5 bb or less and allow one non-cold closing response to a 5-bet or later all-in. | Euan's direct decisions and the fix for reachable excess-call branches. | Offline tests cover all boundaries. HRC Preview confirmed the pre-conversion HU rule at equal `2 bb`. The five-player path check showed no third open call, the one-call cap versus a 4-bet, cold-call suppression, and SB completion at `40 bb`. Responses after a 5-bet, the exact boundaries, and other configurations remain unverified. |
 | Blind-versus-blind 4-bet | Selects by current player and last raiser only. | Also requires the original opener to be a blind. | Fix for non-blind squeeze lines. | Genuine and false-positive lines are tested. |
 | Legal-size duplicates | De-duplicates before legal normalisation. | Mirrors minimum/all-in clamping, then de-duplicates. | HRC normalisation contract. | Minimum and all-in collisions are tested. |
 | Postflop calls | Relies on HRC's default `true`. | Returns `true` explicitly. | Public [`ITreeBuildingScript`](https://www.holdemresources.net/s/updatesites/hrc/latest/scripting/javadoc/net/holdemresources/scripting/treescripts/api/ITreeBuildingScript.html) default and explicit project choice. | Offline callback test passes. |
@@ -272,26 +275,26 @@ Do not treat an offline-tested decision as HRC-validated:
 
 | Decision | Working candidate behaviour | Status |
 | --- | --- | --- |
-| Effective-stack basis | Cap the active player by the largest non-folded opponent. Recalculate at every decision. Include all-in opponents. | Agreed; offline tested; HRC unverified. |
+| Effective-stack basis | Cap the active player by the largest non-folded opponent. Recalculate at every decision. Include all-in opponents. | Agreed and offline tested. Five-player Preview showed representative effective-stack reductions after intervening folds; boundary cases and other configurations remain unverified. |
 | Supported setup | Use the 3–6-max candidate for three through six configured players. Use the HU candidate for exactly two. | Current project scope; both guards tested. |
 | 3–6-max position mapping | Use BB, SB, and BTN helpers explicitly. Use the shared UTG–CO row for every remaining seat. | Every position at 3m, 4m, 5m, and 6m is tested offline. HRC displayed `HJ`, `CO`, `BU`, `SB`, `BB` for the five-player setup; scripting-helper values remain unverified. |
 | HU position mapping | Use only the SB and BB helpers. Do not depend on a numeric button index. | Offline tested; HRC's two-player helper values remain `TO CONFIRM`. |
 | Straddles | Do not use either candidate with a straddled setup. The API does not expose a reliable straddle detector. | Manual UI precondition. |
 | Maximum active players | A UI-forced fold can change the effective stack and sizing bucket. | `TO CONFIRM` in HRC. |
 | Effective stack outside workbook columns | Throw instead of rounding or capping. | Both grids are tested offline. |
-| Opening sizes | Use the RFI rows from the applicable workbook sheet. | All embedded cells match; HRC unverified. |
-| BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan; offline tested; HRC unverified. |
-| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The current HU candidate, the inclusive `5 bb` boundary, and multiway behaviour remain unverified. |
+| Opening sizes | Use the RFI rows from the applicable workbook sheet. | All embedded cells match. The five-player Preview matched the visible HJ, CO, BU, and SB root sizes; other stacks and table sizes remain unverified. |
+| BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan and offline tested. Five-player Preview matched `X 0.00/R 3.00/R 40.0` after SB completion; the current HU candidate remains unverified. |
+| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The five-player root offered only an SB completion at `40 bb`. The current HU candidate, inclusive boundary, and other configurations remain unverified. |
 | SB limp-reraise | In 3–6-max, treat the BB raise as the original open. In HU, use `3bet / SB`. | Confirmed HU meaning; offline tested; HRC unverified. |
-| 3-bet sizes | Use the applicable workbook rows, including `3m-6m!P29 = 7.5`. | All embedded cells match; HRC unverified. |
-| Squeeze sizes | Use the project effective stack for the base table. Use `min(squeezer total, first-caller total)` for the separate 40 bb increment threshold. Ignore calls before the original raise. | Agreed; offline tested; HRC unverified. |
-| Multiway 3-bet selection | Compare the recorded first raise amount with its expected workbook open. Give a non-matching open only the global all-in response. | Corrected and offline tested; HRC unverified. |
+| 3-bet sizes | Use the applicable workbook rows, including `3m-6m!P29 = 7.5`. | All embedded cells match. Five-player Preview matched representative IP, SB, and BB sizes and their legal all-in alternatives; other configurations remain unverified. |
+| Squeeze sizes | Use the project effective stack for the base table. Use `min(squeezer total, first-caller total)` for the separate 40 bb increment threshold. Ignore calls before the original raise. | Agreed and offline tested. Five-player Preview matched the below-40 bb one- and two-caller increments; the `>=40 bb` boundary and other configurations remain unverified. |
+| Multiway 3-bet selection | Compare the recorded first raise amount with its expected workbook open. Give a non-matching open only the global all-in response. | Corrected and offline tested. Five-player Preview matched visible legal responses after ordinary `HJ R 2.00` and non-ordinary `HJ R 10.0` opens; other actions and configurations remain unverified. |
 | HU 3-bet selection | Route by the first raiser and whether the SB completed before that raise. Do not classify comma-pair or legally normalised raises as scalar open categories. | Corrected and offline tested; HRC unverified. |
-| 4-bet sizes | Multiway selects blind-versus-blind, IP, or OOP rows. HU selects the SB or BB fixed-bb row from the action line. | Both candidates are offline tested; HRC unverified. |
+| 4-bet sizes | Multiway selects blind-versus-blind, IP, or OOP rows. HU selects the SB or BB fixed-bb row from the action line. | Both candidates are offline tested. Five-player Preview matched the SB OOP `11.25 bb` request displayed as `11.3`, plus its all-in alternative; HU and other configurations remain unverified. |
 | 5-bets and later | Return all-in only in both candidates. | Agreed; multiple later raise levels tested. |
-| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The current HU candidate, the inclusive `5 bb` boundary, dynamic post-fold behaviour, and multiway behaviour remain unverified. |
-| Preflop all-in additions | Always offer all-in. Replace a requested size at 50% of the distance from active chips to HRC's all-in raise-to size. | 50% agreed; offline tested; HRC unverified. |
-| Postflop sizes | Use the screenshot's HU and multiway fixed pot fractions. Replace normal rows with low-SPR rows at HU SPR `<= 2.5` and multiway SPR `<= 1.5`. Add all-in at SPR `<= 5`. | All matrix rows and boundaries tested offline. |
+| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call for the pre-conversion HU revision. The five-player Preview showed the open and 4-bet call caps, cold-call suppression, and SB completion at `40 bb`. The current HU candidate, exact boundaries, dynamic post-fold cases, responses after a 5-bet, and other configurations remain unverified. |
+| Preflop all-in additions | Always offer all-in. Replace a requested size at 50% of the distance from active chips to HRC's all-in raise-to size. | The 50% rule is agreed and offline tested. Representative legal all-in alternatives were visible in five-player Preview; the replacement boundary remains unverified. |
+| Postflop sizes | Use the screenshot's HU and multiway fixed pot fractions. Replace normal rows with low-SPR rows at HU SPR `<= 2.5` and multiway SPR `<= 1.5`. Add all-in at SPR `<= 5`. | All matrix rows and boundaries are tested offline. Two five-player low-SPR rows matched after HRC legal normalisation; other rows and boundaries remain unverified. |
 | Limited donks | Allow a donk only when the player made a previous bet or raise. Use the low-SPR bet row when low SPR applies. | Screenshot-aligned and offline tested. |
 | Postflop calls | Return `true` explicitly. | Matches the public API default; offline tested. |
 | Bets per street | Keep `null`, which represents the blank HU and multiway screenshot cells. A future numeric value allows only all-in after the cap. | Blank policy confirmed from source screenshot. |
@@ -308,7 +311,8 @@ threshold comparisons. Use `sizingBigBlinds()` or `sizingsPreflop()` only when
 the script emits an action. The five-player failure exposed this candidate
 risk when a valid `10 bb` stack reached the exact-bucket guard as `100000`.
 The HRC retest produced a non-zero estimate without that runtime error. Preview
-must still verify the resulting branch policy.
+then matched the candidate along the inspected paths. This does not validate
+unexpanded branches or other input configurations.
 
 ## Implementation boundaries
 
@@ -379,9 +383,9 @@ the project [`README.md`](../README.md) for calculation and Viewer save
 operations.
 
 1. Verify a non-straddled disposable setup for the candidate under test.
-1. Inspect Preview for the corrected 3–6-max candidate in the observed
-   five-player setup. The tree estimate succeeded without the previous
-   `100000` error. Do not select Finish until the branches are verified.
+1. Preserve the path-scoped Preview record for the observed five-player setup.
+   The estimate and inspected paths succeeded without the previous `100000`
+   error. Do not treat this as exhaustive validation.
 1. Test the 3–6-max candidate once at each configured table size.
 1. Test the HU candidate in a true two-player setup.
 1. Load only the applicable candidate without starting a calculation.
