@@ -133,9 +133,10 @@ unverified.
 ## Current next action
 
 The Basic Hand Data `Auto` selector exposed named choices from `HU` through
-`10-max` while open, but opening it still required a one-use screenshot-located
-discovery click and no choice was selected. Find a durable non-coordinate route
-to that selector and validate its row-creation effect in a disposable setup.
+`10-max` while open. After a one-use screenshot-located focus, Space reopened
+the list. After `Alt+N` followed by `Alt+B`, Space did not reopen it. No choice
+was selected. Find a durable non-coordinate route to focus the selector and
+validate its row-creation effect in a disposable setup.
 Once an existing stack cell had focus, supervised observation showed keyboard
 movement, edit mode, a same-value commit, advance, and cancellation. Find a
 durable non-coordinate route into that grid, then prove different-valid-value
