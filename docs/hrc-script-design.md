@@ -5,10 +5,12 @@
 This document records the current inputs and decisions for the project HRC
 tree-building scripts. The heads-up (HU) candidate loaded and created a `1 bb`
 tree in HRC. A later `2 bb` run used the shallow-completion fix and created a
-two-node tree. This result is consistent with the below-cutoff rule, but the
-preflop branch list was not inspected. The runtime cutoff and the remaining
-tree policy remain unverified. The 3–6-max candidate remains unvalidated in
-HRC.
+two-node tree. A later inspection of the identical candidate showed
+`R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`, and no SB completion
+branch. This directly confirms the HU candidate's below-cutoff behaviour at
+equal `2 bb`. The inclusive `5 bb` boundary, the first supported stack above
+it, dynamic post-fold behaviour, and the remaining tree policy remain
+unverified. The 3–6-max candidate remains unvalidated in HRC.
 
 The design combines three sources:
 
@@ -214,7 +216,7 @@ suite does not prove HRC runtime behaviour.
 | Supported setup | Does not guard the player count or straddles. | One candidate accepts 3–6 players. The other accepts exactly two. Both require a non-straddled setup. | Euan's two-script decision and API limits. | Both guards are tested; straddles require UI verification. |
 | Multiway open classification | Reconstructs only the expected workbook open. | Compares `IPlayerAction.getAmount()` with the expected open. Non-matching opens receive only the all-in response. | Fix for optional all-in misclassification. | Ordinary, all-in, normalised, scaled-unit, and invalid-amount tests pass. |
 | HU action classification | No separate HU policy. | Routes by the full action line. It distinguishes the SB open from an SB completion followed by a BB raise. | Euan's confirmed HU row meanings. | Both 3-bet and both 4-bet lines are tested. |
-| Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both disable SB completion at a dynamic effective stack of 5 bb or less and allow one non-cold closing response to a 5-bet or later all-in. | Euan's direct decisions and the fix for reachable excess-call branches. | Completion boundaries, call topology, and later all-in responses are tested offline. A `2 bb` HU run produced a two-node result consistent with the cutoff. |
+| Preflop calls | Closing action can bypass caller and cold-call limits. | Multiway keeps hard caps of two, one, and one. HU permits only the sole opponent. Both disable SB completion at a dynamic effective stack of 5 bb or less and allow one non-cold closing response to a 5-bet or later all-in. | Euan's direct decisions and the fix for reachable excess-call branches. | Completion boundaries, call topology, and later all-in responses are tested offline. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call, directly confirming HU below-cutoff suppression for that case. The boundary and multiway behaviour remain unverified. |
 | Blind-versus-blind 4-bet | Selects by current player and last raiser only. | Also requires the original opener to be a blind. | Fix for non-blind squeeze lines. | Genuine and false-positive lines are tested. |
 | Legal-size duplicates | De-duplicates before legal normalisation. | Mirrors minimum/all-in clamping, then de-duplicates. | HRC normalisation contract. | Minimum and all-in collisions are tested. |
 | Postflop calls | Relies on HRC's default `true`. | Returns `true` explicitly. | Public [`ITreeBuildingScript`](https://www.holdemresources.net/s/updatesites/hrc/latest/scripting/javadoc/net/holdemresources/scripting/treescripts/api/ITreeBuildingScript.html) default and explicit project choice. | Offline callback test passes. |
@@ -255,7 +257,7 @@ Do not treat an offline-tested decision as HRC-validated:
 | Effective stack outside workbook columns | Throw instead of rounding or capping. | Both grids are tested offline. |
 | Opening sizes | Use the RFI rows from the applicable workbook sheet. | All embedded cells match; HRC unverified. |
 | BB raise after an SB completion | Use the workbook BB RFI row. In HU this is the only meaning of `RFI / BB`. | Confirmed by Euan; offline tested; HRC unverified. |
-| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. A two-node `2 bb` HU result is consistent with the rule. Runtime cutoff behaviour remains unverified. |
+| Other limps and isolation raises | Permit only the SB completion before a voluntary raise. Disable that completion when the SB's dynamic effective stack is 5 bb or less. | Agreed; offline boundary tests pass. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call and no SB completion branch. The inclusive `5 bb` boundary and multiway behaviour remain unverified. |
 | SB limp-reraise | In 3–6-max, treat the BB raise as the original open. In HU, use `3bet / SB`. | Confirmed HU meaning; offline tested; HRC unverified. |
 | 3-bet sizes | Use the applicable workbook rows, including `3m-6m!P29 = 7.5`. | All embedded cells match; HRC unverified. |
 | Squeeze sizes | Use the project effective stack for the base table. Use `min(squeezer total, first-caller total)` for the separate 40 bb increment threshold. Ignore calls before the original raise. | Agreed; offline tested; HRC unverified. |
@@ -263,7 +265,7 @@ Do not treat an offline-tested decision as HRC-validated:
 | HU 3-bet selection | Route by the first raiser and whether the SB completed before that raise. Do not classify comma-pair or legally normalised raises as scalar open categories. | Corrected and offline tested; HRC unverified. |
 | 4-bet sizes | Multiway selects blind-versus-blind, IP, or OOP rows. HU selects the SB or BB fixed-bb row from the action line. | Both candidates are offline tested; HRC unverified. |
 | 5-bets and later | Return all-in only in both candidates. | Agreed; multiple later raise levels tested. |
-| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. A two-node `2 bb` HU result is consistent with the cutoff. Runtime behaviour remains unverified. |
+| Preflop calls | Multiway permits two calls versus an open and one versus a 3-bet or 4-bet. HU permits only the sole opponent. Reject cold calls. Disable SB completion at 5 bb dynamic effective stack or less. Permit one non-cold closing response to a 5-bet or later all-in. | Corrected and offline tested. At equal `2 bb`, HRC Preview showed the SB raise to `2.00 BB` with only the BB call and no SB completion branch. The inclusive `5 bb` boundary, dynamic post-fold behaviour, and multiway behaviour remain unverified. |
 | Preflop all-in additions | Always offer all-in. Replace a requested size at 50% of the distance from active chips to HRC's all-in raise-to size. | 50% agreed; offline tested; HRC unverified. |
 | Postflop sizes | Use the screenshot's HU and multiway fixed pot fractions. Replace normal rows with low-SPR rows at HU SPR `<= 2.5` and multiway SPR `<= 1.5`. Add all-in at SPR `<= 5`. | All matrix rows and boundaries tested offline. |
 | Limited donks | Allow a donk only when the player made a previous bet or raise. Use the low-SPR bet row when low SPR applies. | Screenshot-aligned and offline tested. |

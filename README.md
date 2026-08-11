@@ -51,9 +51,10 @@ Use this lifecycle for each simulation:
 4. Queue a second full-tree Nash calculation with `HRC 4.0 (Default)`. Run
    until CI reaches `1.0`. Select Reset Strategies and keep Reset Regret clear.
 5. Queue a Viewer Save as an `.hrcv` file under
-   `\\VAULT\sims\Preflop\<table-group>`. Save As defaults to
-   `*.hrcz Complete Save`; select `*.hrcv Viewer Save` and confirm the `.hrcv`
-   extension before Save. Example folders include `HU` and `5m`.
+   `\\VAULT\sims\Preflop\<table-group>`. Save As can retain the previously
+   selected type or open with `*.hrcz Complete Save`. Before every save, verify
+   the destination, select `*.hrcv Viewer Save`, and confirm the simulation
+   filename and `.hrcv` extension. Example folders include `HU` and `5m`.
 6. After the queued operations finish successfully, export the strategies
    through `Hand` → `Export Strategies`. Use `Complete Export`, Depth `16`,
    clear `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save
@@ -90,10 +91,12 @@ They use separate preflop policies from the sizing workbook and a shared
 postflop policy. The HU candidate loaded successfully and created a `1 bb`
 heads-up tree on `EM-3960X`. This result proves only script loading and tree
 creation. A `2 bb` follow-up used the shallow-completion fix from `9b24166`.
-HRC reported a two-node tree. This result is consistent with the below-cutoff
-HU rule, but the preflop branch list was not inspected. The runtime cutoff,
-including the inclusive `5 bb` boundary and all multiway behaviour, remains
-unverified in HRC.
+HRC reported two nodes. During a later inspection of the identical candidate,
+expanded Preview showed `R 2.00 SB PRE` with exactly one child,
+`C 1.00 BB PRE`; no SB completion branch was present. This directly confirms
+the HU candidate's below-cutoff behaviour at equal `2 bb`. The inclusive
+`5 bb` boundary, the first supported stack above it, dynamic post-fold
+behaviour, and all multiway behaviour remain unverified in HRC.
 
 A short HU demonstration covered rename, both Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and output verification. Later runs
@@ -106,10 +109,12 @@ been validated inside HRC.
 
 ## Current next action
 
-Map accessible properties and safe automation paths for rename, both Nash
-submissions, Viewer Save, strategy export, the `Save Resource` prompt, and
-`Don't Save`. Then validate queue order and explicit completion or failure
-detection on a separately authorised long-running test.
+Find durable, non-coordinate paths for Hand Setup Next, the unnamed script
+picker, every Nash setting and Nash Cancel, the poorly named strategy-export
+settings, the hand-tab close target, and `Don't Save`. Verify the Save As
+destination, Viewer type, filename, and extension every time. Then map Progress
+states that distinguish queue order, successful completion, and failure on a
+separately authorised long-running test.
 
 ## Definition of done
 

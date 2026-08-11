@@ -42,6 +42,9 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 - Save Viewer output as a new `.hrcv` file under
   `\\VAULT\sims\Preflop\<table-group>`. Do not guess or create a missing
   table-size folder.
+- Before every Viewer save, verify the destination folder, selected
+  `*.hrcv Viewer Save` type, simulation filename, and `.hrcv` extension. Do not
+  rely on the file type retained from an earlier Save As session.
 - Save the strategy export as a new `.zip` file in the same table-size folder.
   Use the simulation name as the base filename.
 - Verify the Viewer output and strategy archive before closing the completed
