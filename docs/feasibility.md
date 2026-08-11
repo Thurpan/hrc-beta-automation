@@ -126,17 +126,46 @@ wizard, finish a tree, submit a calculation, or write a file.
   `10-max`. The provider still incorrectly reported background Range edit
   `69008` as focused.
 - Escape closed the list. All five rows, five chip values, and five BB values
-  remained unchanged. No item was activated, so table-size selection effects
-  remain TO CONFIRM.
+  remained unchanged. No item was activated in this run, so table-size
+  selection effects were still TO CONFIRM at the end of run 12. Run 13 later
+  confirmed the HU row-removal and retained-stack effect described below.
 - Two semantic attempts to activate the named Cancel button did not reach the
   cached target. `Alt+C` and Escape did not dismiss Basic Hand Data. `Alt+F4`
   closed the unsaved Hand Setup and returned to `Home` without a prompt.
 
-This confirms one live, non-coordinate route to focus the NatTable and open
-the player-count list. It does not yet confirm the route through a standalone
-runner, selection of a different table size, row creation or removal, retained
-value handling after a selection, or an end-to-end route from this bootstrap
-to stack entry and read-back.
+At the end of run 12, this confirmed one live, non-coordinate route to focus
+the NatTable and open the player-count list. It had not yet confirmed the route
+through a standalone runner, selection of a different table size, row creation
+or removal, retained-value handling after a selection, or an end-to-end route
+from this bootstrap to stack entry and read-back. Run 13 later confirmed the HU
+selection and its immediate row-removal and retained-stack effects.
+
+## HU table-size selection effect on 11 August 2026
+
+This follow-up changed only the disposable, unsaved Hand Setup. It did not
+advance the wizard, finish a tree, submit a calculation, or write a file.
+
+- HRC again opened Basic Hand Data with `Auto` and the retained five-player
+  rows: `HJ 1000 / 10.0 bb`, `CO 2000 / 20.0 bb`, `BU 3000 / 30.0 bb`,
+  `SB 4000 / 40.0 bb`, and `BB 5000 / 50.0 bb`.
+- From that newly opened page, seven Tab presses followed by `Ctrl+A`,
+  `Ctrl+Home`, and Space again selected the player-count cell and opened the
+  list without a pointer. The list ID was `6359478`, different from the prior
+  observed IDs.
+- With `Auto` current, one Down press visibly selected `HU`. The editor showed
+  `HU` while the list remained open, but all five rows were still present.
+- Enter committed the selection and closed the list. HRC removed `HJ`, `CO`,
+  and `BU`; the remaining rows were exactly `SB 4000 / 40.0 bb` and
+  `BB 5000 / 50.0 bb`.
+- `Alt+F4` closed the unsaved Hand Setup and returned to `Home` without a
+  prompt.
+
+This confirms one supervised, non-coordinate table-size selection and its
+immediate row-removal effect. In this transition HRC retained the prior blind
+stacks rather than resetting them. Automation must therefore overwrite and
+read back every active seat after selecting a table size. Multiway row creation,
+different-valid-value entry, accessible cell read-back, rejected-input
+handling, and delivery through a standalone runner remain TO CONFIRM.
 
 ## Idle control-map discovery on 11 August 2026
 
@@ -396,7 +425,9 @@ It needs a small HRC Preview recheck without a Nash calculation.
 After tree creation, submit steps 2 through 5 without waiting for the previous
 operation to finish:
 
-1. Create the tree for the next setup in the simulation run order.
+1. Create the tree for the next setup in the simulation run order. Select the
+   required table size, overwrite every active seat's stack, and read back the
+   exact position order and values. Do not rely on prior inputs being reset.
 2. Rename the tree to `HU-1` for this setup. Use the equivalent ordered stack
    name for other table sizes, such as `5m-10-30-30-20-12.5`.
 3. Open Nash Calculation with `Alt+R`. Use `HRC 4.0 (Default)`, Full Tree,
@@ -441,7 +472,7 @@ completion, or failure states.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Start tree setup | `New: Monte Carlo Hand` | `New: Monte Carlo Hand` | Link | `3342566` | TO CONFIRM | `Hand` → `Start New Calculation` shows `Ctrl+W, H`; operation TO CONFIRM | Open a new Monte Carlo hand from `Home`. | Hand Setup opened on Basic Hand Data after one refreshed retry in the earlier run and on the first named-link activation in the NatTable run. | The first earlier semantic click returned an unknown outcome and left `Home` visible. The latest setup retained the previous five-player values. | TO CONFIRM: the named Home link works, but retry handling, state reset, and the next-simulation route remain unproven. |
 | Configure HU stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
-| Add multiway player rows | `Auto`; `HU`; `3-max` through `10-max`; empty BB-column cells | The open selector exposed every named table-size item; empty cells remained unnamed | Selector list and list items while open; table cell and transient edit for the earlier manual method | Open-list IDs `95687566`, `18224586`, and `11606852`; closed selector and empty-cell IDs TBD | The open items were selectable; Space opened the list after the non-coordinate NatTable bootstrap | From the newly opened page: press `Tab` seven times, `Ctrl+A`, `Ctrl+Home`, Space. Escape closes the list without selection. | Select the required table size, then verify the exact row count and position order before entering stacks. | The live bootstrap selected the cell displaying `Auto` and opened every named table-size choice without a pointer. Earlier manual empty-cell selection populated `HJ`, `CO`, `BU`, `SB`, `BB`. No selector choice was activated. | A missing, extra, retained, reset, or misordered row or value must stop the workflow. | NO: the initial focus route is now observed in one setup, but selecting a table size, detecting its effect, handling retained inputs, and standalone delivery remain untested. Numeric list IDs changed. |
+| Select table size or add multiway player rows | `Auto`; `HU`; `3-max` through `10-max`; empty BB-column cells | The open selector exposed every named table-size item; empty cells remained unnamed | Selector list and list items while open; table cell and transient edit for the earlier manual method | Open-list IDs `95687566`, `18224586`, `11606852`, and `6359478`; closed selector and empty-cell IDs TBD | The open items were selectable; Space opened the list after the non-coordinate NatTable bootstrap | From the newly opened page: press `Tab` seven times, `Ctrl+A`, `Ctrl+Home`, Space. For the observed HU case only, press `Down` once from `Auto`, then `Enter`; other choices and arrow counts remain TO CONFIRM. Escape cancels without selection. | Select the required table size. Then overwrite every active seat and verify the exact row count, position order, and values before advancing. | In the follow-up, one `Down` press selected `HU` and `Enter` committed it. HRC reduced the retained five-player setup to `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb`. Earlier manual empty-cell selection populated `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, retained, reset, or misordered row or value must stop the workflow. | NO: one HU selection and its row-removal effect are observed, but multiway choice effects, active-seat overwrite/read-back, rejected inputs, and standalone delivery remain untested. Numeric list IDs changed. |
 | Configure multiway stacks | `BB`; `Chips`; `Auto` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | The new Tab, `Ctrl+A`, `Ctrl+Home` bootstrap reached `Auto`. In the earlier post-focus run, Down then Right reached HJ Chips; F2 entered edit mode; Enter accepted the same value and moved down; Escape cancelled. The combined sequence has not been run end to end. | Enter the ordered stack values and read back every position, BB value, and chip value. | A same-value `1000` commit in HJ Chips moved to CO Chips with `2000` selected; Escape preserved it. All five visible values remained unchanged. | Any value or position mismatch must stop the workflow. The provider still reported the background Range edit as focused. | NO: the non-coordinate bootstrap and post-focus editing are separately observed, but their combined path, different-valid-value entry, accessible read-back, rejected-input handling, and standalone delivery remain unproven. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Cancel Hand Setup | `Cancel` | `Cancel` | Button | `727278` in the NatTable run; stability TO CONFIRM | TO CONFIRM | `Alt+F4` while the owned Hand Setup is active | Abort a disposable or invalid setup without creating a hand. | `Alt+F4` closed the unsaved setup and returned to `Home` without a prompt. | Two cached named-target attempts could not be activated; `Alt+C` and Escape did not dismiss the dialog. Any unexpected prompt or window must stop. | TO CONFIRM through the target runner: one keyboard close worked, but exact owned-dialog and foreground assertions are required. |
@@ -472,7 +503,8 @@ completion, or failure states.
 | HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for the pre-conversion revision at equal `2 bb` | No SB completion branch was present. The current HU candidate needs a Preview recheck. This does not validate the `5 bb` boundary or multiway behaviour. |
 | Multiway retest estimate | Scripting showed `tree-building-3m-6m-candidate.js` without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. | No accessibility tree was available in the contemporaneous capture. | CONFIRMED visually for the observed five-player setup | Euan reported loading the corrected worktree candidate. At the time of this estimate capture, Preview had not yet been inspected and Finish was not selected. The following row records the later Preview inspection. |
 | Multiway representative Preview | The root and selected opening, squeeze, 3-bet, 4-bet, 5-bet, call-cap, SB-completion, and low-SPR flop paths were expanded. | Preview tab `661798`; tree `989272`; named headers; selectable action-only items. | CONFIRMED visually for the listed paths | Every displayed value matched the current candidate manifest for the reported corrected load. This is not exhaustive tree validation, and the accessible item names omitted amount, player, and street. |
-| Player-count choices exposed | Pressing `Tab` seven times from the newly opened Basic Hand Data page, then `Ctrl+A` and `Ctrl+Home`, selected the cell displaying `Auto`; Space opened `Auto`, `HU`, and table sizes `3-max` through `10-max`. Escape closed the list without changing the setup. | Every item had a distinct accessible name and was selectable. The latest list ID was `11606852`; earlier openings used `95687566` and `18224586`. Provider focus still pointed to the background Range edit. | CONFIRMED for one non-coordinate focus-and-open route | No table-size choice was activated. Selection effects, retained-value handling, and delivery through the standalone runner remain TO CONFIRM. |
+| Player-count choices exposed | Pressing `Tab` seven times from the newly opened Basic Hand Data page, then `Ctrl+A` and `Ctrl+Home`, selected the cell displaying `Auto`; Space opened `Auto`, `HU`, and table sizes `3-max` through `10-max`. Escape closed the list without changing the setup. | Every item had a distinct accessible name and was selectable. The latest list ID in that run was `11606852`; earlier openings used `95687566` and `18224586`. Provider focus still pointed to the background Range edit. | CONFIRMED for one non-coordinate focus-and-open route | Run 12 did not activate a choice. Run 13 later confirmed HU row removal and retained blind stacks; other choice effects and standalone delivery remain TO CONFIRM. |
+| HU table-size selection committed | From the retained five-player setup, the keyboard route selected `HU`. Before Enter, the list remained open and five rows remained; after Enter, only `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb` remained. | The open list exposed `HU` as a named selectable item. Its latest list ID was `6359478`; provider focus still pointed to the background Range edit. | CONFIRMED for one supervised non-coordinate selection | The transition retained prior blind stacks instead of resetting them. Multiway selection effects, active-seat overwrite/read-back, and standalone delivery remain TO CONFIRM. |
 | Multiway stack keyboard edit | With HJ Chips focused, `F2` exposed `1000`; typing the same value and pressing Enter moved to CO Chips with `2000` selected. Escape preserved CO. | Stack cells were absent from the accessibility tree, and the provider continued to report background edit `69008` as focused. | CONFIRMED after an existing cell was focused | This confirms post-focus movement, edit mode, same-value commit, advance, and cancel without a net value change. It does not prove different-valid-value entry or provide a durable initial focus route or accessible read-back. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
 | Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
@@ -507,6 +539,7 @@ completion, or failure states.
 | 10 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No selector choice, row, stack, calculation, tree, or file was changed. | Tab visibly reached Next, Cancel, information text, and four unnamed toolbar buttons, but traversal did not establish a visible, repeatable route to the selector or stack grid. A one-use screenshot-located click opened `Auto`; the accessibility tree exposed named selectable choices from `HU` through `10-max`. Escape closed the list. | Run 10 found no durable semantic or keyboard route to open the selector, and no choice was activated. The existing five rows and `10/20/30/40/50 bb` values remained unchanged. Hand Setup was open on Basic Hand Data at the end of the run. |
 | 11 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No selector choice, row, stack, finished tree, calculation, or file was changed. | After the screenshot-located open and Escape from run 10, Space reopened the player-count list while the cell displaying `Auto` remained current; `Alt+Down` and `F4` did not. Its list ID changed. Escape closed it. `Alt+N` and `Alt+B` cycled the setup pages and preserved the five inputs, but Space then did not reopen the list. | Space was confirmed as a post-focus list-opening action in run 11 only. The page cycle did not provide repeatable selector focus, no choice was activated, and selection effects remained untested. Hand Setup was open on Basic Hand Data at the end of the run. |
 | 12 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No selector choice, row, stack, finished tree, calculation, or file was changed. | Static installed-component inspection identified the NatTable selection bootstrap. In a separate live check, the named Home link opened Basic Hand Data with the previous five inputs retained. Pressing `Tab` seven times, then `Ctrl+A`, `Ctrl+Home`, and Space selected the cell displaying `Auto` and opened every named player-count choice without a pointer. Escape closed the list and preserved all inputs. | This supersedes the missing initial selector-focus route from runs 10 and 11 for one supervised setup. No choice was activated. Two cached named-target attempts, `Alt+C`, and Escape did not dismiss Hand Setup; `Alt+F4` returned safely to `Home`. Standalone delivery, selection effects, and retained-value handling remain unproven. |
+| 13 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | The disposable in-memory row set changed; no stack was edited, and no tree, calculation, or file was created. | The confirmed keyboard bootstrap opened the selector. Down visibly selected `HU`; Enter committed it and reduced the retained five-player setup to `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb`. `Alt+F4` returned to `Home` without advancing or prompting. | This proves one supervised non-coordinate table-size selection and shows that the change retained prior blind stacks. It does not prove multiway choice effects, active-seat overwrite/read-back, rejected-input handling, or standalone operation. |
 
 ## Blockers
 
@@ -514,18 +547,17 @@ completion, or failure states.
   still must focus the owned dialog, deliver the shortcut, and detect Betting
   Setup reliably; earlier automated keyboard input reached the background
   window.
-- The latest live check established a non-coordinate NatTable bootstrap from a
-  newly opened Basic Hand Data page: Tab seven times, `Ctrl+A`, `Ctrl+Home`,
-  then Space opened the player-count list while the cell displaying `Auto`
-  remained selected. No table-size choice was activated, and its row and
-  retained-value effects are untested. HRC reopened the previous five-player
-  values, so a new setup cannot be assumed blank or reset. The list ID changed
-  again, and provider focus data remained wrong. Separately, once an existing
-  cell was focused, keyboard movement, edit mode, a same-value commit, advance,
-  and cell-editor cancellation were observed. The combined path from the new
-  bootstrap to stack editing has not been run end to end. Different-valid-value
-  entry, accessible value read-back, rejected-input handling, and standalone
-  key delivery are not safe for automation.
+- The latest live check used the non-coordinate NatTable bootstrap to select
+  `HU`. HRC removed the first three retained rows and kept the prior `SB 4000 /
+  40.0 bb` and `BB 5000 / 50.0 bb` values. A new setup or table-size change
+  therefore cannot be assumed blank or reset; every active seat must be
+  overwritten and read back. The list ID changed again, and provider focus
+  data remained wrong. Separately, once an existing cell was focused, keyboard
+  movement, edit mode, a same-value commit, advance, and cell-editor
+  cancellation were observed. The combined path from table-size selection to
+  stack editing has not been run end to end. Multiway selection effects,
+  different-valid-value entry, accessible value read-back, rejected-input
+  handling, and standalone key delivery are not safe for automation.
 - The script-picker button has no accessible name or access key. Its numeric ID
   changed in every inspected session. Semantic invocation failed.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
@@ -581,12 +613,11 @@ completion, or failure states.
 
 ## Next action
 
-Use the confirmed Tab, `Ctrl+A`, `Ctrl+Home`, Space bootstrap in a disposable
-setup to validate one table-size selection, resulting row order, and treatment
-of retained values. Read back every row and value before advancing. Then join
-that bootstrap to the earlier post-focus stack-grid sequence and prove
+Join the confirmed table-size selection route to the earlier post-focus
+stack-grid sequence. Overwrite every active seat, then prove
 different-valid-value entry, accessible value read-back, and rejected-input
-handling without pointer coordinates. Revalidate the route through the future
+handling without pointer coordinates. Validate a multiway table-size choice as
+a separate row-creation case. Revalidate the route through the future
 standalone driver rather than treating Codex key delivery as production proof.
 Also find a durable path for the unnamed script picker. Retain separate Preview
 checks for other table sizes, boundary stacks, later streets, and unexpanded

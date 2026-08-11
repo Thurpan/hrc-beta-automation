@@ -42,7 +42,10 @@ machine evidence and Euan's licence confirmation supersede that reference.
 
 Use this lifecycle for each simulation:
 
-1. Create the tree for the next setup in the simulation run order.
+1. Create the tree for the next setup in the simulation run order. Select the
+   required table size, overwrite every active seat's stack, and read back the
+   exact position order and values. Do not rely on a new setup or a table-size
+   change to reset prior inputs.
 2. Rename the hand through `Hand` → `Rename Hand`. Use names such as `HU-1` or
    `5m-10-30-30-20-12.5`.
 3. Queue a full-tree Nash calculation with `HRC 4.0 (Default)`. Run until the
@@ -141,25 +144,26 @@ unverified.
 ## Current next action
 
 Installed-component inspection identified the Stacks and Blinds surface as an
-Eclipse Nebula NatTable with default selection and edit bindings. A separate
-live, data-preserving check then established a keyboard bootstrap: from the
-newly opened Basic Hand Data page, pressing `Tab` seven times reached the
-otherwise invisible grid focus stop; `Ctrl+A` visibly selected the cell
-displaying `Auto`; `Ctrl+Home` preserved that origin; Space opened the complete
-named player-count list; and Escape closed it without changing the five visible
-rows or stacks. No player-count choice was activated.
+Eclipse Nebula NatTable with default selection and edit bindings. A live check
+then established a keyboard bootstrap: from the newly opened Basic Hand Data
+page, pressing `Tab` seven times reached the otherwise invisible grid focus
+stop; `Ctrl+A` visibly selected the cell displaying `Auto`; `Ctrl+Home`
+preserved that origin; and Space opened the complete named player-count list.
 
-Use a disposable setup to validate one table-size selection, resulting row
-order, and whether retained values are reset. The `New: Monte Carlo Hand` link
-reopened the previous five-player values in this check, so every new setup must
-be treated as potentially stateful and fully read back before advancing. Then
-join the confirmed keyboard bootstrap to the earlier post-focus stack-grid
-navigation and prove different-valid-value entry, accessible value read-back,
-and rejected-input handling. Also find a durable path for the unnamed script
-picker. The current Preview check is representative only; retain separate
-checks for other table sizes and boundary stacks. Retain the existing Nash,
-export, tab-close, and Progress-state blockers. Verify the Save As destination,
-Viewer type, filename, and extension every time.
+A second disposable check used the same route, pressed `Down` once to select
+`HU`, and committed it with `Enter`. HRC removed `HJ`, `CO`, and `BU`, but retained
+the previous blind rows as `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb`. The
+setup was closed without advancing. This proves one non-coordinate table-size
+selection and also proves that a size change cannot be treated as a stack
+reset. Every active seat must be overwritten and read back before advancing.
+
+Next, join the confirmed keyboard bootstrap to the earlier post-focus
+stack-grid navigation and prove different-valid-value entry, accessible value
+read-back, and rejected-input handling. Also find a durable path for the
+unnamed script picker. The current Preview check is representative only;
+retain separate checks for other table sizes and boundary stacks. Retain the
+existing Nash, export, tab-close, and Progress-state blockers. Verify the Save
+As destination, Viewer type, filename, and extension every time.
 
 ## Definition of done
 
