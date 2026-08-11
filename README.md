@@ -168,16 +168,31 @@ cancelled it without adding a row. A deliberately invalid `abc` value stayed
 red in the editor, did not commit or advance on Enter, and Escape restored
 `4100 / 41.0 bb`. The setup was then closed without advancing or writing data.
 
+A fourth disposable check demonstrated one supervised, non-coordinate path to
+the unresolved unnamed script picker and one immediate same-setup reopen after
+cancellation. After `Alt+N` opened Betting Setup with a visible focus rectangle
+on `Back`, four Tab presses reached the `Preflop` tab; two Right presses selected
+`Scripting`; and two more Tab presses reached the first folder button beside
+`Script:`. Space opened the standard `Open` dialog in this worktree's
+`scripts/hrc` folder. Escape restored the visible focus rectangle to the same
+folder button, and Space opened the dialog a second time. Both dialogs were
+cancelled; no script was loaded and no tree or file was created.
+
 This proves the combined supervised keyboard route, different-valid-value
 entry, visual read-back, and one rejected-input recovery. It does not yet give
 the future standalone runner a machine-readable cell-value check, and the live
 accessibility provider still reported the background Range edit as focused.
-Next, establish exact machine-readable read-back and a verified foreground and
-focus contract, then validate one multiway table-size choice and the unnamed
-script picker. The current Preview check is representative only; retain
-separate checks for other table sizes and boundary stacks. Retain the existing
-Nash, export, tab-close, and Progress-state blockers. Verify the Save As
-destination, Viewer type, filename, and extension every time.
+This run used no pointer for that observed script-picker sequence; cross-setup,
+cross-session, and standalone durability remain TO CONFIRM. The target runner
+must still verify the owned foreground dialog, native focus and every
+transition, the exact folder and active File name field, the candidate filename
+and hash, and HRC's resulting load or error state. Next, establish exact
+machine-readable stack read-back and a verified foreground and focus contract,
+then validate one multiway table-size choice. Revalidate the script-picker
+sequence through that target runner. The current Preview check is representative
+only; retain separate checks for other table sizes and boundary stacks. Retain
+the existing Nash, export, tab-close, and Progress-state blockers. Verify the
+Save As destination, Viewer type, filename, and extension every time.
 
 ## Definition of done
 

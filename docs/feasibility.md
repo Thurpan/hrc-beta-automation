@@ -205,6 +205,39 @@ rejection-and-recovery path. It does not provide machine-readable stack-cell
 read-back or prove the foreground and focus assertions needed by a standalone
 runner. Multiway choice effects and standalone delivery remain TO CONFIRM.
 
+## Keyboard script-picker route on 11 August 2026
+
+This disposable follow-up did not select or load a script, finish a tree,
+submit a calculation, or write a file.
+
+- The named Home link opened Basic Hand Data with `Auto` and the retained
+  `SB 4100 / 41.0 bb` and `BB 5100 / 51.0 bb` rows from the previous disposable
+  check. `Alt+N` advanced to Betting Setup.
+- `Ctrl+PageDown` did not change the selected `Preflop` page.
+- With the visible focus rectangle on `Back`, four Tab presses moved through
+  `Finish`, `Cancel`, the information text, and then the `Preflop` tab. Two
+  Right presses selected `Postflop` and then `Scripting`.
+- With the visible focus rectangle on `Scripting`, one Tab press reached the
+  `Script:` edit and the next reached the first, unnamed folder button. Space
+  opened the standard Windows `Open` dialog without a pointer.
+- The dialog opened at
+  `C:\Users\euanh\.codex\worktrees\35c1\hrc-beta-automation\scripts\hrc` and
+  displayed both candidate filenames. It exposed named `File name`, `Open`, and
+  `Cancel` controls. The visible insertion caret was in `File name`, while the
+  provider reported the `Search hrc` edit as focused.
+- Escape cancelled the dialog and returned to Scripting with the script field
+  still empty and the visible focus rectangle on the folder button. Space
+  immediately reopened the same folder. Escape cancelled it again. No candidate
+  was selected.
+- `Alt+F4` then closed Hand Setup and returned to `Home` without a prompt.
+
+This confirms one supervised, non-coordinate route to the script picker and one
+same-setup repeat after cancellation from the observed visible focus rectangle
+on `Back`. It does not establish native foreground or focus, cross-setup or
+cross-session durability, semantic identity for the unnamed folder button, the
+active Open-dialog field, or safe selection and validation of the intended
+script through a standalone runner.
+
 ## Idle control-map discovery on 11 August 2026
 
 This discovery created one disposable, unsaved two-node hand. It did not submit
@@ -516,9 +549,9 @@ completion, or failure states.
 | Configure active stacks | `BB`; `Chips`; `Auto`; `HU` | Active edits were unnamed | Table cell; transient edit | `6690946` in the earlier run; `1185980`, `1251516`, and `1382588` during the HU run; stability disproven | TO CONFIRM | After the HU commit, Down selected SB, Right selected Chips, and `F2` opened the editor. Enter committed and moved down. After the last active row, Enter opened the blank next-row editor; Escape cancelled it. | Overwrite each active stack. After the last commit, cancel the blank-row editor. Verify the exact row count, positions, chip values, and derived BB values before advancing. | `4100` and `5100` committed as `41.0 bb` and `51.0 bb`. Enter advanced through both rows; Escape cancelled the blank third row without adding it. | Invalid `abc` stayed red; Enter did not commit or advance and the derived value stayed `41.0`. Escape restored `4100`. Any other mismatch must stop. The provider still reported background Range edit `69008` as focused. | NO: the combined supervised HU keyboard path, visual read-back, and one invalid-input recovery are observed, but machine-readable cell verification, multiway operation, foreground/focus assertions, and standalone delivery remain unproven. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Cancel Hand Setup | `Cancel` | `Cancel` | Button | `727278` in the NatTable run; stability TO CONFIRM | TO CONFIRM | `Alt+F4` while the owned Hand Setup is active | Abort a disposable or invalid setup without creating a hand. | `Alt+F4` closed the unsaved setup and returned to `Home` without a prompt. | Two cached named-target attempts could not be activated; `Alt+C` and Escape did not dismiss the dialog. Any unexpected prompt or window must stop. | TO CONFIRM through the target runner: one keyboard close worked, but exact owned-dialog and foreground assertions are required. |
-| Select scripting | `Scripting` | `Scripting` | Tab item | Parent tab ID `334064`; item ID empty | SelectionItem and LegacyIAccessible in the earlier inspection | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | All visible tab items shared one element index in the 11 August provider. | TO CONFIRM: visual selection worked for discovery, but no durable semantic target is proven. |
-| Open script picker | Folder icon beside `Script:` | Empty | Button | `1903002`, `334110`, and `464974` in three sessions; `Script:` edit `334118` and `858296` in two sessions | Invoke and LegacyIAccessible in the earlier inspection | No access key was exposed. | Open the script file picker. | A screenshot-located discovery click opened the standard `Open` dialog. | Semantic invocation failed. The numeric ID changed in every inspected session. | NO: no stable name, identifier, or keyboard path has been observed. |
-| Select script file | Both candidate filenames; `File name:`; `Open` | Same as visible labels | List item; edit; button | Multiway item `0`; HU item `1`; filename edit `1148`; Open `1`; Cancel `2` in the observed dialogs | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | `Alt+N`, type exact filename, Enter | Select the applicable candidate and open it. | The pre-conversion HU file loaded and changed Total Nodes to `2`. After the reported corrected multiway load, HRC showed no `[Errors]` and produced a non-zero estimate. | A wrong path, missing file, Script Error, or unchanged estimate must stop the workflow. | TO CONFIRM: the keyboard route worked, but durable focus detection and the unnamed picker remain unresolved. |
+| Select scripting | `Preflop`; `Postflop`; `Scripting` | Same as visible labels | Tab items | Current parent tab ID `2231886`; earlier parent `334064`; item IDs empty | SelectionItem and LegacyIAccessible in the earlier inspection | From the visible focus rectangle on `Back`: Tab four times to `Preflop`, then Right twice to `Scripting` | Select Scripting only after asserting the owned Betting Setup dialog and native focus. | `Scripting` became selected and exposed the `Script:` field and script controls. | `Ctrl+PageDown` did nothing. Any unexpected focus target or page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard path worked once, but native starting-focus, transition, and post-state assertions remain unproven. |
+| Open script picker | First folder icon beside `Script:` | Empty | Button | Current button `989356`; earlier values `1903002`, `334110`, and `464974`; current `Script:` edit `2037824`; earlier edits `334118` and `858296` | Invoke and LegacyIAccessible in the earlier inspection | From the visible focus rectangle on `Scripting`: Tab to `Script:`, Tab to the first folder button, Space | Open the script file picker only after verifying each transition. | Space opened the standard `Open` dialog. Escape restored the visible focus rectangle to the folder button; Space reopened the same folder once in the same setup. | The button remains unnamed, numeric IDs changed between sessions, and earlier semantic invocation failed. Any unexpected dialog or folder must stop the workflow. | TO CONFIRM through the target runner: the picker reopened once after cancellation in the same setup, but semantic identity, native foreground/focus, and cross-session durability remain unproven. |
+| Select script file | Both candidate filenames; `File name:`; `Open` | Same as visible labels | List item; edit; button | Multiway item `0`; HU item `1`; filename edit `1148`; Open `1`; Cancel `2` in the observed dialogs | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | `Alt+N`, type exact filename, Enter in the earlier load; Escape cancelled both current probes | Select the applicable candidate only after verifying the exact folder, filename, and expected candidate hash. | The pre-conversion HU file loaded and changed Total Nodes to `2`. After the reported corrected multiway load, HRC showed no `[Errors]` and produced a non-zero estimate. The current probe opened the exact worktree candidate folder twice. | A wrong path, missing file, hash mismatch, Script Error, or unchanged estimate must stop the workflow. In the current probe the provider reported Search while the visible caret was in File name. | TO CONFIRM: the standard dialog and earlier keyboard load are promising, but reliable focus detection and exact script validation remain unresolved. |
 | Detect tree-script error | `Script Error`; error text; `OK`; `[Errors]` | The exact error and OK were exposed | Dialog; text; button | Error text `924558`; OK `859030` in this session | TO CONFIRM | TO CONFIRM | Record the exact error and stop before Finish. | Not applicable | The five-player candidate reported `Error: Effective stack does not match a configured workbook column: 100000`; Finish was disabled and Total Nodes was `0`. | TO CONFIRM: the visible failure is distinguishable, but durable automated detection is unproven. |
 | Verify tree preview | `Preview`; `Action`; `Amt [BB]`; `Player`; `Street` | The current tree exposed selectable action-only items. Amount, player, and street were visible but absent from item names. | Tab; tree; tree items | HU tree `923428` earlier; current Preview tab `661798`; current tree `989272`; stability TO CONFIRM | Tree items were selectable; a durable expand operation remains TO CONFIRM. | TO CONFIRM | Expand and inspect the documented candidate paths before Finish. | The equal-`2 bb` HU path and the listed five-player multiway paths were directly observed. The multiway values matched the current candidate manifest for this setup. | Any unexpected branch, amount, player, or street must stop the workflow. | NO for automation: supervised screenshot expansion worked, but provider focus was wrong and the accessible item names omitted three required columns. Evidence remains path-scoped. |
 | Finish tree setup | `Finish` | `Finish` | Button | `268480` | TO CONFIRM | Enter while `Finish` is the visible default | Finish tree creation after the estimate completes. | Hand Setup closed and unsaved `*Hand 6` opened. | A script error, disabled Finish, or unchanged Hand Setup must stop the workflow. | TO CONFIRM: Enter worked for the two-node test, but explicit failure handling remains unproven. |
@@ -547,6 +580,7 @@ completion, or failure states.
 | HU table-size selection committed | From the retained five-player setup, the keyboard route selected `HU`. Before Enter, the list remained open and five rows remained; after Enter, only `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb` remained. | The open list exposed `HU` as a named selectable item. Its latest list ID was `6359478`; provider focus still pointed to the background Range edit. | CONFIRMED for one supervised non-coordinate selection | At the end of run 13, multiway selection effects, active-seat overwrite/read-back, and standalone delivery remained TO CONFIRM. Run 14 later confirmed supervised HU overwrite and visual read-back; machine-readable verification remains TO CONFIRM. |
 | Multiway stack keyboard edit | With HJ Chips focused, `F2` exposed `1000`; typing the same value and pressing Enter moved to CO Chips with `2000` selected. Escape preserved CO. | Stack cells were absent from the accessibility tree, and the provider continued to report background edit `69008` as focused. | CONFIRMED after an existing cell was focused | This earlier observation alone confirmed post-focus movement, edit mode, same-value commit, advance, and cancel without a net value change. Run 14 later confirmed the supervised HU route from initial grid focus through different-valid-value entry. Standalone foreground/focus assertions and machine-readable read-back remain TO CONFIRM. |
 | HU stack values committed and rejected input recovered | The combined keyboard route committed `SB 4100 / 41.0 bb` and `BB 5100 / 51.0 bb`; Escape cancelled the blank third-row editor. Invalid `abc` stayed red and did not commit on Enter; Escape restored `4100 / 41.0 bb`. | Transient editors were unnamed and changed IDs. The provider incorrectly reported background Range edit `69008` as focused. | CONFIRMED visually for this supervised HU path | This proves different-valid-value entry, derived visual read-back, blank-row cancellation, and one non-numeric recovery. Machine-readable cell verification, multiway operation, and standalone delivery remain TO CONFIRM. |
+| Script picker opened and cancelled | From the visible focus rectangle on `Back`, the keyboard route selected Scripting and opened the standard Open dialog at the worktree candidate folder. Escape restored the visible focus rectangle to the folder button; Space reopened the same folder and Escape cancelled again. | The Open dialog exposed both filenames and named standard controls, but provider focus disagreed with the visible File name caret. | CONFIRMED for one supervised non-coordinate route and one same-setup reopen | No script was selected. Native foreground/focus, active-field, exact-candidate, post-load, and standalone assertions remain TO CONFIRM. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
 | Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
 | CI 10 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 10.00`. | TBD | CONFIRMED visually | A red stop button and activity bar were visible. |
@@ -582,6 +616,7 @@ completion, or failure states.
 | 12 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No selector choice, row, stack, finished tree, calculation, or file was changed. | Static installed-component inspection identified the NatTable selection bootstrap. In a separate live check, the named Home link opened Basic Hand Data with the previous five inputs retained. Pressing `Tab` seven times, then `Ctrl+A`, `Ctrl+Home`, and Space selected the cell displaying `Auto` and opened every named player-count choice without a pointer. Escape closed the list and preserved all inputs. | This superseded the missing initial selector-focus route from runs 10 and 11 for one supervised setup. No choice was activated. Two cached named-target attempts, `Alt+C`, and Escape did not dismiss Hand Setup; `Alt+F4` returned safely to `Home`. Selection effects and retained-value handling were unproven at the end of run 12; runs 13–14 later confirmed the supervised HU effects. Standalone delivery remains unproven. |
 | 13 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | The disposable in-memory row set changed; no stack was edited, and no tree, calculation, or file was created. | The confirmed keyboard bootstrap opened the selector. Down visibly selected `HU`; Enter committed it and reduced the retained five-player setup to `SB 4000 / 40.0 bb` and `BB 5000 / 50.0 bb`. `Alt+F4` returned to `Home` without advancing or prompting. | This proves one supervised non-coordinate table-size selection and shows that the change retained prior blind stacks. At the end of run 13, active-seat overwrite/read-back and rejected-input handling remained unproven; run 14 later confirmed supervised visual HU handling. Multiway choice effects, machine-readable verification, and standalone operation remain TO CONFIRM. |
 | 14 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | The disposable in-memory stack values changed; no wizard advance, tree, calculation, or file was created. | A new setup showed `Auto` with the retained SB/BB row set. The confirmed keyboard route selected HU, entered `4100` and `5100`, visibly read back `41.0 bb` and `51.0 bb`, and cancelled the blank next-row editor. Invalid `abc` stayed red and uncommitted; Escape restored `4100`. `Alt+F4` returned to `Home`. | This proves the combined supervised HU keyboard path, two different-valid-value commits, visual derived-value checks, blank-row cancellation, and one rejected-input recovery. It does not prove machine-readable cell verification, multiway choice/edit behaviour, reliable focus metadata, or standalone operation. |
+| 15 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No script was selected or loaded; no tree was finished, calculation submitted, or file written. | From the visible focus rectangle on `Back`, four Tabs reached `Preflop`, two Rights selected `Scripting`, and two Tabs plus Space opened the standard Open dialog at the exact worktree candidate folder. Escape restored the visible focus rectangle to the unnamed folder button; Space reopened the same folder and Escape cancelled again. `Alt+F4` returned to `Home`. | This proves one supervised non-coordinate route and one same-setup reopen after cancellation. `Ctrl+PageDown` did nothing. Provider focus disagreed with the visible File name caret, so native foreground/focus, active-field, exact-candidate, post-load, and standalone assertions remain TO CONFIRM. |
 
 ## Blockers
 
@@ -598,8 +633,15 @@ completion, or failure states.
   focus, transient editor IDs changed, and no machine-readable stack-cell
   verification was established. Multiway choice/edit effects, foreground and
   focus assertions, and standalone delivery are not safe for automation.
-- The script-picker button has no accessible name or access key. Its numeric ID
-  changed in every inspected session. Semantic invocation failed.
+- One supervised keyboard sequence reached the unnamed script-picker folder
+  button from the visible focus rectangle on `Back`, and Space reopened the
+  picker once after cancellation in the same setup. The button still has no
+  accessible name or access key, its numeric ID changed between sessions, and
+  semantic invocation failed. Before this path is safe, the target runner must
+  prove the exact owned foreground dialog, native starting focus, every Tab and
+  Right transition, exact folder, active `File name` field, exact filename
+  read-back, preflight hash for that file, Open activation, and HRC's expected
+  post-load Script value, estimate or explicit Script Error state.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
   runtime evaluation and produced a non-zero tree estimate in the observed
   five-player setup. The capture exposed only the basename. The inspected
@@ -649,7 +691,10 @@ completion, or failure states.
   A separate supervised HU discovery joined the non-coordinate table-size
   bootstrap to two different-valid-value stack commits, visual derived-value
   checks, blank-row cancellation, and one rejected-input recovery. It did not
-  establish machine-readable cell verification or standalone focus safety.
+  establish machine-readable cell verification or standalone focus safety. A
+  later disposable check reached Scripting and opened the unnamed script picker
+  twice by keyboard from an observed visible focus rectangle, but native focus,
+  cross-session durability, and exact script/post-load checks remain unproven.
   The `5 bb` boundary, the first supported stack above it, and dynamic post-fold
   behaviour remain unconfirmed. Long-run queue behaviour, explicit completion
   or failure detection, and several critical accessible targets also remain
@@ -661,11 +706,13 @@ Establish machine-readable NatTable cell read-back and exact foreground/focus
 assertions for the confirmed HU route. Validate one multiway table-size choice
 as a separate row-creation and multi-row edit case. Revalidate both routes
 through the future standalone driver rather than treating Codex key delivery
-as production proof. Also find a durable path for the unnamed script picker.
-Retain separate Preview checks for other table sizes, boundary stacks, later
-streets, and unexpanded paths. Retain the Nash, export, hand-tab close, and
-`Don't Save` blockers. Verify the Save As destination, Viewer type, filename,
-and extension on every save. Then map accessible Progress states that
-distinguish queue order, successful completion, and failure. Do not start an
-automated or long-running test until these controls are mapped and Euan
-authorises that specific test.
+as production proof. Revalidate the observed script-picker keyboard sequence
+with exact foreground, native focus, transition, folder, active-field, filename,
+hash, Open-activation, and HRC post-load or Script Error assertions in that
+driver. Retain separate Preview checks for other table sizes, boundary stacks,
+later streets, and unexpanded paths. Next map the Nash grid and a safe Cancel
+path, followed by export, hand-tab close, and `Don't Save`. Verify the Save As
+destination, Viewer type, filename, and extension on every save. Then map
+accessible Progress states that distinguish queue order, successful completion,
+and failure. Do not start an automated or long-running test until these controls
+are mapped and Euan authorises that specific test.
