@@ -59,8 +59,16 @@ Use this lifecycle for each simulation:
    through `Hand` → `Export Strategies`. Use `Complete Export`, Depth `16`,
    clear `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save
    `<simulation-name>.zip` in the same table-group folder with
-   `*.zip Archived Json`.
+   `*.zip Archived Json`. In inspected HRC `4.1.1`, Complete Export is
+   unlimited-depth and does not consume the visible Depth setting; still set
+   and read back `16` to match the required operator workflow.
 7. Move to the next simulation and repeat the workflow.
+
+Before step 1, verify that neither exact target
+`<simulation-name>.hrcv` nor `<simulation-name>.zip` already exists. Stop and
+choose a new unique simulation name if either target exists. Recheck the exact
+target immediately before each Save. If HRC shows any overwrite prompt, select
+Cancel and stop; never replace an existing output.
 
 After tree creation, submit steps 2 through 5 without waiting for the previous
 operation to finish. The two Nash calculations can take a long time. Wait for
@@ -132,20 +140,26 @@ unverified.
 
 ## Current next action
 
-The Basic Hand Data `Auto` selector exposed named choices from `HU` through
-`10-max` while open. After a one-use screenshot-located focus, Space reopened
-the list. After `Alt+N` followed by `Alt+B`, Space did not reopen it. No choice
-was selected. Find a durable non-coordinate route to focus the selector and
-validate its row-creation effect in a disposable setup.
-Once an existing stack cell had focus, supervised observation showed keyboard
-movement, edit mode, a same-value commit, advance, and cancellation. Find a
-durable non-coordinate route into that grid, then prove different-valid-value
-entry, accessible value read-back, and rejected-input handling. Also find a
-durable path for the unnamed script picker. The current Preview check is
-representative only; retain separate checks for other table sizes and boundary
-stacks. Retain the existing Nash, export, tab-close, and Progress-state
-blockers. Verify the Save As destination, Viewer type, filename, and extension
-every time.
+Installed-component inspection identified the Stacks and Blinds surface as an
+Eclipse Nebula NatTable with default selection and edit bindings. A separate
+live, data-preserving check then established a keyboard bootstrap: from the
+newly opened Basic Hand Data page, pressing `Tab` seven times reached the
+otherwise invisible grid focus stop; `Ctrl+A` visibly selected the cell
+displaying `Auto`; `Ctrl+Home` preserved that origin; Space opened the complete
+named player-count list; and Escape closed it without changing the five visible
+rows or stacks. No player-count choice was activated.
+
+Use a disposable setup to validate one table-size selection, resulting row
+order, and whether retained values are reset. The `New: Monte Carlo Hand` link
+reopened the previous five-player values in this check, so every new setup must
+be treated as potentially stateful and fully read back before advancing. Then
+join the confirmed keyboard bootstrap to the earlier post-focus stack-grid
+navigation and prove different-valid-value entry, accessible value read-back,
+and rejected-input handling. Also find a durable path for the unnamed script
+picker. The current Preview check is representative only; retain separate
+checks for other table sizes and boundary stacks. Retain the existing Nash,
+export, tab-close, and Progress-state blockers. Verify the Save As destination,
+Viewer type, filename, and extension every time.
 
 ## Definition of done
 
