@@ -108,8 +108,7 @@ created non-empty strategy-export archives and verified Viewer-only tab
 closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
 created no matching `.hrcz` file, and returned to `Home` after `Don't Save`.
 Long-run queue behaviour, completion or failure detection, and the remaining
-tree policy are unverified. The three-through-six-player candidate has not
-produced a tree inside HRC. A supervised five-player setup displayed the visible
+tree policy are unverified. A supervised five-player setup displayed the visible
 order `HJ`, `CO`, `BU`, `SB`, `BB`, showed stacks of `10`, `20`, `30`, `40`,
 and `50` bb, and advanced to Betting Setup. The HRC-tested pre-correction
 candidate then stopped with `Error: Effective stack does not match a configured
@@ -118,20 +117,21 @@ workbook column: 100000`; Finish remained disabled. Its SHA-256 was
 The reported amount is the supported `10 bb` stack in HRC units. The corrected
 candidate converts state values with the nominal big blind and has SHA-256
 `fa2612bd1d3b01a8aa6419fc3697450cf708adff73fc6d085e2223ff605d7c63`.
-Offline regression tests pass. It still requires an HRC tree-estimate and
-Preview check.
+Offline regression tests pass. After Euan reported loading the corrected
+candidate, a live capture showed its basename without `[Errors]`. HRC reported
+`1815589` nodes and `12.3GB`, and enabled Finish. The capture did not expose the
+full loaded path. Preview and the multiway policy remain unverified.
 
 ## Current next action
 
-Reload the corrected
+Inspect Preview for the corrected
 [`tree-building-3m-6m-candidate.js`](scripts/hrc/tree-building-3m-6m-candidate.js)
-in the current five-player setup. Verify its `fa2612bd...` SHA-256 first. Do not
-select the unchanged copy under `C:\Projects\hrc-beta-automation`. Confirm that
-HRC produces a tree estimate without an error, then inspect Preview without
-selecting Finish. Next, find durable paths for creating player rows, targeting
-and reading stack cells, and opening the unnamed script picker. Retain the
-existing Nash, export, tab-close, and Progress-state blockers. Verify the Save
-As destination, Viewer type, filename, and extension every time.
+in the current five-player setup without selecting Finish. Verify the visible
+preflop branches before treating the estimate as policy validation. Next, find
+durable paths for creating player rows, targeting and reading stack cells, and
+opening the unnamed script picker. Retain the existing Nash, export, tab-close,
+and Progress-state blockers. Verify the Save As destination, Viewer type,
+filename, and extension every time.
 
 ## Definition of done
 
