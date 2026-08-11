@@ -109,12 +109,13 @@ been validated inside HRC.
 
 ## Current next action
 
-Find durable, non-coordinate paths for Hand Setup Next, the unnamed script
-picker, every Nash setting and Nash Cancel, the poorly named strategy-export
-settings, the hand-tab close target, and `Don't Save`. Verify the Save As
-destination, Viewer type, filename, and extension every time. Then map Progress
-states that distinguish queue order, successful completion, and failure on a
-separately authorised long-running test.
+Validate that the standalone runner can focus Hand Setup, deliver the confirmed
+`Alt+N` shortcut, and detect Betting Setup. Find durable, non-coordinate paths
+for the unnamed script picker, every Nash setting and Nash Cancel, the poorly
+named strategy-export settings, the hand-tab close target, and `Don't Save`.
+Verify the Save As destination, Viewer type, filename, and extension every time.
+Then map Progress states that distinguish queue order, successful completion,
+and failure on a separately authorised long-running test.
 
 ## Definition of done
 

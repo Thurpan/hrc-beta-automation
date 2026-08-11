@@ -76,6 +76,15 @@ open because its required Viewer and strategy outputs do not exist.
 - `Ctrl+F4` did not close the hand tab or produce `Save Resource`. A durable
   hand-tab close target remains unproven.
 
+In a same-day follow-up, Euan pressed `Alt+N` while Basic Hand Data was open.
+Hand Setup advanced to Betting Setup. A read-only capture immediately afterward
+confirmed Betting Setup, with `Back` enabled, `Next` disabled, and `Finish`
+enabled. Codex issued no input during this confirmation. This establishes the
+keyboard route and supersedes the earlier missing-route blocker; the earlier
+run still required Euan's manual pointer click because `Alt+N` had not yet been
+tested. Delivery and post-state detection through the standalone runner remain
+TO CONFIRM.
+
 ## Selected workflow
 
 - Workflow: Create and rename one true heads-up Monte Carlo tree, queue two
@@ -149,7 +158,7 @@ completion, or failure states.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Start tree setup | `New: Monte Carlo Hand` | `New: Monte Carlo Hand` | Link | `3342566` | TO CONFIRM | `Hand` → `Start New Calculation` shows `Ctrl+W, H`; operation TO CONFIRM | Open a new Monte Carlo hand from `Home`. | Hand Setup opened on Basic Hand Data after one refreshed retry. | The first semantic click returned an unknown outcome and left `Home` visible. | TO CONFIRM: the named Home link worked after refresh, but retry handling and the next-simulation route remain unproven. |
 | Configure stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
-| Advance Hand Setup | `Next` | `&Next` | Button | `268476` | TO CONFIRM | Tab and Enter did not reach the owned dialog through the discovery tool | Advance from Basic Hand Data to Betting Setup after validating all inputs. | Euan selected Next manually. Betting Setup appeared with Total Nodes `16`. | Semantic click failed twice. Keyboard input did not change the page. | NO with the inspected control channel: this critical transition required manual input. |
+| Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Select scripting | `Scripting` | `Scripting` | Tab item | Parent tab ID `334064`; item ID empty | SelectionItem and LegacyIAccessible in the earlier inspection | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | All visible tab items shared one element index in the 11 August provider. | TO CONFIRM: visual selection worked for discovery, but no durable semantic target is proven. |
 | Open script picker | Folder icon beside `Script:` | Empty | Button | `1903002` in the earlier session; `334110` on 11 August | Invoke and LegacyIAccessible in the earlier inspection | No access key was exposed. | Open the script file picker. | A fresh screenshot-located discovery click opened the standard `Open` dialog. | Semantic invocation failed. The numeric ID changed between sessions. | NO: no stable name, identifier, or keyboard path has been observed. |
 | Select script file | `tree-building-hu-candidate.js`; `File name:`; `Open` | Same as visible labels | List item; edit; button | File item `1` in this dialog; filename edit `1148`; Open `1`; Cancel `2` | SelectionItem and Value for standard dialog controls; exact set TO CONFIRM | `Alt+N`, type exact filename, Enter | Select the HU candidate and open it. | The filename was visibly present before Enter. HRC returned to Hand Setup, showed the basename in `Script:`, and changed Total Nodes to `2`. | A wrong path, missing file, script error, or unchanged tree estimate must stop the workflow. | TO CONFIRM: the keyboard route worked, but the discovery provider reported the wrong background focused element. Validate with a standalone UIA runner. |
@@ -198,12 +207,14 @@ completion, or failure states.
 | 3 | 10 August 2026, 23:18 BST | `HU-1.zip` | PARTIAL DEMONSTRATION | The export and close transition completed within the observation period. | The demonstration kept Complete Export, changed Depth from `2` to `16`, kept PrettyPrint JSON clear, and kept the threshold at `0.1`. It saved a non-empty archive and then closed the source tab. | The source tab was `HU-1.hrcz` from run 2. The archive contents and close behaviour after a Viewer-only save remain unverified. |
 | 4 | 10 August 2026, 23:35–23:36 BST | `HU-1.5.hrcv`; `HU-1.5.zip` | PARTIAL DEMONSTRATION | Viewer Save submission, non-empty output creation, and Viewer-only tab closure were observed. | The demonstration began on `*HU-1.5`, submitted Viewer Save and strategy export, selected `Don't Save` in the close prompt, and returned to `Home`. Both files were non-empty after close, and no matching `.hrcz` file was present. | Euan reported that rename and both Nash runs were already complete before observation. Their completion was not independently observed. File contents were not opened. |
 | 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | Run 5 did not inspect Preview or confirm the cutoff; run 6 later confirmed the equal-`2 bb` case. Euan assisted with strategy export. The archive contents were not opened. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
-| 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The identical HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. Nash settings remained inaccessible. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` remains open because it has no verified outputs. |
+| 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The identical HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. A later same-day follow-up confirmed `Alt+N` as the keyboard route. Nash settings remained inaccessible. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` remains open because it has no verified outputs. |
 
 ## Blockers
 
-- Hand Setup Next exposed a name and ID, but semantic and keyboard input did
-  not reach the owned dialog. The 11 August run required manual input.
+- `Alt+N` is a confirmed supervised path for Hand Setup Next. The target runner
+  still must focus the owned dialog, deliver the shortcut, and detect Betting
+  Setup reliably; earlier automated keyboard input reached the background
+  window.
 - The script-picker button has no accessible name or access key. Its numeric ID
   changed between sessions. Semantic invocation failed.
 - Nash Calculation exposed only OK and Cancel. The required algorithm, scope,
@@ -236,10 +247,11 @@ completion, or failure states.
 
 ## Next action
 
-Find durable, non-coordinate paths for Hand Setup Next, the unnamed script
-picker, every Nash setting, Nash Cancel, the poorly named Export Strategies
-settings, the hand-tab close target, and `Don't Save`. Verify the Save As
-destination, Viewer type, filename, and extension on every save. Then map
-accessible Progress states that distinguish queue order, successful completion,
-and failure. Do not start an automated or long-running test until these controls
-are mapped and Euan authorises that specific test.
+Validate that the standalone runner can focus Hand Setup, deliver the confirmed
+`Alt+N` shortcut, and detect Betting Setup. Find durable, non-coordinate paths
+for the unnamed script picker, every Nash setting, Nash Cancel, the poorly named
+Export Strategies settings, the hand-tab close target, and `Don't Save`. Verify
+the Save As destination, Viewer type, filename, and extension on every save.
+Then map accessible Progress states that distinguish queue order, successful
+completion, and failure. Do not start an automated or long-running test until
+these controls are mapped and Euan authorises that specific test.
