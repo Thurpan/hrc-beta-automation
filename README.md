@@ -105,17 +105,25 @@ closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
 created no matching `.hrcz` file, and returned to `Home` after `Don't Save`.
 Long-run queue behaviour, completion or failure detection, and the remaining
 tree policy are unverified. The three-through-six-player candidate has not
-been validated inside HRC.
+produced a tree inside HRC. A supervised five-player setup confirmed the visible
+order `HJ`, `CO`, `BU`, `SB`, `BB` and accepted stacks of `10`, `20`, `30`,
+`40`, and `50` bb. The candidate then stopped with `Error: Effective stack does
+not match a configured workbook column: 100000`; Finish remained disabled.
+The reported amount is the supported `10 bb` stack in HRC units. The candidate
+now converts state values with the nominal big blind instead of an action-sizing
+helper. Offline regression tests pass. The corrected candidate still requires
+an HRC tree-estimate and Preview check.
 
 ## Current next action
 
-Validate that the standalone runner can focus Hand Setup, deliver the confirmed
-`Alt+N` shortcut, and detect Betting Setup. Find durable, non-coordinate paths
-for the unnamed script picker, every Nash setting and Nash Cancel, the poorly
-named strategy-export settings, the hand-tab close target, and `Don't Save`.
-Verify the Save As destination, Viewer type, filename, and extension every time.
-Then map Progress states that distinguish queue order, successful completion,
-and failure on a separately authorised long-running test.
+Reload the corrected three-through-six-player candidate in the current
+five-player setup. Select the file under this worktree, not the unchanged copy
+under `C:\Projects\hrc-beta-automation`. Confirm that HRC produces a tree
+estimate without an error, then inspect Preview without selecting Finish. Next,
+find durable paths for creating player rows, targeting and reading stack cells,
+and opening the unnamed script picker. Retain the existing Nash, export,
+tab-close, and Progress-state blockers. Verify the Save As destination, Viewer
+type, filename, and extension every time.
 
 ## Definition of done
 
