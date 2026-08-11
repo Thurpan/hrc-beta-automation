@@ -100,8 +100,19 @@ ended on Basic Hand Data with the same five visible stack values.
   the owned Hand Setup dialog cannot yet be driven reliably through the current
   semantic target.
 - On Basic Hand Data, the accessibility tree exposed unnamed panes and toolbar
-  buttons but no stack-grid cells. Tab and reverse-Tab did not establish a
-  visible, repeatable route into the grid.
+  buttons but no stack-grid cells. After returning from Betting Setup, the
+  visible Tab order began with Next, Cancel, the information text, then the four
+  unnamed toolbar buttons in icon order: clipboard, eraser, yellow right arrow,
+  and yellow left arrow. Later Tab stops, reverse-Tab, `F6`, `Ctrl+Home`, and
+  `F2` did not establish a visible, repeatable route into the grid.
+- For discovery only, a screenshot-located click opened the `Auto` player-count
+  selector. While open, the accessibility tree exposed a list with session-only
+  ID `95687566` and named selectable items `Auto`, `HU`, `3-max`, `4-max`,
+  `5-max`, `6-max`, `7-max`, `8-max`, `9-max`, and `10-max`. No choice was
+  activated. Escape closed the list. The post-close display remained `Auto`,
+  and the existing five rows and all five stack values were visibly preserved.
+  A keyboard or semantic route to open the selector remains TO CONFIRM, as does
+  the effect of selecting a table size.
 - For discovery only, a screenshot-located click focused the existing HJ Chips
   cell. Once a grid cell had focus, Up and Down moved between player rows, and
   Left and Right moved between columns.
@@ -308,8 +319,8 @@ completion, or failure states.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Start tree setup | `New: Monte Carlo Hand` | `New: Monte Carlo Hand` | Link | `3342566` | TO CONFIRM | `Hand` → `Start New Calculation` shows `Ctrl+W, H`; operation TO CONFIRM | Open a new Monte Carlo hand from `Home`. | Hand Setup opened on Basic Hand Data after one refreshed retry. | The first semantic click returned an unknown outcome and left `Home` visible. | TO CONFIRM: the named Home link worked after refresh, but retry handling and the next-simulation route remain unproven. |
 | Configure HU stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
-| Add multiway player rows | Empty BB-column cells | Empty | Table cell; transient edit after activation | TBD; no ID was observed for an empty BB cell | TO CONFIRM | TO CONFIRM | Select one empty BB cell for each required player row. Do not use the yellow arrow buttons. | HRC populated five rows in visible order `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, or misordered row must stop the workflow. | NO: only manual cell selection is observed. No durable initial cell target exists. |
-| Configure multiway stacks | `BB`; `Chips`; `Auto` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | After a cell was focused: arrows moved by row or column; `Ctrl+Home`, Down, Right reached the first Chips cell; `F2` entered edit mode; Enter accepted the same value and moved down; Escape cancelled. | Enter the ordered stack values and read back every position, BB value, and chip value. | A same-value `1000` commit in HJ Chips moved to CO Chips with `2000` selected; Escape preserved it. All five visible values remained unchanged. | Any value or position mismatch must stop the workflow. Tab and reverse-Tab did not provide a repeatable initial grid focus. | NO: post-focus navigation and a same-value sequence were observed, but initial targeting, blank-row creation, different-valid-value entry, accessible read-back, rejected-input handling, and provider focus data remain unsafe. |
+| Add multiway player rows | `Auto`; `HU`; `3-max` through `10-max`; empty BB-column cells | The open selector exposed every named table-size item; empty cells remained unnamed | Selector list and list items while open; table cell and transient edit for the earlier manual method | Open list `95687566` in one session; closed selector and empty-cell IDs TBD | The open items were selectable; opening operation TO CONFIRM | Tab reached Next, Cancel, information text, and four unnamed toolbar buttons, but did not visibly focus the selector or grid. A screenshot-located discovery click opened the list; Escape closed it. | Select the required table size, then verify the exact row count and position order before entering stacks. | Menu inspection exposed `Auto`, `HU`, and every table size from `3-max` through `10-max`. Earlier manual empty-cell selection populated `HJ`, `CO`, `BU`, `SB`, `BB`. No selector item was chosen. | A missing, extra, reset, or misordered row must stop the workflow. | NO: the choices are identifiable only after the list is open. Opening the selector still lacks a durable route, and selection effects are untested. |
+| Configure multiway stacks | `BB`; `Chips`; `Auto` | Active edit was unnamed | Table cell; transient edit | `6690946` for one active edit; stability TO CONFIRM | TO CONFIRM | After a cell was focused: arrows moved by row or column; `Ctrl+Home`, Down, Right reached the first Chips cell; `F2` entered edit mode; Enter accepted the same value and moved down; Escape cancelled. Tab traversal did not establish a visible, repeatable route to a stack cell. | Enter the ordered stack values and read back every position, BB value, and chip value. | A same-value `1000` commit in HJ Chips moved to CO Chips with `2000` selected; Escape preserved it. All five visible values remained unchanged. | Any value or position mismatch must stop the workflow. Tab, reverse-Tab, and `F6` did not provide a repeatable initial grid focus. | NO: post-focus navigation and a same-value sequence were observed, but initial targeting, different-valid-value entry, accessible read-back, rejected-input handling, and provider focus data remain unsafe. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
 | Select scripting | `Scripting` | `Scripting` | Tab item | Parent tab ID `334064`; item ID empty | SelectionItem and LegacyIAccessible in the earlier inspection | TO CONFIRM | Select the Scripting tab. | The `Script:` field and script controls appeared. | All visible tab items shared one element index in the 11 August provider. | TO CONFIRM: visual selection worked for discovery, but no durable semantic target is proven. |
 | Open script picker | Folder icon beside `Script:` | Empty | Button | `1903002`, `334110`, and `464974` in three sessions; `Script:` edit `334118` and `858296` in two sessions | Invoke and LegacyIAccessible in the earlier inspection | No access key was exposed. | Open the script file picker. | A screenshot-located discovery click opened the standard `Open` dialog. | Semantic invocation failed. The numeric ID changed in every inspected session. | NO: no stable name, identifier, or keyboard path has been observed. |
@@ -338,6 +349,7 @@ completion, or failure states.
 | HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for the pre-conversion revision at equal `2 bb` | No SB completion branch was present. The current HU candidate needs a Preview recheck. This does not validate the `5 bb` boundary or multiway behaviour. |
 | Multiway retest estimate | Scripting showed `tree-building-3m-6m-candidate.js` without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. | No accessibility tree was available in the contemporaneous capture. | CONFIRMED visually for the observed five-player setup | Euan reported loading the corrected worktree candidate. At the time of this estimate capture, Preview had not yet been inspected and Finish was not selected. The following row records the later Preview inspection. |
 | Multiway representative Preview | The root and selected opening, squeeze, 3-bet, 4-bet, 5-bet, call-cap, SB-completion, and low-SPR flop paths were expanded. | Preview tab `661798`; tree `989272`; named headers; selectable action-only items. | CONFIRMED visually for the listed paths | Every displayed value matched the current candidate manifest for the reported corrected load. This is not exhaustive tree validation, and the accessible item names omitted amount, player, and street. |
+| Player-count choices exposed | Opening `Auto` showed `Auto`, `HU`, and table sizes `3-max` through `10-max`. Escape closed the list without changing the setup. | The open list had session-only ID `95687566`; every item had a distinct accessible name and was selectable. | CONFIRMED for list inspection only | No table-size item was selected. A durable way to open the list and the effects of selection remain TO CONFIRM. |
 | Multiway stack keyboard edit | With HJ Chips focused, `F2` exposed `1000`; typing the same value and pressing Enter moved to CO Chips with `2000` selected. Escape preserved CO. | Stack cells were absent from the accessibility tree, and the provider continued to report background edit `69008` as focused. | CONFIRMED after an existing cell was focused | This confirms post-focus movement, edit mode, same-value commit, advance, and cancel without a net value change. It does not prove different-valid-value entry or provide a durable initial focus route or accessible read-back. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
 | Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
@@ -369,6 +381,7 @@ completion, or failure states.
 | 7 | 11 August 2026 | None | SCRIPT ERROR | No tree was finished and no Nash operation or file write occurred. | Euan configured five rows as `HJ 10`, `CO 20`, `BU 30`, `SB 40`, and `BB 50` bb. `Alt+N` advanced to Betting Setup. Loading the then-byte-identical pre-correction multiway candidate produced `Error: Effective stack does not match a configured workbook column: 100000`. | The pre-script default estimate was `448527` nodes and `3.1GB`; it was not a candidate result. After the error, Total Nodes was `0` and Finish was disabled. Offline regression coverage was added, but the corrected candidate was still HRC-unverified at the end of run 7. |
 | 8 | 11 August 2026 | None | TREE ESTIMATE AND PARTIAL PREVIEW | No tree was finished and no Nash operation or file write occurred. | Euan reported loading the corrected worktree candidate. A contemporaneous capture showed its basename without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. Root and representative deeper Preview paths matched the current candidate manifest. | The prior `100000` error did not recur. Preview evidence is path-scoped, Finish was not selected, and the visible basename did not expose the full loaded path. Other stacks, table sizes, boundaries, later streets, and unexpanded paths remain TO CONFIRM. |
 | 9 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No row, stack, calculation, tree, or file was changed. | `Alt+B` and `Alt+N` moved between the two setup pages. After a one-use screenshot-located focus, arrows, `Ctrl+Home`, `F2`, Enter, and Escape supported an observed grid-edit sequence. A same-value HJ Chips commit advanced to CO Chips; all five values remained unchanged. | No durable non-coordinate entry into the grid was found. Stack cells were absent from the accessibility tree, Tab routes failed, provider focus remained wrong, and blank-row creation and different-valid-value entry were not tested. The setup remains open on Basic Hand Data. |
+| 10 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No selector choice, row, stack, calculation, tree, or file was changed. | Tab visibly reached Next, Cancel, information text, and four unnamed toolbar buttons, but traversal did not establish a visible, repeatable route to the selector or stack grid. A one-use screenshot-located click opened `Auto`; the accessibility tree exposed named selectable choices from `HU` through `10-max`. Escape closed the list. | Opening the selector still has no durable semantic or keyboard route, and no choice was activated. The existing five rows and `10/20/30/40/50 bb` values remained unchanged. Hand Setup remains open on Basic Hand Data. |
 
 ## Blockers
 
@@ -376,12 +389,15 @@ completion, or failure states.
   still must focus the owned dialog, deliver the shortcut, and detect Betting
   Setup reliably; earlier automated keyboard input reached the background
   window.
-- Five-player row creation required manual selection of empty BB-column cells.
-  Once an existing cell was focused, keyboard movement, edit mode, a same-value
-  commit, advance, and cancellation were observed. No durable non-coordinate
-  route into the grid was found; blank-row creation, different-valid-value
-  entry, accessible value read-back, rejected-input handling, and provider
-  focus data are not safe for automation.
+- The `Auto` selector exposes named choices from `HU` through `10-max` while its
+  list is open. Opening it still required a screenshot-located discovery click,
+  no choice was activated, and its row-creation effect is untested. Tab
+  traversal did not establish a visible, repeatable route to the selector or
+  grid. Once an existing cell was focused, keyboard movement, edit mode, a
+  same-value commit, advance, and cancellation were observed. No durable
+  non-coordinate route into the grid was found; different-valid-value entry,
+  accessible value read-back, rejected-input handling, and provider focus data
+  are not safe for automation.
 - The script-picker button has no accessible name or access key. Its numeric ID
   changed in every inspected session. Semantic invocation failed.
 - After Euan reported loading the corrected 3–6-max candidate, HRC passed
@@ -431,13 +447,15 @@ completion, or failure states.
 
 ## Next action
 
-Find a durable non-coordinate focus route into the stack grid, then prove
-blank-row creation, different-valid-value entry, accessible value read-back,
-and rejected-input handling. Build on the observed post-focus keyboard sequence
-without adopting pointer coordinates. Also find a durable path for the unnamed
-script picker. Retain separate Preview checks for other table sizes, boundary
-stacks, later streets, and unexpanded paths. Retain the Nash, export, hand-tab
-close, and `Don't Save` blockers.
+Find a durable non-coordinate route to open the `Auto` selector, then use a
+disposable setup to validate table-size selection, resulting row order, and
+whether existing values are reset. Find a durable non-coordinate focus route
+into the stack grid, then prove different-valid-value entry, accessible value
+read-back, and rejected-input handling. Build on the observed post-focus
+keyboard sequence without adopting pointer coordinates. Also find a durable
+path for the unnamed script picker. Retain separate Preview checks for other
+table sizes, boundary stacks, later streets, and unexpanded paths. Retain the
+Nash, export, hand-tab close, and `Don't Save` blockers.
 Verify the Save As destination, Viewer type, filename, and extension on every
 save. Then map accessible Progress states that distinguish queue order,
 successful completion, and failure. Do not start an automated or long-running

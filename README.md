@@ -132,15 +132,19 @@ unverified.
 
 ## Current next action
 
+The Basic Hand Data `Auto` selector exposed named choices from `HU` through
+`10-max` while open, but opening it still required a one-use screenshot-located
+discovery click and no choice was selected. Find a durable non-coordinate route
+to that selector and validate its row-creation effect in a disposable setup.
 Once an existing stack cell had focus, supervised observation showed keyboard
 movement, edit mode, a same-value commit, advance, and cancellation. Find a
-durable non-coordinate route into that grid, then prove blank-row creation,
-different-valid-value entry, accessible value read-back, and rejected-input
-handling. Also find a durable path for the unnamed script picker. The current
-Preview check is representative only; retain separate checks for other table
-sizes and boundary stacks. Retain the existing Nash, export, tab-close, and
-Progress-state blockers. Verify the Save As destination, Viewer type, filename,
-and extension every time.
+durable non-coordinate route into that grid, then prove different-valid-value
+entry, accessible value read-back, and rejected-input handling. Also find a
+durable path for the unnamed script picker. The current Preview check is
+representative only; retain separate checks for other table sizes and boundary
+stacks. Retain the existing Nash, export, tab-close, and Progress-state
+blockers. Verify the Save As destination, Viewer type, filename, and extension
+every time.
 
 ## Definition of done
 
