@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.MemoryMappedFiles;
 using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -114,6 +115,11 @@ internal static partial class Program
             new("file publication rejects file-identity replacement", TestFilePublicationIdentityReplacement),
             new("file publication rejects a real directory junction", TestFilePublicationReparsePoint),
             new("file publication rename honours its retained root", TestFilePublicationRetainedRootRename),
+            new("trusted artifact retains exact path, identity, length, and digest", TestTrustedArtifactIdentity),
+            new("trusted artifact rejects invalid paths and mismatched files", TestTrustedArtifactInvalidInputs),
+            new("trusted artifact rejects reparse and multi-link paths", TestTrustedArtifactPathGuards),
+            new("trusted artifact rejects a pre-existing writable mapping", TestTrustedArtifactWritableMapping),
+            new("trusted artifact identity does not bind mutable siblings", TestTrustedArtifactSiblingBoundary),
             new("broker enforces role identity and security context", TestBrokerRoleBindings),
             new("broker disposal before run is coalesced and releases its name", TestBrokerDisposeBeforeRun),
             new("broker completes a cross-process claim and receipt", TestBrokerClaim),
@@ -3936,6 +3942,426 @@ internal static partial class Program
         }
     }
 
+    private static Task TestTrustedArtifactIdentity()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string path = Path.Combine(directory.Path, "trusted-artifact.bin");
+        string replacement = Path.Combine(
+            directory.Path,
+            "trusted-artifact-replacement.bin");
+        byte[] bytes = new byte[150_000];
+        byte[] replacementBytes = new byte[150_000];
+        byte[]? digest = null;
+        byte[]? digestCopy = null;
+        byte[]? identifierCopy = null;
+        TrustedArtifactLease? lease = null;
+        try
+        {
+            RandomNumberGenerator.Fill(bytes);
+            bytes.CopyTo(replacementBytes, 0);
+            replacementBytes[0] ^= 0xff;
+            File.WriteAllBytes(path, bytes);
+            File.WriteAllBytes(replacement, replacementBytes);
+            digest = SHA256.HashData(bytes);
+
+            lease = TrustedArtifactIdentity.Open(path, bytes.Length, digest);
+            AssertEqual(path, lease.Path, "trusted artifact path");
+            AssertEqual((long)bytes.Length, lease.Length,
+                "trusted artifact length");
+
+            digestCopy = lease.CopySha256Digest();
+            Assert(digestCopy.AsSpan().SequenceEqual(digest),
+                "the trusted artifact digest must match its verified input");
+            digestCopy[0] ^= 0xff;
+            byte[] secondDigestCopy = lease.CopySha256Digest();
+            try
+            {
+                Assert(secondDigestCopy.AsSpan().SequenceEqual(digest),
+                    "digest callers must receive independent copies");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(secondDigestCopy);
+            }
+
+            identifierCopy = lease.Identity.CopyIdentifier();
+            AssertEqual(
+                TrustedArtifactFileIdentity.IdentifierLength,
+                identifierCopy.Length,
+                "trusted artifact identifier length");
+            byte firstIdentifierByte = identifierCopy[0];
+            identifierCopy[0] ^= 0xff;
+            byte[] secondIdentifierCopy = lease.Identity.CopyIdentifier();
+            try
+            {
+                AssertEqual(
+                    firstIdentifierByte,
+                    secondIdentifierCopy[0],
+                    "trusted artifact identifier copy ownership");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(secondIdentifierCopy);
+            }
+
+            lease.RevalidateCurrentPath();
+            using (FileStream secondReader = new(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read))
+            {
+                AssertEqual((long)bytes.Length, secondReader.Length,
+                    "concurrent read-only artifact length");
+                lease.RevalidateCurrentPath();
+            }
+
+            AssertThrowsAny(
+                () =>
+                {
+                    using FileStream ignored = new(
+                        path,
+                        FileMode.Open,
+                        FileAccess.Write,
+                        FileShare.ReadWrite | FileShare.Delete);
+                },
+                typeof(IOException),
+                typeof(UnauthorizedAccessException));
+            AssertThrowsAny(
+                () => File.Delete(path),
+                typeof(IOException),
+                typeof(UnauthorizedAccessException));
+            AssertThrowsAny(
+                () => File.Move(replacement, path, overwrite: true),
+                typeof(IOException),
+                typeof(UnauthorizedAccessException));
+            Assert(File.Exists(path) && File.Exists(replacement),
+                "a blocked replacement must preserve both exact paths");
+            lease.RevalidateCurrentPath();
+
+            lease.Dispose();
+            AssertThrows<ObjectDisposedException>(lease.RevalidateCurrentPath);
+            AssertThrows<ObjectDisposedException>(() =>
+            {
+                _ = lease.CopySha256Digest();
+            });
+            lease = null;
+            File.Move(replacement, path, overwrite: true);
+            Assert(!File.Exists(replacement) &&
+                    File.ReadAllBytes(path).AsSpan().SequenceEqual(
+                        replacementBytes),
+                "replacement must become possible only after lease disposal");
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            lease?.Dispose();
+            CryptographicOperations.ZeroMemory(bytes);
+            CryptographicOperations.ZeroMemory(replacementBytes);
+            if (digest is not null)
+            {
+                CryptographicOperations.ZeroMemory(digest);
+            }
+
+            if (digestCopy is not null)
+            {
+                CryptographicOperations.ZeroMemory(digestCopy);
+            }
+
+            if (identifierCopy is not null)
+            {
+                CryptographicOperations.ZeroMemory(identifierCopy);
+            }
+        }
+    }
+
+    private static Task TestTrustedArtifactInvalidInputs()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string path = Path.Combine(directory.Path, "trusted-input.bin");
+        byte[] bytes = { 0x74, 0x72, 0x75, 0x73, 0x74 };
+        byte[] digest = SHA256.HashData(bytes);
+        byte[] wrongDigest = (byte[])digest.Clone();
+        try
+        {
+            wrongDigest[0] ^= 0xff;
+            File.WriteAllBytes(path, bytes);
+            AssertThrows<ArgumentOutOfRangeException>(() =>
+            {
+                using TrustedArtifactLease ignored =
+                    TrustedArtifactIdentity.Open(path, -1, digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored =
+                    TrustedArtifactIdentity.Open(path, bytes.Length, new byte[31]);
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedArtifactLease ignored =
+                    TrustedArtifactIdentity.Open(path, bytes.Length + 1, digest);
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedArtifactLease ignored =
+                    TrustedArtifactIdentity.Open(path, bytes.Length, wrongDigest);
+            });
+
+            string relative = Path.GetFileName(path);
+            string nonCanonical = Path.Combine(
+                directory.Path,
+                ".",
+                Path.GetFileName(path));
+            string dotDotPath = Path.Combine(
+                directory.Path,
+                "unused",
+                "..",
+                Path.GetFileName(path));
+            string forwardSlashPath = path.Replace(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored =
+                    TrustedArtifactIdentity.Open(relative, bytes.Length, digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    @"\\server\share\trusted-input.bin",
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    @"\\?\C:\trusted-input.bin",
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    path + ":alternate-stream",
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    nonCanonical,
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    dotDotPath,
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    forwardSlashPath,
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    path + Path.DirectorySeparatorChar,
+                    bytes.Length,
+                    digest);
+            });
+            AssertThrowsAny(
+                () =>
+                {
+                    using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                        directory.Path,
+                        0,
+                        SHA256.HashData(Array.Empty<byte>()));
+                },
+                typeof(SecurityException),
+                typeof(Win32Exception),
+                typeof(UnauthorizedAccessException));
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            CryptographicOperations.ZeroMemory(digest);
+            CryptographicOperations.ZeroMemory(wrongDigest);
+        }
+    }
+
+    private static Task TestTrustedArtifactPathGuards()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string targetDirectory = Path.Combine(directory.Path, "artifact-target");
+        string junction = Path.Combine(directory.Path, "artifact-junction");
+        string targetPath = Path.Combine(targetDirectory, "artifact.bin");
+        string indirectPath = Path.Combine(junction, "artifact.bin");
+        string hardLink = Path.Combine(directory.Path, "artifact-hard-link.bin");
+        byte[] bytes = { 0x70, 0x61, 0x74, 0x68, 0x2d, 0x67, 0x75, 0x61, 0x72, 0x64 };
+        byte[] digest = SHA256.HashData(bytes);
+        byte[] emptyDigest = SHA256.HashData(Array.Empty<byte>());
+        try
+        {
+            CreateProtectedTestDirectory(
+                targetDirectory,
+                directory.OwnerSid,
+                includeSystem: true);
+            CreateProtectedTestDirectory(
+                junction,
+                directory.OwnerSid,
+                includeSystem: true);
+            File.WriteAllBytes(targetPath, bytes);
+            CreateDirectoryJunction(junction, targetDirectory);
+            Assert((File.GetAttributes(junction) &
+                    FileAttributes.ReparsePoint) != 0,
+                "the trusted artifact fixture must be a real junction");
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    junction,
+                    0,
+                    emptyDigest);
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    indirectPath,
+                    bytes.Length,
+                    digest);
+            });
+
+            CreateHardLinkForTest(hardLink, targetPath);
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    targetPath,
+                    bytes.Length,
+                    digest);
+            });
+            Assert(File.ReadAllBytes(targetPath).AsSpan().SequenceEqual(bytes),
+                "reparse and hard-link rejection must preserve artifact bytes");
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            CryptographicOperations.ZeroMemory(digest);
+            CryptographicOperations.ZeroMemory(emptyDigest);
+        }
+    }
+
+    private static Task TestTrustedArtifactWritableMapping()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string path = Path.Combine(directory.Path, "trusted-mapped.bin");
+        byte[] bytes = new byte[4_096];
+        byte[]? digest = null;
+        try
+        {
+            RandomNumberGenerator.Fill(bytes);
+            File.WriteAllBytes(path, bytes);
+            digest = SHA256.HashData(bytes);
+
+            using FileStream writer = new(
+                path,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.ReadWrite | FileShare.Delete);
+            using MemoryMappedFile mapping = MemoryMappedFile.CreateFromFile(
+                writer,
+                mapName: null,
+                capacity: 0,
+                MemoryMappedFileAccess.ReadWrite,
+                HandleInheritability.None,
+                leaveOpen: true);
+            using MemoryMappedViewAccessor view = mapping.CreateViewAccessor(
+                0,
+                bytes.Length,
+                MemoryMappedFileAccess.ReadWrite);
+            writer.Dispose();
+
+            AssertThrows<Win32Exception>(() =>
+            {
+                using TrustedArtifactLease ignored = TrustedArtifactIdentity.Open(
+                    path,
+                    bytes.Length,
+                    digest);
+            });
+            view.Write(0, unchecked((byte)(bytes[0] ^ 0xff)));
+            view.Flush();
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+            if (digest is not null)
+            {
+                CryptographicOperations.ZeroMemory(digest);
+            }
+        }
+    }
+
+    private static Task TestTrustedArtifactSiblingBoundary()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string artifactPath = Path.Combine(directory.Path, "trusted-role.exe");
+        string siblingDllPath = Path.Combine(directory.Path, "mutable-role.dll");
+        string siblingConfigPath = Path.Combine(
+            directory.Path,
+            "trusted-role.runtimeconfig.json");
+        byte[] artifact = { 0x65, 0x78, 0x65 };
+        byte[] originalDll = { 0x64, 0x6c, 0x6c, 0x2d, 0x31 };
+        byte[] changedDll = { 0x64, 0x6c, 0x6c, 0x2d, 0x32 };
+        byte[] originalConfig = { 0x63, 0x66, 0x67, 0x2d, 0x31 };
+        byte[] changedConfig = { 0x63, 0x66, 0x67, 0x2d, 0x32 };
+        byte[]? digest = null;
+        try
+        {
+            File.WriteAllBytes(artifactPath, artifact);
+            File.WriteAllBytes(siblingDllPath, originalDll);
+            File.WriteAllBytes(siblingConfigPath, originalConfig);
+            digest = SHA256.HashData(artifact);
+            using TrustedArtifactLease lease = TrustedArtifactIdentity.Open(
+                artifactPath,
+                artifact.Length,
+                digest);
+
+            File.WriteAllBytes(siblingDllPath, changedDll);
+            File.WriteAllBytes(siblingConfigPath, changedConfig);
+            lease.RevalidateCurrentPath();
+            Assert(File.ReadAllBytes(siblingDllPath)
+                    .AsSpan()
+                    .SequenceEqual(changedDll) &&
+                File.ReadAllBytes(siblingConfigPath)
+                    .AsSpan()
+                    .SequenceEqual(changedConfig),
+                "one trusted artifact lease must not imply sibling role identity");
+            Assert(File.ReadAllBytes(artifactPath)
+                    .AsSpan()
+                    .SequenceEqual(artifact),
+                "sibling mutation must leave the leased artifact unchanged");
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(artifact);
+            CryptographicOperations.ZeroMemory(originalDll);
+            CryptographicOperations.ZeroMemory(changedDll);
+            CryptographicOperations.ZeroMemory(originalConfig);
+            CryptographicOperations.ZeroMemory(changedConfig);
+            if (digest is not null)
+            {
+                CryptographicOperations.ZeroMemory(digest);
+            }
+        }
+    }
+
     private static async Task TestBrokerClaim()
     {
         using BrokerFixture fixture = BrokerFixture.Start();
@@ -6227,6 +6653,17 @@ internal static partial class Program
         }
     }
 
+    private static void CreateHardLinkForTest(
+        string linkPath,
+        string existingPath)
+    {
+        if (CreateHardLinkForTestNative(linkPath, existingPath, 0) == 0)
+        {
+            throw NativeMethods.Win32Failure(
+                "Creating the trusted artifact hard-link fixture failed");
+        }
+    }
+
     private static void DeleteTestDirectoryTree(string path)
     {
         DirectoryInfo root = new(path);
@@ -6290,6 +6727,16 @@ internal static partial class Program
         uint outputBufferSize,
         out uint bytesReturned,
         nint overlapped);
+
+    [LibraryImport(
+        "kernel32.dll",
+        EntryPoint = "CreateHardLinkW",
+        SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int CreateHardLinkForTestNative(
+        string fileName,
+        string existingFileName,
+        nint securityAttributes);
 
     private static byte[] RandomTestValue32()
     {
