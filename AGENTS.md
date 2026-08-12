@@ -32,6 +32,11 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
 
 - Use a new output filename for every simulation.
 - Never overwrite or delete existing HRC data.
+- Normalise hand-tab bases for uniqueness by removing at most one leading dirty
+  `*`, then one terminal `.hrcv` or `.hrcz` suffix case-insensitively. Compare
+  with ordinal case-insensitive semantics. Requested simulation names must match
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, have no HRC suffix, not end in `.`, and
+  not use a Windows reserved device base, including before a dot.
 - Do not reveal poker data that is not necessary for feasibility evidence.
 - Ask Euan before using poker inputs when no clearly safe non-overwriting
   workflow is available.
@@ -39,21 +44,70 @@ Do not copy HRC Beta, its licence material, or its private configuration to anot
   explicitly authorises the run or batch. One batch authorisation covers its
   specified simulations.
 - Verify saved output without changing existing output.
-- Save Viewer output as a new `.hrcv` file under
-  `\\VAULT\sims\Preflop\<table-group>`. Do not guess or create a missing
-  table-size folder.
+- Stage Viewer output under `\\VAULT\sims\Preflop\<table-group>` inside a
+  validated, exclusively owned staging namespace. Atomic reservation and high
+  entropy are necessary but do not prove exclusive ownership. Acquire a
+  validated system-wide HRC-control lease before the first automated HRC input
+  and hold it through both canonical promotions, target-tab closure, and final
+  state verification. Prohibit manual input, a second HRC process, another
+  runner, and other automation in that scope. A high-entropy filename in the
+  shared folder is not isolation.
+  Do not guess or create a missing table-size folder. After explicit Job success
+  and stable non-empty staging metadata, promote with fail-if-exists semantics
+  to the simulation filename.
 - Before every Viewer save, verify the destination folder, selected
-  `*.hrcv Viewer Save` type, simulation filename, and `.hrcv` extension. Do not
-  rely on the file type retained from an earlier Save As session.
-- Save the strategy export as a new `.zip` file in the same table-size folder.
-  Use the simulation name as the base filename.
-- Verify the Viewer output and strategy archive before closing the completed
-  hand tab. Do not inspect strategy contents unless the task requires it and
-  Euan authorises the inspection.
+  `*.hrcv Viewer Save` type, exact staging filename, and `.hrcv` extension. Do
+  not rely on the file type retained from an earlier Save As session.
+- Stage the strategy export as a new high-entropy `.zip` inside the same
+  exclusively owned staging namespace. After the required format guard,
+  explicit Job success, and stable non-empty staging metadata, promote it with
+  fail-if-exists semantics so the canonical base filename is the simulation name.
+- Do not treat an HRC existence prompt or preflight check as overwrite
+  prevention. Installed Viewer Save can replace a race-created target, and
+  Complete Export can truncate one. Before unattended writes are implemented,
+  validate an exclusively owned staging namespace, an exclusive HRC-control
+  lease, and a fail-if-exists promotion to each canonical simulation filename.
+  The lease must exclude another runner, all manual HRC interaction, a second
+  HRC process, and other automation in scope. Never delete partial output
+  automatically. Stop before writing if either exclusivity guard cannot be
+  acquired or proved, or if any unexpected Job, dialog, file, or input
+  transition appears.
+- Do not infer archive format from the visible `*.zip` type, filename extension,
+  non-empty metadata, or successful Export Job. The inspected calculator
+  plug-in `4.1.1` has a hidden retained format index that can write plain text to
+  the `.zip` path.
+  For a fresh Hand Setup hand, require the actual export Save As to expose both
+  `*.zip Archived Json` and `*.txt Plain Text`, explicitly select and read back
+  ZIP, and then accept that real staging export. Cancel does not reset the hidden
+  index. Stop on a ZIP-only dialog or any filter mismatch.
+- Verify the Viewer output and intended strategy archive before closing the
+  completed hand tab. Require a separately proved ZIP format state; metadata
+  alone is insufficient. Do not inspect strategy contents unless the task
+  requires it and Euan authorises the inspection.
+- Do not restart HRC while protected dirty tabs are open. Static reset behaviour
+  does not prove those resources can be recovered after restart. Stop until
+  their safe disposition is explicitly established.
 - When HRC shows `Save Resource` during Viewer-only tab closure, select
   `Don't Save` only when the verified `.hrcv` and `.zip` base filenames match
   the simulation named in the prompt. Stop without discarding the hand if any
   filename, prompt, or available action differs from the observed workflow.
+  Treat every pre-existing hand-editor tab as protected and snapshot its stable
+  identity, title, and dirty state before the simulation. Immediately before
+  closure require the exact hand-editor set to equal those protected identities
+  plus exactly one expected completed simulation. Afterwards require the set to
+  equal exactly the unchanged protected identities, with no addition or
+  replacement.
+
+## Installed-component identity gate
+
+Before relying on any version-specific static finding, resolve the `plugins`
+directory from the active `hrc.exe` process's own installation. Verify there the
+exact calculator, NatTable, JFace, SWT, Commons Compress, Eclipse Core Jobs,
+Eclipse UI, and Eclipse UI Workbench filenames and SHA-256 values recorded in
+`docs/feasibility.md`. The HRC application version is not independently
+confirmed. A hash match is necessary but does not prove live focus, retained
+preferences, or runtime state. Any process, path, filename, or hash mismatch
+must stop the runner and reopen feasibility validation.
 
 ## One workflow pattern
 

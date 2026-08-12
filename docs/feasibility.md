@@ -25,6 +25,35 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 | HRC window state on 11 August | HRC was restored and sized close to the full work area. It was not maximised. No resize, maximise, or activation action was issued during the control-map run. | Euan supplied a full-screen screenshot that showed the restored title-bar state. The control log contained no window-state action. | CONFIRMED for that run. Do not infer current or maximised state from capture dimensions. |
 | Coordinate-target failure | An unverified coordinate intended for the hand-tab close control selected the tree root row instead. No setting or output changed. The later close used a point that first showed the exact `Close` tooltip. | Compared the expected target with the captured cursor position and the resulting HRC state during the `HU-2` run. | CONFIRMED for discovery; raw coordinates are not a safe automation path. |
 
+## Installed component identity gate
+
+The HRC application version remains TO CONFIRM. Version-specific static findings
+in this document apply only to this exact installed component set:
+
+| Component | Installed filename | SHA-256 |
+| --- | --- | --- |
+| Calculator | `net.holdemresources.calculator_4.1.1.202607211244.jar` | `F9FA329B80C265356E6D29C1E98DAF1EFFB06D1536C92BDACEFD0C1EEE90562A` |
+| Commons Compress | `org.apache.commons.commons-compress_1.27.1.jar` | `293D80F54B536B74095DCD7EA3CF0A29BBFC3402519281332495F4420D370D16` |
+| JFace | `org.eclipse.jface_3.36.0.v20250129-1243.jar` | `E0E28699ECD8783597B3E481D18CFA5A1889FFB9F3007260BD2DD78311779BC4` |
+| NatTable core | `org.eclipse.nebula.widgets.nattable.core_2.5.0.202411280718.jar` | `992684F329AECC71E320D17D4D7B968372C3BFB09EF4A50C35DF560B1392D0C7` |
+| SWT Win32 | `org.eclipse.swt.win32.win32.x86_64_3.129.0.v20250221-1734.jar` | `5315B5A2E1260CEB125B421CBCD467935ED9666374E57C38AECBAA04E01DFC85` |
+| Eclipse Core Jobs | `org.eclipse.core.jobs_3.15.500.v20250204-0817.jar` | `189199CD46A284220B7B97FD59218B533FE9FD8E0AD22258F674A3F2DF4DE7C9` |
+| Eclipse UI | `org.eclipse.ui_3.207.100.v20250103-1151.jar` | `550A0E03B8C1939D297BF0ABEDC241507D81AEAC8F1A2A07FC9A96A4264B6101` |
+| Eclipse UI Workbench | `org.eclipse.ui.workbench_3.135.0.v20250204-1142.jar` | `04432CFCE181780475CC061F5813F90D3AF3567AD8916C74B7303DDD80850900` |
+
+On 12 August 2026, the one active `hrc.exe` process resolved to
+`C:\Users\euanh\AppData\Local\Programs\HoldemResources\HRC Beta\hrc.exe`.
+All eight files were rehashed read-only from that installation's `plugins`
+directory and matched this table.
+
+The runner must first identify the one active HRC process and resolve the
+`plugins` directory from that process's own `hrc.exe` installation. It must
+rehash these exact files there before relying on the NatTable, Rename, Nash Job,
+Viewer Save, Export, Finish, or hand-tab-close findings. A match is necessary
+but does not prove live focus, retained preferences, or runtime state. Any
+process, installation path, filename, or hash mismatch stops the run and reopens
+feasibility validation.
+
 ## Corrected context
 
 | Previous statement | Observed evidence | Resolution |
@@ -93,6 +122,41 @@ Standalone foreground, native-focus, and delivery assertions remain TO CONFIRM.
 - Nash retains most accepted settings across openings. A runner must read and
   explicitly verify every required value rather than trust initial defaults or
   values left by the previous calculation.
+- Every accepted Nash submission constructs and schedules a new user-visible
+  Eclipse Job with public name `<hand-name>: Monte Carlo Sampling`. The CI `10`
+  and CI `1` Jobs are distinct objects, do not replace or cancel one another,
+  and share a conflicting per-hand scheduling rule, so they serialise. This is
+  queue serialisation, not dependency success: CI `1` becomes eligible after CI
+  `10` ends even when the first Job is cancelled or fails.
+- The exact static lifecycle is `scheduled`/`WAITING`, `aboutToRun` or
+  `running`/`RUNNING`, then `done` with result severity `OK`, `CANCEL`, or
+  `ERROR`. The running target text is `MC-CFR [Target CI < %.2f]`, initially
+  followed by `Sampling...`; an error uses exact message
+  `An error ocurred during sampling.` Each result must be checked independently.
+- Both Nash Jobs have the same public name and no public UUID or CI field. CI is
+  exposed only in the task text after that Job starts. Exact association requires
+  retaining the Java Job object received by the scheduled event and matching
+  later events by object identity and submission order.
+- The Progress framework retains an error result, but HRC does not retain
+  successful or cancelled Nash Jobs. Both can disappear and leave exact idle
+  text `No operations to display at this time.` A UI-only observer therefore
+  cannot distinguish success from cancellation. The only exact contract found
+  is the in-process Eclipse Jobs API and its `IJobChangeListener` events; no
+  supported external event, IPC, or structured Nash log hook was found. An
+  in-process bridge would be a separate architecture and authorisation decision.
+- Achieved CI remains job-local and is never stored on the hand. Success,
+  cancellation, and error all preserve accumulated strategy/sample state, store
+  the same root-derived data, update the timestamp and dirty state, and invoke
+  the same editor refresh. Root sample count can therefore be partial and is not
+  a success oracle.
+- Viewer Save serialises the current model regardless of why the preceding
+  per-hand rule was released; it does not inspect a predecessor Job or result.
+  A successful Viewer Job and its file metadata prove ordering and save success
+  only, not either Nash result. No status/history, outcome-specific command
+  state, or retained finished-Job preference closes the gap externally. Eclipse
+  can retain an individual `OK`/`CANCEL` Job only through a property on that
+  exact in-process object; HRC does not set it. Severity `ERROR` remains the one
+  externally promising retained terminal state.
 - The Nash NatTable has the same default selection, edit, and raw-copy
   bindings. Run 16 live-confirmed supervised grid entry, `Ctrl+A`, mandatory
   `Ctrl+Home`, row movement, and editing. Run 17 used `Ctrl+C` to read each value
@@ -111,17 +175,158 @@ Standalone foreground, native-focus, and delivery assertions remain TO CONFIRM.
   PrettyPrint JSON, and Node Filter Threshold are retained settings and may
   change even when the dialog is cancelled. Every value must be read and
   verified on every export.
-- In the inspected `4.1.1` bytecode, `Complete Export` selects unlimited depth.
+- In the inspected calculator plug-in `4.1.1` bytecode, `Complete Export`
+  selects unlimited depth.
   The visible Depth spinner is only semantically applied to the two Limited
   Depth modes. The demonstrated value `16` can still be read and preserved, but
   it does not limit a Complete Export in this version.
-- Complete Export selects `*.zip Archived Json`. If the target exists, HRC can
-  show `Confirm save as` and ask whether to replace it. The workflow must
-  preflight exact absence, select Cancel on any overwrite prompt, and stop.
-  It must never confirm replacement.
-- Static export status includes the job name `Exporting ranges to <filename>`
-  and OK, cancellation, and error results. Their accessible live presentation
-  remains TO CONFIRM.
+- The authorised workflow must explicitly select and read back
+  `*.zip Archived Json`; Complete Export does not invariantly select it. If the
+  target exists, HRC can show `Confirm save as` and ask whether to replace it.
+  This is only a pre-write check. The installed writer later opens the final
+  target with create-and-truncate semantics rather than atomic create-new, so a
+  file created in the remaining race can be silently overwritten.
+- Complete Export's exact Job name is
+  `Exporting ranges to <target-filename>`, including the extension. An
+  execution failure can delete the target, while cancellation or other errors
+  can leave a partial target. The accessible live terminal presentation remains
+  TO CONFIRM. File presence, disappearance, or idle is not a success oracle.
+- The installed calculator plug-in `4.1.1` contains two export-file helpers.
+  Helper A exposes
+  `*.zip Archived Json` at index `0` and `*.txt Plain Text` at index `1`; helper
+  B exposes only ZIP. The writer always consumes helper A's retained index even
+  when helper B supplied the path. A prior accepted text export through A can
+  therefore make a later ZIP-only dialog write plain text to the selected
+  `.zip` path while the Export Job still returns `OK`.
+- Manual Selection always uses helper B. A non-Manual scope uses B only for a
+  `bM` hand whose selector field is non-null; otherwise it uses A. Each helper's
+  retained index initialises to ZIP (`0`) when Export Strategies is initialised
+  in a fresh JVM/classloader. A genuine restart resets A, but static evidence
+  does not prove that current dirty tabs can be restored safely, so restart is
+  not an allowed remedy for this session.
+- Cancel, a directory result, and overwrite-prompt rejection do not update a
+  helper's retained index. Only accepting a normalised, non-directory path
+  stores the invoked dialog's selected index. Accepting through B updates B only
+  and cannot repair A.
+- Export Strategies closes after its OK path invokes Save As even when that file
+  dialog returns no path. Export-dialog disappearance therefore proves neither
+  submission nor success; no Job is scheduled for a null path. Only the exact
+  scheduled `Exporting ranges to <staging-filename>` identity, including the
+  extension, proves submission.
+- A newly constructed Hand Setup hand initialises the state that chooses helper
+  A to null. Exhaustive field-reference tracing found that Rename, Nash, and
+  Viewer Save do not change it, so the intended full fresh-hand sequence reaches
+  Complete Export through A and must expose the exact two-filter list. Selecting
+  and reading back ZIP in the actual accepted staging export sets A to `0`
+  before the Job is submitted. A ZIP-only dialog is a stop condition.
+- Under the authorised no-ZIP-inspection boundary, successful Job identity plus
+  new/non-empty/stable metadata cannot independently distinguish archive from
+  plain text. The two-filter list and exact selected ZIP value are therefore
+  mandatory preconditions and remain TO CONFIRM LIVE through the standalone
+  design. The reserved smoke must not be consumed first.
+- The runner must acquire an exclusive system-wide HRC-control lease and a validated,
+  exclusively owned staging namespace. An atomically reserved private
+  high-entropy directory is a candidate, not proof of ownership by itself. Hold
+  the lease from before the first automated HRC input through both canonical
+  promotions, target-tab closure, and final state verification. Prohibit another
+  runner, all manual HRC interaction, a second HRC process, and other automation
+  in scope. A random filename in the shared folder is
+  insufficient. It must cancel and stop on any overwrite prompt or unexpected
+  Job, dialog, file, or input transition, require an identity-matched successful
+  terminal Job plus new/non-empty/stable staging-file metadata, and promote to
+  the simulation filename with fail-if-exists semantics. The exact namespace
+  and lease mechanism remain TO CONFIRM. The authorised smoke does not permit
+  inspecting ZIP contents, and partial output must not be deleted automatically.
+
+### Installed Rename and Viewer Save inspection
+
+These are static findings from calculator plug-in `4.1.1`. Run 19 supplied the
+separate live evidence for dialog entry, visible values, failed provider actions,
+and cancellation without output.
+
+- Rename Hand is a JFace `InputDialog` with exact title `Rename Hand`, message
+  `Rename to:`, an initial name selected in its single-line edit, and OK as the
+  default button. The initial value removes every unanchored lowercase `.hrcz`
+  or `.hrcv` occurrence from the current editor name. Enter is therefore unsafe
+  until exact edit focus and value are proved; a direct exact-button action is
+  preferable. Static JFace calls `Text.setFocus()` and `selectAll()`, but that is
+  not live native-focus evidence; the provider contradicted the visible state.
+- The handler silently opens no dialog when the active input is not a hand. Each
+  valid invocation constructs a fresh `InputDialog`, and only OK calls the
+  rename setter.
+- Native enumeration must distinguish the writable name edit from JFace's
+  hidden/read-only error edit by label relationship, writability, enabled state,
+  and style rather than class alone. Require exactly one visible HRC-owned
+  `Rename Hand` `#32770`, owner equal to the asserted main HRC window, and exact
+  prompt/control roles. Freshly re-enumerate children immediately before guarded
+  `WM_SETTEXT` and again before the one-shot `BM_CLICK`; never reuse cached HWNDs
+  or retry an unknown outcome.
+- Rename length validation permits `1` through `100` Java UTF-16 code units and returns
+  `Name is too long.` above `100`. Null or empty input produces a hidden blank
+  validation result that disables OK, so button enabled state is mandatory.
+  Separate character validation returns `Name contains invalid characters.` for
+  backslash, slash, apostrophe, double
+  quote, `<`, or `>`. It does not trim, check uniqueness, or reject every
+  Windows-filename metacharacter. Same-name and duplicate-name values are also
+  accepted. The runner must apply its own stricter, unique simulation-name
+  policy. Compare bases after separating the independent leading dirty `*`:
+  require active base != requested base and requested base absent from all open
+  hand-tab bases before opening the dialog.
+- Project normalisation defines a hand-tab base by stripping at most one leading
+  dirty `*`, then one terminal `.hrcv` or `.hrcz` suffix case-insensitively. It
+  does not strip embedded suffix text. Compare normalised bases with ordinal,
+  case-insensitive semantics. A requested simulation name must have no HRC
+  suffix, match `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, not end in `.`, and not be a
+  Windows reserved device base such as `CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`,
+  or `LPT1`–`LPT9`, case-insensitively and including before any dot. This ASCII
+  allow-list also satisfies the
+  installed `100` UTF-16-unit limit and rejects trailing spaces and every Windows
+  filename metacharacter.
+- Accepted Rename stores the exact string synchronously and notifies the Hand
+  Editor, which updates that editor's part name. It does not save, queue a job,
+  or write a file. A reusable success oracle must snapshot editor identity,
+  selection, count, full title set, and dirty state; build the expected full
+  title by preserving the active tab's leading dirty decoration; require exact
+  replacement of old full title by expected full title; require the same editor
+  to remain selected; and reject every other tab change. Rename does not alter
+  the dirty state. Non-OK closure calls no setter and retains no typed text.
+- Viewer Save As offers filters in exact index order: `*.hrcz Complete Save`,
+  `*.hrcv Viewer Save`, and `*.json Hand Config`. The process starts at Complete
+  Save, then retains the last accepted Save As filter index. Cancel does not
+  update the index. The shared last-folder holder also changes after an accepted
+  Save As selection and can be changed by normal Save. These values can persist
+  even if the later Viewer Job fails or is cancelled; neither path nor type may
+  be trusted.
+- HRC enforces the selected extension case-sensitively after acceptance. It can
+  strip a recognised lowercase HRC suffix before appending the chosen suffix;
+  uppercase variants can become doubled. The exact lowercase filename,
+  extension, type, and destination must be read back before Save.
+- An existing normalised target produces exact prompt `Confirm save as` with
+  message `<target-filename> exists, do you wish to replace it?`, including the
+  extension. The workflow must
+  choose Cancel and stop. Enter is dangerous.
+- Viewer Save schedules a user Job named
+  `Saving hand to: <target-filename>`, including the extension, on the
+  same per-hand scheduling rule as Nash. Its subtasks are `Writing tree
+  structure.`, `Writing node data.`, and `Writing index.` It does not rename the
+  hand, set the primary save path, or clear the dirty tab, so the later
+  `Save Resource` prompt is expected. The shared rule serialises it behind the
+  Nash Jobs but does not make it conditional on their success; a successful
+  Viewer Job cannot validate either calculation.
+- The Viewer Job writes `<target-filename>.<random>.tmp` in the target folder and
+  then moves it to the target with replace-existing semantics. Handled I/O and
+  execution failures collapse to the same standard cancellation status as user
+  cancellation, with no custom error status; all can leave the temporary file.
+  Cancellation observed after the final move can also coexist with a created
+  target. File presence alone is therefore not a success oracle: the runner
+  needs identity-matched terminal semantics plus a new, non-empty, stable target.
+  Consequently, even two exact absence checks cannot eliminate a race in which
+  another writer creates the final target before HRC's move. The implementation
+  gate needs a validated exclusively owned staging namespace plus fail-if-exists
+  promotion to the canonical name. A high-entropy filename alone is
+  insufficient. That namespace, its exclusive HRC-control lease, and externally
+  readable terminal states remain TO CONFIRM, and temporary files must not be
+  deleted automatically.
 
 ### Installed Finish inspection
 
@@ -160,6 +365,35 @@ been live-confirmed.
   `E0E28699ECD8783597B3E481D18CFA5A1889FFB9F3007260BD2DD78311779BC4`,
   and SWT SHA-256
   `5315B5A2E1260CEB125B421CBCD467935ED9666374E57C38AECBAA04E01DFC85`.
+
+### Installed hand-tab closure inspection
+
+These are static findings and a guarded live-probe design. Run 19 did not send
+the close command because the required native focus and active-editor identity
+were not established.
+
+- SWT exposes the hand-tab strip as an MSAA tab folder with tab-item children.
+  The close glyph is not a separate accessible child, and a tab item's default
+  action is `Switch`, not Close. UIA or MSAA invocation of the item must not be
+  treated as a close operation.
+- `Ctrl+W` is an HRC command prefix, including the `Ctrl+W`, then `H` route that
+  opened retained-state Hand Setup in run 18. It is not a tab-close shortcut.
+- Installed Eclipse bindings map `Ctrl+F4` to `org.eclipse.ui.file.close`, which
+  closes the active editor with save handling. A future Cancel-only probe must
+  first focus the exact tab-folder HWND natively, verify that `*From Hand 7` is
+  the single selected tab, and use a Left/Right selection round-trip through
+  `*Hand 7` to prove Eclipse activates the intended editor. Any focus,
+  selection, order, or identity mismatch must stop before `Ctrl+F4`.
+- Static JFace inspection expects owned prompt title `Save Resource`, message
+  `Save 'From Hand 7'?`, raw native buttons `&Save`, `Do&n't Save`, and
+  `Cancel`, and UIA names `Save`, `Don't Save`, and `Cancel`. Save is the default
+  button, so Enter is dangerous.
+- For that live probe only, the safe non-destructive outcome is one freshly
+  guarded native `BM_CLICK` on the unique visible enabled `Cancel` button.
+  Escape, Enter, `Alt+F4`, and `Don't Save` must not be used. Success requires
+  the prompt to disappear while both dirty tabs, the selected active tab,
+  Progress state, HRC bounds, and files remain unchanged. An unknown outcome
+  stops without retry.
 
 ## Data-preserving NatTable bootstrap on 11 August 2026
 
@@ -432,6 +666,49 @@ tree-creation error, cancellation, and unknown-timeout paths remain TO CONFIRM
 live. The current HRC state is active unsaved `*From Hand 7` with unsaved
 `*Hand 7` still open; neither has matching outputs and neither may be discarded
 through the Viewer-only close workflow.
+
+## Non-writing lifecycle mapping on 12 August 2026
+
+This follow-up used active unsaved `*From Hand 7`. It did not rename the hand,
+submit Nash, save or export a file, open a close prompt, or close either dirty
+tab.
+
+- `Ctrl+H` followed by `R` opened Rename Hand. The dialog exposed exact title
+  `Rename Hand`, label and edit name `Rename to:`, and named `OK` and `Cancel`
+  buttons. `From Hand 7` was visibly selected in the edit.
+- A provider `set_value` action against that edit returned an unknown outcome.
+  Fresh observation proved that the displayed name remained `From Hand 7`; the
+  action was not retried. The provider reported a background edit as focused
+  despite the visible selection. Escape cancelled, leaving both tab names
+  unchanged.
+- `Ctrl+Alt+S` opened the standard Save As dialog at exact address
+  `\\VAULT\sims\Preflop\HU`. It proposed `From Hand 7.hrcv` and visibly
+  selected `*.hrcv Viewer Save`. The standard filename edit, type combo, Save,
+  Cancel, address, and existing Viewer-file items were accessible.
+- The provider reported `Search HU` as focused instead of the visibly selected
+  File name field, and the accessibility tree did not expose the selected type
+  text. Escape cancelled without writing. Read-only metadata checks afterward
+  confirmed that exact `From Hand 7.hrcv` and `From Hand 7.zip` targets were
+  absent.
+- `Ctrl+H` followed by `E` opened Export Strategies. It visibly retained
+  Complete Export, Depth `2`, PrettyPrint JSON clear, threshold `0.1`, and the
+  two-node `R` / `C` range tree. The provider exposed the scope combo, spinner,
+  tree, OK, and Cancel but again reported a background edit as focused.
+- A provider semantic action against the scope combo returned an unknown
+  outcome. Fresh observation proved that the displayed scope and every visible
+  value were unchanged; the action was not retried. Escape cancelled without
+  opening an archive dialog or writing a file.
+- `Alt+F` exposed File menu items New Calculation, Load Hand, View Hand, Import,
+  Save, Save As, and Exit. It contained no hand-close command. A semantic click
+  on the already-active `*From Hand 7` tab succeeded and moved the pointer away
+  from an incidental range tooltip, but the provider still reported the
+  background Strategy Table edit as focused. No close command was sent.
+
+This run confirms non-coordinate entry and non-writing cancellation for the
+three later dialogs, plus the exact current Viewer destination/type/name and
+Export visible state. It does not establish machine-readable Rename text input,
+Viewer type read-back, Export control, native focus, tab closure, or standalone
+delivery. Both dirty tabs remain open and Progress remains idle.
 
 ## Idle control-map discovery on 11 August 2026
 
@@ -719,30 +996,49 @@ operation to finish:
 4. Open Nash Calculation again. Keep the same algorithm, scope, and sampling
    mode. Set CI Target to `1.0`. Select Reset Strategies and keep Reset Regret
    clear. Queue the operation with OK.
-5. Queue a Viewer save as an `.hrcv` file under
-   `\\VAULT\sims\Preflop\HU`. Use the corresponding table-size folder for
-   other workflows, such as `5m`. Save As can retain its previous type or
-   default to `*.hrcz Complete Save`. Select `*.hrcv Viewer Save` and confirm
-   the `.hrcv` extension before Save.
+5. Queue a Viewer save under `\\VAULT\sims\Preflop\HU` using a new high-entropy
+   filename inside a validated exclusively owned staging namespace. Use the
+   corresponding table-size folder for other workflows, such as `5m`. Save As
+   can retain its previous type or
+   default to `*.hrcz Complete Save`. Select `*.hrcv Viewer Save`; read back the
+   exact lowercase staging filename and `.hrcv` extension. After the exact Job
+   succeeds and staging metadata is new/non-empty/stable, promote it with
+   fail-if-exists semantics to `HU-1.hrcv`.
 6. After the queued operations finish successfully, open `Hand` →
    `Export Strategies`. Use `Complete Export`, Depth `16`, clear
-   `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save
-   `HU-1.zip` with `*.zip Archived Json` in the HU folder. In inspected HRC
-   `4.1.1`, Complete Export is unlimited-depth and does not consume the visible
-   Depth setting; set and read back `16` to preserve the required workflow.
+   `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. In Save As,
+   require both exact filters, select/read `*.zip Archived Json`, and save to a
+   new high-entropy `.zip` filename in that exclusive namespace. After the
+   exact Job succeeds and staging metadata is new/non-empty/stable,
+   promote it with fail-if-exists semantics to `HU-1.zip`. In the inspected calculator plug-in
+   `4.1.1`, Complete
+   Export is unlimited-depth and does not consume the visible
+   Depth setting; set and read back `16` to preserve the required workflow. The
+   visible ZIP type is not an archive-format oracle because of the hidden
+   retained-index defect documented above.
 7. Start the next simulation.
 
-Before step 1, verify that neither exact target `HU-1.hrcv` nor `HU-1.zip`
-exists. Use the corresponding unique base name for each later simulation. Stop
-and choose a new unique name if either target exists. Recheck the exact target
-immediately before each Save. If HRC shows an overwrite prompt, select Cancel
-and stop; never replace an existing output.
+Before step 1, reserve and verify that neither canonical target `HU-1.hrcv` nor
+`HU-1.zip` exists. Use the corresponding unique base name for each later
+simulation. Stop and choose a new unique name if either exists. Acquire the
+exclusive HRC-control lease, atomically reserve and verify an exclusively owned
+staging namespace, then generate absent high-entropy targets inside it. Recheck
+each staging target immediately before HRC Save and each canonical target before
+fail-if-exists promotion. If HRC shows an overwrite prompt, select Cancel and
+stop; never replace an existing output.
 
-After step 6, verify the new Viewer file and strategy archive. Both files must
-exist and must not be empty. Close the completed hand tab before step 7. HRC
-shows `Save Resource` with `Save '<simulation-name>'?`. Confirm that both output
-base filenames and the prompt name match the completed simulation. Only then
-select `Don't Save` and confirm that only `Home` remains. Stop on any mismatch.
+Before the workflow, treat every pre-existing hand-editor tab as protected and
+snapshot its stable identity, title, and dirty state. After step 6, verify the
+canonical Viewer file and `.zip`-named strategy output. Both files must exist and
+must not be empty; separately require a proved ZIP format state without
+inspecting strategy contents. Immediately before closure, require the exact
+hand-editor set to equal the protected identities plus exactly one expected
+completed simulation. Close only that completed tab before step 7. HRC shows
+`Save Resource` with `Save '<simulation-name>'?`. Confirm that both output base
+filenames and the prompt name match the completed simulation. Only then select
+`Don't Save`; require the post-close set to equal exactly the unchanged
+protected identities, with no addition or replacement. Explicitly activate
+`Home`, verify its page, and stop on any mismatch.
 
 The required sequence is Euan's workflow definition. The second Nash dialog
 opened while CI 10 Progress was visible. After submission, CI 1 Progress
@@ -765,16 +1061,16 @@ completion, or failure states.
 | Detect tree-script error | `Script Error`; error text; `OK`; `[Errors]` | The exact error and OK were exposed | Dialog; text; button | Error text `924558`; OK `859030` in this session | TO CONFIRM | TO CONFIRM | Record the exact error and stop before Finish. | Not applicable | The five-player candidate reported `Error: Effective stack does not match a configured workbook column: 100000`; Finish was disabled and Total Nodes was `0`. | TO CONFIRM: the visible failure is distinguishable, but durable automated detection is unproven. |
 | Verify tree preview | `Preview`; `Action`; `Amt [BB]`; `Player`; `Street` | The current tree exposed selectable action-only items. Amount, player, and street were visible but absent from item names. | Tab; tree; tree items | HU tree `923428` earlier; current Preview tab `661798`; current tree `989272`; stability TO CONFIRM | Tree items were selectable; a durable expand operation remains TO CONFIRM. | Shift+Tab reached Preview from Scripting; Right expanded the selected HU root in the latest supervised run | Expand and inspect the documented candidate paths before Finish. | Both the pre-conversion and exact current HU candidates showed `R 2.00 SB PRE` with only `C 1.00 BB PRE` at equal `2 bb`. The listed five-player multiway paths matched the current candidate manifest for that setup. | Any unexpected branch, amount, player, or street must stop the workflow. | NO for automation: supervised keyboard and screenshot inspection worked, but provider focus was wrong and the accessible item names omitted three required columns. Evidence remains path-scoped. |
 | Finish tree setup | `Finish`; raw native caption `&Finish` | `Finish` in the live provider | Button | Provider ID `3673952` in run 18; native HWND is session-only | Guarded native `SendMessageTimeout(BM_CLICK)` confirmed live; provider indexed action unavailable | Enter worked in run 6 but is not durable; valid Tab and Space did not activate Finish in run 16 | Snapshot the hand-editor tab set. Require exactly one visible HRC-owned `Hand Setup` `#32770`, its ownership by the main HRC window, and exactly one visible enabled child `Button` with raw caption `&Finish`. Re-enumerate immediately, send one guarded `BM_CLICK`, and never retry an unknown outcome. | Relative to the pre-action set, the one native action closed Hand Setup and added exactly one expected accessible hand-editor tab, `*From Hand 7`, alongside `*Hand 7`; no error appeared. | Wizard closure or idle alone is not success. Zero, multiple, wrong-type, replaced, renamed-only, or unknown tab deltas must stop without retry. An explicit tree-creation error or cancellation is terminal non-success. | TO CONFIRM overall: the guarded positive action and exact-one-hand-editor-tab detector are confirmed, but explicit error, cancellation, unknown-timeout handling, and target-runner reproduction remain unvalidated. No keyboard focus is required for the confirmed action. |
-| Rename | `Hand`; `Rename Hand`; `Rename to:`; `OK`; `Cancel` | Same as visible labels | Menu item; edit; buttons | Menu command `143`; edit `793498`; OK `8263114`; Cancel `1445454` | TO CONFIRM | `Ctrl+H, R`; Escape cancelled the dialog | Open Rename Hand, replace the current name with `HU-1`, and select OK. | The production demonstration changed `*Hand 2` to `*HU-1`. The 11 August inspection opened the labelled dialog and cancelled without a rename. | A rejected value or unchanged tab must be detected. | TO CONFIRM: controls are named, but setting the value and verifying rejection remain untested through the target runner. |
+| Rename | `Hand`; `Rename Hand`; `Rename to:`; `OK`; `Cancel` | Same as visible labels | JFace input dialog; writable name edit plus hidden/read-only error edit; buttons | Run 19 name edit `2300212`, OK `3808978`, Cancel `6425084`; earlier IDs differed | Provider value action returned unknown; guarded `WM_SETTEXT`, read-back, and exact OK `BM_CLICK` are static candidates | `Ctrl+H`, then `R`; Escape cancelled | Separate dirty decoration from tab bases; require active base != requested and requested absent across bases. Assert unique owned dialog/roles; freshly enumerate before set/read and again before enabled-OK click; require same editor/selection/count/dirty state and exact old-full-title to expected-full-title replacement. | The production demonstration changed `*Hand 2` to `*HU-1`. Static inspection says accepted Rename updates the active editor synchronously without a job, file write, or dirty-state change. Run 19 proved exact dialog entry and Escape cancellation. | Empty input hides the blank validation result but disables OK. Too-long and listed invalid characters have exact messages. Same/duplicate names are accepted. Any owner/control/validation/read-back/enabled-state/title/selection/count/dirty-state mismatch or unknown outcome must stop without retry. | NO through the current provider. The native route and exact post-state are statically defined, but live enumeration, set/read-back, guarded OK, validation, and unknown-outcome handling remain TO CONFIRM through the target runner. |
 | Submit CI 10 | `Run Nash Calculation`; `Nash Calculation`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices and a transient CI editor | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later OK/Cancel IDs changed; CI editor `3087194`; stability disproven | Default NatTable selection, edit, and raw-copy bindings worked live. `Ctrl+C` returned the exact selected-cell value. | `Alt+R`; from initially focused OK use `Shift+Tab`, `Ctrl+A`, mandatory `Ctrl+Home`, Right; Down by row; use `Ctrl+C` for each value; F2 edits; `Alt+F4` closes without submission | Explicitly read and set `HRC 4.0 (Default)`, Full Tree, Until CI value is reached, CI Target `10.0`, Reset Regret clear, and Reset Strategies clear. Read back each value before selecting OK. | Per-cell raw copy returned the exact retained values, including CI `1.0` and reset pair `false,false`. The earlier probe separately committed CI `10.0`, but did not copy it after editing and closed without submission. The earlier demonstration showed Progress with `MC-CFR [Target CI < 10.00]`. | Whole-grid `Ctrl+A`, `Ctrl+C` copied only `CFR Algorithm`. Omitting `Ctrl+Home` caused ambiguous highlighting. A malformed value, rejected edit, failed submission, or unrecognised post-state must stop. | NO for submission: exact supervised per-cell read-back is confirmed, but native focus, CI `10.0` post-edit copy, OK submission, and accepted, rejected, queued, running, cancelled, completed, or failed detection remain unproven through the target runner. |
 | Submit CI 1 | `Run Nash Calculation`; `Reset Strategies`; `OK`; exact setting labels | Base accessibility exposed OK and Cancel; F2 exposed exact combo choices | Dialog; buttons; NatTable; combo list; edit | Earlier OK `662418` and Cancel `859034`; later IDs changed; stability disproven | Default NatTable selection, edit, checkbox, and raw-copy bindings worked live. | Use the same mandatory bootstrap; navigate from origin to both reset rows; Space toggles the selected reset cell; `Ctrl+C` reads each raw Boolean; `Alt+F4` closes without submission | Explicitly read and keep the same algorithm, scope, and sampling mode. Set CI Target to `1.0`, select Reset Strategies, keep Reset Regret clear, read back every value, and only then select OK. | With Reset Strategies visibly checked, per-cell copies returned the exact required pair `Reset Regret = false`, `Reset Strategies = true`. Strategies was restored to `false` before `Alt+F4`. The earlier demonstration showed Progress with `MC-CFR [Target CI < 1.00]`. | Any reset pair other than required `false,true`, any malformed read-back, failed submission, or unrecognised post-state must stop. Cell highlighting is not a value oracle. | NO for submission: exact supervised reset-pair verification is confirmed, but native focus, OK submission, post-OK one-shot clearing, and accepted, rejected, queued, running, cancelled, completed, or failed detection remain unproven through the target runner. |
-| Detect accepted, rejected, queued, running, cancelled, completed, or failed Nash state | `Progress`; `HU-1: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]`; further labels TBD | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | TO CONFIRM | Read the dialog and Progress surfaces without changing the operation. | The operation name, target CI, activity bar, and stop button were visible in an earlier demonstration. | Exact rejection, cancellation, completion, and failure or unknown-timeout outcomes are TBD. | TO CONFIRM: visible running targets are observed, but machine-readable acceptance, queue order, cancellation, terminal success, and failure states are not. |
-| Viewer save | `File`; `Save As`; `File name:`; `Save as type:`; `*.hrcv Viewer Save`; `Save` | Standard dialog labels were exposed | Dialog; edits; combo box; buttons | Filename `1001`; type host `FileTypeControlHost`; Save `1`; Cancel `2` | Standard dialog patterns; exact set TO CONFIRM | `Ctrl+Alt+S` opens Save As; Escape cancelled | Preflight the exact `.hrcv` and matching `.zip` targets as absent. Open Save As, select `*.hrcv Viewer Save`, confirm the simulation filename with an `.hrcv` extension, browse to the applicable table-size folder, recheck the exact `.hrcv` target, and select Save. | `HU-1.5.hrcv` was submitted earlier. On 11 August, Save As opened at the HU folder with `*.hrcv Viewer Save` retained and was cancelled. | A prior run defaulted to `*.hrcz Complete Save`. The type can vary and must be read before Save. Cancel and stop on any existing target or overwrite prompt. | TO CONFIRM: the standard dialog is strong, but type selection and long-run queue behaviour remain untested through the target runner. |
+| Detect accepted, rejected, queued, running, cancelled, completed, or failed Nash state | `Progress`; `<hand-name>: Monte Carlo Sampling`; `MC-CFR [Target CI < 10.00]`; `MC-CFR [Target CI < 1.00]`; `No operations to display at this time.` | Visible running labels were demonstrated; exact terminal result is not externally exposed | Eclipse Job and Progress view | No public UUID; both submissions share one public name | In-process `IJobChangeListener` supplies exact object identity/state/result statically; no supported external hook was found | UI-only route is insufficient | Associate each scheduled Job object with submission order; require `WAITING`, `RUNNING`, and its own terminal `IStatus`. A later Job must not validate an earlier one. | Static inspection proves two distinct serialised Jobs and exact `OK` success. Earlier UI showed each running target. Severity `ERROR` is retained externally. | `CANCEL` and `ERROR` are explicit in-process, but successful and cancelled Jobs can both disappear into the same idle text. Achieved CI, samples, dirty/model state, editor refresh, Viewer success, and Viewer metadata are not outcome-specific. Missing/mismatched events and timeout are unknown. | NO for the current external UI-only architecture. Exact terminal detection requires an authorised in-process event bridge or another independently proven durable postcondition. |
+| Viewer save | `File`; `Save As`; `File name:`; `Save as type:`; `*.hrcv Viewer Save`; `Save` | Standard dialog labels, exact address, and existing file names were exposed | Standard Save As dialog; edits; combo box; buttons | Filename `1001`; type host `FileTypeControlHost`; Save `1`; Cancel `2` | Standard patterns; exact filename/type read-back and setting remain TO CONFIRM LIVE | `Ctrl+Alt+S` opens Save As; Escape cancelled | Acquire the exclusive HRC-control lease and atomically reserved private staging namespace; preflight canonical and staging targets; set/read destination, lowercase `.hrcv` staging filename, and Viewer type; submit once; identity-match `Saving hand to: <staging-filename>`; require success and stable non-empty staging metadata; publish canonical output with fail-if-exists semantics. | `HU-1.5.hrcv` was submitted earlier. Run 19 opened exact HU destination, proposed `From Hand 7.hrcv`, visibly selected Viewer Save, and cancelled. Static inspection proves accepted Viewer Save queues on the same per-hand rule and leaves the editor dirty. | Type and folder are retained mutable state. Run 19's provider reported Search and omitted selected type text. HRC can replace a race-created staging target, so high entropy alone is insufficient. Any guard, namespace, path, field, type, name, prompt, Job, result, or output mismatch must stop. | NO for a write: native control, identity-matched result, exclusive HRC-control lease/namespace, and fail-if-exists publication remain unvalidated through the target runner. |
 | Verify Viewer output | `<simulation-name>.hrcv` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new file without opening or modifying it. | `HU-1.hrcv`, `HU-1.5.hrcv`, and `HU-2.hrcv` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
-| Submit strategy export | `Hand`; `Export Strategies`; `Complete Export`; `Depth:`; `PrettyPrint JSON`; `Node Filter Threshold %`; `OK` | Scope and some settings were unnamed; Depth and buttons were exposed | Combo box; spinner; edit; tree; buttons; settings NatTable known statically | Scope `1055578`; Depth spinner `334010`; Depth edit `334742`; OK `596422`; Cancel `399476` | TO CONFIRM LIVE; static native-control and NatTable routes exist | `Ctrl+H`, then `E` opened the dialog; Escape cancelled. Static alternate menu route and settings read-back remain TO CONFIRM LIVE. | Preflight and recheck the exact `.zip` target as absent. Explicitly select and read back Complete Export, set and read back visible Depth `16`, clear PrettyPrint JSON, keep threshold `0.1`, and select OK. Save `<simulation-name>.zip` in the applicable table-size folder with `*.zip Archived Json`. | The shortcut opened the dialog with the expected retained values and expanded two-node range tree. Earlier runs created non-empty archives. Static inspection says Complete Export is unlimited-depth despite the visible Depth value. | Settings may persist after Cancel. `PrettyPrint JSON` and threshold were not reliably named live. No explicit export-success or failure message was captured. Cancel and stop on any existing target or overwrite prompt. | NO until every required setting, focus target, retained-value read-back, and failure state has a live durable path. |
-| Verify strategy archive | `<simulation-name>.zip` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new archive without opening or modifying it. | `HU-1.zip`, `HU-1.5.zip`, and `HU-2.zip` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. | YES for read-only metadata verification of these exact new files. |
-| Close completed hand tab | `Close`; `Save Resource`; `Save '<simulation-name>'?`; `Don't Save`; `Home` | `Save Resource`; `Save 'HU-2'?`; `Save`; `Don't Save`; `Cancel` in the `HU-2` session | The three dialog buttons exposed class `Button` and UIA control type `Pane` in the `HU-2` session. | Numeric session values only; stability TO CONFIRM | `Don't Save` did not expose InvokePattern in the `HU-2` session. | `Ctrl+F4` had no effect on `*Hand 6` | Close the unsaved hand tab after both outputs are verified. Confirm that both output base filenames and the prompt name match the completed simulation. Only then select `Don't Save`. | `Don't Save` closed `*HU-1.5` and `*HU-2`. Only `Home` remained, and both output files persisted in each Viewer-only run. | The effects of `Save` and `Cancel` are TO CONFIRM. Any filename or prompt mismatch must stop the transition without discarding the hand. | TO CONFIRM: the semantic prompt and button names were accessible once, but a supported durable operation and tab-close target remain unproven. |
-| Start next simulation | `New: Monte Carlo Hand`; `Hand`; `Start New Calculation` | Home link named; command semantics TO CONFIRM | Link; command | TO CONFIRM | TO CONFIRM | `Ctrl+W`, then `H` works from an active hand but inherits its state | Start the next simulation from Home only after both outputs are verified and the completed tab is closed. Require a known clean setup or overwrite and verify every retained field. | The Home link opened Hand Setup during isolated discovery. | Run 18 proved that the active-hand shortcut retains rows and script and creates a `From Hand` resource. It must not be treated as a clean transition. | TO CONFIRM: the post-close Home transition and inherited-state reset contract have not been demonstrated. |
+| Submit strategy export | `Hand`; `Export Strategies`; `Complete Export`; `Depth:`; `PrettyPrint JSON`; `Node Filter Threshold %`; `OK` | Title and instruction were exposed; scope and settings values were not named machine-readably | Combo box; spinner; edit; tree; buttons; settings NatTable and two Save As helpers known statically | Run 19 scope `2103484`, spinner `5969360`, edit `1579322`, OK `407704098`, Cancel `1186062`; earlier IDs differed | Provider scope action returned unknown; static native-control, NatTable, and standard FileDialog routes remain TO CONFIRM LIVE | `Ctrl+H`, then `E` opened the dialog; Escape cancelled | Under the same exclusive session/private namespace, set/read every Export value; require exactly ZIP and Plain Text; select/read ZIP; preflight staging; accept once; identity-match `Exporting ranges to <staging-filename>` including `.zip`; require Job success and stable non-empty metadata; publish canonical output with fail-if-exists semantics. | Run 19 visibly retained Complete Export, Depth `2`, PrettyPrint clear, threshold `0.1`, and the two-node range tree; Escape cancelled before Save As. Earlier runs created non-empty `.zip`-named files. Static inspection proves the fresh-hand two-filter guard and that accepted ZIP sets the writer index before submission. | Export closes even when Save As returns no path; disappearance is not submission. A ZIP-only dialog is unverifiable. The writer can truncate a race-created target, and error/cancellation can delete or leave partial output. Never inspect ZIP contents or delete a partial file automatically. | NO until every action/read-back, two-filter guard, identity-matched result, exclusive session/namespace, and fail-if-exists publication have a live durable path. |
+| Verify strategy output metadata | `<simulation-name>.zip` | Not applicable | File | Not applicable | Not applicable | Not applicable | Verify the new `.zip`-named file without opening or modifying it. | `HU-1.zip`, `HU-1.5.zip`, and `HU-2.zip` existed at the required HU path with non-zero sizes. | The file is absent, empty, or saved elsewhere. Hidden format state cannot be resolved from metadata. | YES for read-only metadata verification of these exact files; NO as proof of archive format. |
+| Close completed hand tab | `Close`; `Save Resource`; `Save '<simulation-name>'?`; `Don't Save`; `Home` | Prior prompt exposed its title, message, and three named buttons; the tab close glyph is not an accessible child | MSAA tab folder/items; owned JFace prompt; native buttons | Numeric session values only; stability TO CONFIRM | Tab-item default action is only `Switch`; guarded `Ctrl+F4` plus prompt-button native action is a static candidate | Previous `Ctrl+F4` had no effect while active-editor focus was not proved | Treat every pre-existing hand-editor tab as protected. Immediately before close require the exact set to be those stable identities plus exactly one expected completed target. Prove exact target editor/focus, send `Ctrl+F4` once, require the exact prompt, then select `Don't Save`. Require the post-close set to equal exactly the unchanged protected identities, with no additions or replacements; explicitly activate Home. A pre-production probe uses exact Cancel instead. | Earlier clean-session demonstrations closed `*HU-1.5` and `*HU-2` and left only Home. Static inspection supplies an exact Cancel-only probe contract, but it was not executed in run 19. | Any focus, selection, prompt, filename, tab-set, target-removal, timeout, or Home-state mismatch must stop without retry; Enter is dangerous because Save is default. | NO until native target proof, one `Ctrl+F4` prompt, guarded Cancel/unchanged post-state, guarded `Don't Save`/exact-set removal, protected-tab preservation, and Home activation are live-confirmed through the runner. |
+| Start next simulation | `New: Monte Carlo Hand`; `Hand`; `Start New Calculation` | Home link named; command semantics TO CONFIRM | Link; command | TO CONFIRM | TO CONFIRM | `Ctrl+W`, then `H` works from an active hand but inherits its state | Explicitly activate Home after target-only closure, preserve protected tabs, then open a new Monte Carlo Hand from Home. Require a known clean setup or overwrite/read every retained field. | The Home link opened Hand Setup during isolated discovery. | Run 18 proved that the active-hand shortcut retains rows and script and creates a `From Hand` resource. It must not be treated as a clean transition. | TO CONFIRM: the target-only close, Home activation with protected tabs still open, and next clean setup have not been demonstrated. |
 
 ## Observable states
 
@@ -782,6 +1078,7 @@ completion, or failure states.
 | --- | --- | --- | --- | --- |
 | Configured | Hand Setup closed. An unsaved `*Hand 1` tab opened with strategy, range, and HU table views. Progress showed no active operation. | The tree exposed `*Hand 1`, `Strategy Table`, `Hand Settings`, and `Run Nash Calculation (Alt+R)`. | CONFIRMED | Tree creation completed. The calculation was not started. |
 | Native Finish succeeded | One guarded native `BM_CLICK` closed Hand Setup and opened `*From Hand 7` alongside `*Hand 7`; no error appeared and Progress was idle. | Before action, native enumeration found one owned `#32770` and one visible enabled `Button` captioned `&Finish`. Relative to the pre-action hand-editor set, the accessible set gained exactly one expected editor tab. | CONFIRMED for the positive Finish path | The provider's indexed action was unavailable and was not used. Wizard closure or idle alone is not success. Zero, multiple, wrong-type, replaced, renamed-only, or unknown tab deltas must stop. Explicit failure, cancellation, and unknown-timeout paths remain TO CONFIRM live. |
+| Later lifecycle dialogs cancelled without output | Rename Hand, Save As, and Export Strategies each opened from active `*From Hand 7` and returned unchanged after Escape. | Named dialog controls were exposed, but provider focus pointed to background or wrong fields; Rename and Export semantic actions returned unknown and fresh observation showed no change. | CONFIRMED for entry, visual state, cancellation, and no output only | Exact Rename input, Viewer filename/type read-back, Export setting control, and native focus remain TO CONFIRM. Both corresponding exact output targets remained absent. |
 | Five-player inputs accepted | Basic Hand Data showed `HJ`, `CO`, `BU`, `SB`, and `BB` with `10`, `20`, `30`, `40`, and `50` bb. `Alt+N` opened Betting Setup. | The transient stack editor was unnamed and provider focus data was wrong. | CONFIRMED visually | This confirms the manual setup only. It does not confirm safe stack automation or a multiway tree. |
 | HU 2bb shallow preview verified | Expanded Preview showed `R 2.00 SB PRE` with exactly one child, `C 1.00 BB PRE`. | The preview tree exposed root `R` and child `C`. | CONFIRMED for both the pre-conversion revision and exact current worktree candidate at equal `2 bb` | No SB completion branch was present. This does not validate the `5 bb` boundary, other HU stacks, or multiway behaviour. |
 | Nash configurations inspected without submission | The grid exposed the exact algorithm, scope, sampling, CI, and reset values. Per-cell raw copy returned the retained values. With Reset Strategies checked, the required pair read `false,true`; Strategies was then restored to `false`. | Base accessibility exposed the buttons; F2 exposed combo items and a transient CI editor. `Ctrl+C` returned raw selected-cell values. | CONFIRMED for supervised configuration, per-cell read-back, reset-pair verification, and non-submitting close routes | One whole-grid copy returned only the origin label. From initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4` closed from the grid without submission. CI `10.0` was not copied after its separate edit. No OK submission occurred and Progress stayed idle. |
@@ -793,7 +1090,7 @@ completion, or failure states.
 | HU stack values committed and rejected input recovered | The combined keyboard route committed `SB 4100 / 41.0 bb` and `BB 5100 / 51.0 bb`; Escape cancelled the blank third-row editor. Invalid `abc` stayed red and did not commit on Enter; Escape restored `4100 / 41.0 bb`. | Transient editors were unnamed and changed IDs. The provider incorrectly reported background Range edit `69008` as focused. | CONFIRMED visually for this supervised HU path | This proves different-valid-value entry, derived visual read-back, blank-row cancellation, and one non-numeric recovery. Machine-readable cell verification, multiway operation, and standalone delivery remain TO CONFIRM. |
 | Script picker opened and cancelled | From the visible focus rectangle on `Back`, the keyboard route selected Scripting and opened the standard Open dialog at the worktree candidate folder. Escape restored the visible focus rectangle to the folder button; Space reopened the same folder and Escape cancelled again. | The Open dialog exposed both filenames and named standard controls, but provider focus disagreed with the visible File name caret. | CONFIRMED for one supervised non-coordinate route and one same-setup reopen | No script was selected. Native foreground/focus, active-field, exact-candidate, post-load, and standalone assertions remain TO CONFIRM. |
 | Renamed | The tab changed from `*Hand 2` to `*HU-1`. | TO CONFIRM | CONFIRMED visually | Progress later used the `HU-1` name. |
-| Queued | No persistent queue list was visible in the captured states. | TBD | TO CONFIRM | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. |
+| Queued | Installed inspection shows every OK schedules a distinct Job and the shared per-hand rule serialises them; no persistent queue list was visible in the captured states. | Exact identity exists only as the in-process Java Job object. Both use the same public name. | CONFIRMED statically for distinct Job creation and serialisation; TO CONFIRM externally | The CI 1 dialog opened while CI 10 was visible, but the small operation transitioned quickly. Serialisation does not require CI 10 to succeed before CI 1 runs. |
 | CI 10 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 10.00`. | TBD | CONFIRMED visually | A red stop button and activity bar were visible. |
 | CI 1 running | Progress showed `HU-1: Monte Carlo Sampling` and target CI `< 1.00`. | TBD | CONFIRMED visually | Reset Strategies displayed a checkmark in the submitted dialog. |
 | CI 10 no longer displayed | The CI 10 line was replaced by the CI 1 line. | TBD | CONFIRMED visually | The reason for the transition is TO CONFIRM. No explicit successful-completion marker was captured. |
@@ -803,8 +1100,8 @@ completion, or failure states.
 | Calculation or output failed | TBD | TBD | TO CONFIRM | No Nash, Viewer Save, or export failure has been observed. |
 | Complete Save | The first Save As used the default `*.hrcz Complete Save` in error. The tab changed to `HU-1.hrcz`. | TBD | CONFIRMED visually | The unintended file was present and unmodified when last checked; later state is TO CONFIRM. |
 | Viewer output verified | The new `.hrcv` file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED | File contents were not opened or modified. |
-| Strategy archive created | The export dialog accepted the required settings and `HU-1.zip` path. HRC returned to the source tab. | File existence was verified separately. | CONFIRMED for non-zero file creation only | No explicit export-success message was visible. |
-| Strategy archive metadata verified | The new `.zip` file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED | The archive was not opened. Its structure, JSON content, and strategy completeness remain unverified. |
+| Strategy export file created | The export dialog accepted the required settings and `HU-1.zip` path. HRC returned to the source tab. | File existence was verified separately. | CONFIRMED for non-zero `.zip`-named file creation only | No explicit export-success message was visible, and hidden format state was not observed. |
+| Strategy output metadata verified | The new `.zip`-named file exists at the required HU path and has non-zero size. | Read-only file metadata returned the expected path, size, and timestamp. | CONFIRMED for metadata only | The file was not opened. Its actual format, structure, JSON content, and strategy completeness remain unverified. |
 | Viewer-only close prompt | `Save Resource` asked `Save 'HU-1.5'?` and later `Save 'HU-2'?`. Both prompts showed `Save`, `Don't Save`, and `Cancel`. | The `HU-2` prompt and button names were readable through UI Automation. `Don't Save` did not expose InvokePattern. | CONFIRMED visually; accessible operation TO CONFIRM | Viewer Save and strategy export did not clear the leading asterisk on either unsaved tab. |
 | Completed tab closed | `Don't Save` was selected. The source tab disappeared and only `Home` remained. | File metadata was verified after the close. | CONFIRMED | The `.hrcv` and `.zip` files persisted. No matching `.hrcz` file was present. |
 | Next simulation started | TBD | TBD | TO CONFIRM | The transition to the next simulation was not demonstrated. |
@@ -815,9 +1112,9 @@ completion, or failure states.
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | 10 August 2026, 22:40 BST | None | TREE CREATED | TBD | HU `1 bb` tree creation succeeded and opened `*Hand 1`. | No calculation or save was performed in this observation. |
 | 2 | 10 August 2026, 23:08–23:10 BST | `HU-1.hrcv`; unintended `HU-1.hrcz` | PARTIAL DEMONSTRATION | Progress changed to no operation displayed within the observation period. Explicit completion and production duration remain TO CONFIRM. | The demonstration renamed `*Hand 2` to `*HU-1`, submitted both Nash configurations, showed both running targets, made an accidental Complete Save, corrected it with Viewer Save, and verified the Viewer file. | This observation began with `*Hand 2` and is separate from run 1. Long-run queue order and explicit calculation success or failure remain unconfirmed. The unintended Complete Save was present and unmodified when last checked; later state is TO CONFIRM. |
-| 3 | 10 August 2026, 23:18 BST | `HU-1.zip` | PARTIAL DEMONSTRATION | The export and close transition completed within the observation period. | The demonstration kept Complete Export, changed Depth from `2` to `16`, kept PrettyPrint JSON clear, and kept the threshold at `0.1`. It saved a non-empty archive and then closed the source tab. | The source tab was `HU-1.hrcz` from run 2. The archive contents and close behaviour after a Viewer-only save remain unverified. |
+| 3 | 10 August 2026, 23:18 BST | `HU-1.zip` | PARTIAL DEMONSTRATION | The export and close transition completed within the observation period. | The demonstration kept Complete Export, changed Depth from `2` to `16`, kept PrettyPrint JSON clear, and kept the threshold at `0.1`. It saved a non-empty `.zip`-named file and then closed the source tab. | The source tab was `HU-1.hrcz` from run 2. The actual output format, contents, and close behaviour after a Viewer-only save remain unverified. |
 | 4 | 10 August 2026, 23:35–23:36 BST | `HU-1.5.hrcv`; `HU-1.5.zip` | PARTIAL DEMONSTRATION | Viewer Save submission, non-empty output creation, and Viewer-only tab closure were observed. | The demonstration began on `*HU-1.5`, submitted Viewer Save and strategy export, selected `Don't Save` in the close prompt, and returned to `Home`. Both files were non-empty after close, and no matching `.hrcz` file was present. | Euan reported that rename and both Nash runs were already complete before observation. Their completion was not independently observed. File contents were not opened. |
-| 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The pre-conversion HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | Run 5 did not inspect Preview or confirm the cutoff; run 6 later confirmed the equal-`2 bb` case for that revision. Euan assisted with strategy export. The archive contents were not opened. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
+| 5 | 10–11 August 2026, ending 00:13 BST | `HU-2.hrcv`; `HU-2.zip` | PARTIAL DEMONSTRATION | The two-node calculations returned to idle during the supervised observation. No explicit calculation-success marker appeared. | The pre-conversion HU candidate from `9b24166` created an equal-stack `2 bb` tree. Hand Setup reported two nodes. The run renamed the hand, submitted CI `10.0`, submitted CI `1.0` with Reset Strategies, created both non-empty outputs, verified no matching `.hrcz`, selected `Don't Save` on the exact `HU-2` prompt, and returned to `Home`. | Run 5 did not inspect Preview or confirm the cutoff; run 6 later confirmed the equal-`2 bb` case for that revision. Euan assisted with strategy export. The `.zip`-named file was not opened; actual format and contents remain unverified. Codex-specific window activation changed the HRC bounds and was discontinued. An unverified coordinate selected the root row instead of the tab close control; the later close point was verified by its exact tooltip before use. |
 | 6 | 11 August 2026 | None | ACCESSIBILITY DISCOVERY | No Nash operation or file write occurred. | HRC remained in a restored, near-full-size window. The same pre-conversion HU candidate loaded through the standard Open dialog. Hand Setup reported two nodes. Expanded Preview showed `R 2.00 SB PRE` with only `C 1.00 BB PRE`. Enter finished to `*Hand 6`. Rename, Nash, Save As, and Export Strategies were opened for inspection and cancelled. | Euan manually selected Hand Setup Next after programmatic input failed. A later same-day follow-up confirmed `Alt+N` as the keyboard route. Nash settings remained inaccessible in run 6. `Ctrl+F4` did not close the hand. The unsaved `*Hand 6` was still open at the end of run 6; its later disposition is TO CONFIRM. Run 16 later revalidated the current HU candidate and established a supervised Nash-grid route. |
 | 7 | 11 August 2026 | None | SCRIPT ERROR | No tree was finished and no Nash operation or file write occurred. | Euan configured five rows as `HJ 10`, `CO 20`, `BU 30`, `SB 40`, and `BB 50` bb. `Alt+N` advanced to Betting Setup. Loading the then-byte-identical pre-correction multiway candidate produced `Error: Effective stack does not match a configured workbook column: 100000`. | The pre-script default estimate was `448527` nodes and `3.1GB`; it was not a candidate result. After the error, Total Nodes was `0` and Finish was disabled. Offline regression coverage was added, but the corrected candidate was still HRC-unverified at the end of run 7. |
 | 8 | 11 August 2026 | None | TREE ESTIMATE AND PARTIAL PREVIEW | No tree was finished and no Nash operation or file write occurred. | Euan reported loading the corrected worktree candidate. A contemporaneous capture showed its basename without `[Errors]`, Total Nodes `1815589`, Total Tree Size `12.3GB`, and enabled Finish. Root and representative deeper Preview paths matched the current candidate manifest. | The prior `100000` error did not recur. Preview evidence is path-scoped, Finish was not selected, and the visible basename did not expose the full loaded path. Other stacks, table sizes, boundaries, later streets, and unexpanded paths remain TO CONFIRM. |
@@ -831,6 +1128,7 @@ completion, or failure states.
 | 16 | 11 August 2026 | None | CURRENT HU PREVIEW AND NASH-GRID DISCOVERY | No Nash operation or file write occurred. | The full supervised keyboard route selected HU, entered equal `2 bb` stacks, opened the exact worktree candidate after hash verification, showed no `[Errors]`, reported two nodes, and expanded the exact two-node Preview. A discovery-only current-frame Finish click created `*Hand 7`. Nash probes configured CI `10.0` and the required CI `1.0` plus Reset Strategies checkmark, then closed without submission. | Valid keyboard input did not activate Finish and appeared to reach the background. Nash required `Ctrl+A` followed by `Ctrl+Home`; omitting the second key caused ambiguous multi-cell/reset highlighting. From initial OK focus, Tab visibly focused Cancel and Space invoked it. `Alt+F4` closed from the grid without submission. Progress stayed idle and `*Hand 7` remained open. |
 | 17 | 12 August 2026 | None | NASH RAW READ-BACK DISCOVERY | No Nash operation or file write occurred. | On existing `*Hand 7`, the supervised grid route returned the six exact retained values through per-cell `Ctrl+C`. With Reset Strategies visibly checked, copies returned `Reset Regret = false` and `Reset Strategies = true`. Strategies was restored to `false` and copied again before closing without submission. | One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only `CFR Algorithm`; it is not the supported snapshot route. CI `10.0` was edited separately in run 16 but not copied after editing. Native foreground and focus were not independently asserted. Progress stayed idle, HRC kept its bounds, and `*Hand 7` remained open. |
 | 18 | 12 August 2026 | None | NATIVE FINISH DISCOVERY | No Nash operation or file write occurred. | From active `*Hand 7`, `Ctrl+W`, then `H` opened a retained-state setup. The supervised route selected HU and reached the retained two-node candidate estimate. Exact native enumeration found one owned Hand Setup dialog and one enabled `&Finish` button. One guarded `SendMessageTimeout(BM_CLICK)` added exactly one expected hand-editor tab relative to the pre-action set, `*From Hand 7`, with no error. | The provider could expose but not target the indexed Finish element; fresh observation proved no action before the native route. The active-hand shortcut retained the rows and script in this run and is not a clean next-simulation transition. Both unsaved tabs remain open; neither has matching outputs and neither may be discarded through Viewer-only closure. |
+| 19 | 12 August 2026 | None | NON-WRITING LIFECYCLE DISCOVERY | No rename, Nash submission, output, prompt, or tab close occurred. | On active `*From Hand 7`, the exact shortcuts opened Rename Hand, Save As, and Export Strategies. Rename and Export semantic actions returned unknown, then fresh observations proved no visible change. Save As showed exact HU destination, proposed Viewer filename, and Viewer type. Escape cancelled every dialog. | Provider focus disagreed with each visible field. The File menu had no hand-close command and the run exposed no named close target, so no close command was sent. Read-only checks confirmed both corresponding exact output targets remained absent; both dirty tabs and idle Progress were preserved. |
 
 ## Blockers
 
@@ -886,15 +1184,50 @@ completion, or failure states.
   per-cell parser and transition checks, CI `10.0` post-edit read-back, safe OK
   submission, and machine-readable accepted, rejected, queued, running,
   cancelled, completed, and failed post-states.
-- Export Strategies did not expose reliably named PrettyPrint JSON and
-  threshold controls. Its settings can persist after Cancel. Static inspection
-  shows that Complete Export is unlimited-depth even though Depth remains
-  visible. Safe targeting and read-back for every required setting are
-  unproven.
-- `Ctrl+F4` did not close the hand. A durable tab-close target and supported
-  operation for `Don't Save` remain unproven.
-- Long-run queue order and explicit completion or failure states have not been
-  observed.
+- Run 19 confirmed exact Rename dialog entry and cancellation, but provider
+  `set_value` returned unknown and fresh observation showed no name change.
+  Reported focus pointed to a background edit. Static inspection supplies exact
+  validation messages and a synchronous same-editor title post-state, but exact
+  input, read-back, guarded OK, and live rejected-value handling remain unsafe.
+- Save As opened at the exact HU destination with the expected proposed `.hrcv`
+  filename and Viewer type. The provider reported Search instead of File name
+  and did not expose the selected type text. Exact machine-readable destination,
+  filename, type, extension, write-job identity, and terminal-state handling
+  remain unsafe. Static inspection proves that Viewer Save uses the same
+  per-hand scheduling rule as Nash, but HRC's final replace-existing move leaves
+  a no-overwrite race after preflight. An exclusive HRC-control lease,
+  validated exclusively owned staging namespace, and fail-if-exists final
+  publication remain implementation-gate blockers.
+- Export Strategies exposed its native scope, spinner, tree, and buttons in run
+  19 but did not name the settings values machine-readably. Provider focus was
+  wrong; a scope action returned unknown and fresh observation showed no change.
+  Settings can persist after Cancel. Static inspection shows Complete Export is
+  unlimited-depth even though Depth remains visible. Its final writer uses
+  create-and-truncate rather than create-new, so preflight cannot prevent a
+  race-created target from being overwritten. Safe targeting, read-back,
+  identity-matched terminal detection, exclusive staging/HRC-control guards, and
+  fail-if-exists publication are unproven. A separate hidden retained-index
+  defect can write plain text to
+  a ZIP-only target and still return `OK`. Static inspection supplies a safe
+  fresh-hand guard—the actual Save As must expose both ZIP and Plain Text, and
+  accepted ZIP updates the consumed index—but its live durable route remains
+  unproved.
+- The tab close glyph is not an accessible child and a tab item's default action
+  only switches tabs. Static inspection supplies a guarded native-focus,
+  selection-round-trip, one-shot `Ctrl+F4`, exact-prompt, and Cancel-only probe.
+  Run 19 did not execute it because native focus and active-editor identity were
+  not proved. A durable live tab-close and `Don't Save` operation remain
+  unproven. The smoke must also protect every pre-existing hand-editor tab,
+  prove exact pre-close set equality with one added completed target, prove exact
+  post-close equality with the unchanged protected set, and explicitly activate
+  Home.
+- Installed inspection proves separate same-hand Nash Jobs serialise in
+  submission order, but visible names do not distinguish them and serialisation
+  is not dependency success. A UI-only observer cannot distinguish successful
+  completion from cancellation after either item disappears. No supported
+  external exact-result hook was found.
+- Version-specific paths are conditional on the exact eight-component fingerprint
+  above. The runner's filename/hash identity gate is not implemented or tested.
 - The transition to the next simulation has not been demonstrated.
 
 ## Verdict
@@ -904,8 +1237,9 @@ completion, or failure states.
 - Basis: The selected HU tree was configured and created without a visible
   error. Rename, both Nash submissions, running targets, Viewer Save, and
   read-only output verification were observed. Strategy-export submission,
-  non-zero archive creation, read-only archive verification, and source-tab
-  closure were also observed. The Viewer-only close prompt, `Don't Save`
+  non-zero `.zip`-named output creation, read-only metadata verification, and
+  source-tab closure were also observed. Actual archive format is unverified.
+  The Viewer-only close prompt, `Don't Save`
   result, and persistence of both output files were observed. A separate
   `2 bb` Preview of the pre-conversion HU revision directly showed the SB raise
   to `2.00 BB` with only the BB call. No SB completion branch was present. This
@@ -942,18 +1276,33 @@ completion, or failure states.
   `Ctrl+W`, then `H` from an active hand can inherit state: this run retained its
   rows and script and produced a `From Hand` resource. The shortcut therefore
   cannot serve as the clean next-simulation route.
+  Run 19 then reached Rename Hand, Viewer Save As, and Export Strategies without
+  coordinates and cancelled all three without output. It confirmed their exact
+  visible current states but also reproduced the provider's wrong focus and
+  failed semantic actions. Static inspection identified a coordinate-free tab-
+  close hypothesis, but its native-focus and Cancel-only live proof remain
+  outstanding.
+  Static Nash inspection proves that the CI Jobs are distinct and serialised,
+  but also proves that successful and cancelled Jobs can both disappear into
+  the same idle Progress state. Exact success is available only from in-process
+  Eclipse Job events; no supported external hook was found.
   The `5 bb` boundary, the first supported stack above it, and dynamic post-fold
-  behaviour remain unconfirmed. Long-run queue behaviour, explicit completion
-  or failure detection, and several critical accessible targets also remain
-  unconfirmed.
+  behaviour remain unconfirmed. Same-hand queue serialisation is statically
+  confirmed, but externally observable terminal success and several critical
+  accessible targets remain unconfirmed.
 
 ## Next action
 
 Continue supervised, non-writing discovery on the representative HU workflow.
-Preserve both current unsaved tabs. Use active `*From Hand 7` only for reversible
-or Cancel-only mapping of Rename, Viewer Save, Export, the exact tab-close target,
-and `Save Resource` Cancel; do not discard either hand without matching verified
-outputs.
+Before relying on any static route, resolve the active HRC installation and
+rehash the exact eight-component identity set above from its `plugins`
+directory. Stop on any process, path, filename, or hash mismatch.
+Preserve both current unsaved tabs. On active `*From Hand 7`, live-test the
+statically defined exact-tab-focus, selection-round-trip, one-shot `Ctrl+F4`,
+and `Save Resource` Cancel path only after native focus and active-editor identity
+can be proved. Do not use Enter, Escape, `Alt+F4`, or `Don't Save` in that probe.
+Require both dirty tabs, selected tab, Progress, HRC bounds, and files to remain
+unchanged. Stop without retry on any mismatch or unknown outcome.
 
 Integrate the confirmed per-cell Nash route with exact native-focus,
 clipboard-transition, and CI `10.0` post-edit read-back assertions. Before any
@@ -963,11 +1312,25 @@ accepted, rejected, queued, running, cancelled, completed, and failed states.
 Treat any focus, transition, value, hash, reset-pair, or post-state mismatch as a
 stop. A separate pre-runner live submission requires separate authorisation.
 
+Do not spend the authorised Nash submission merely watching Progress; that UI
+cannot make terminal success durable. First resolve the architectural blocker:
+either obtain explicit authorisation for an in-process Eclipse Job event bridge,
+or prove another durable external postcondition that distinguishes `OK` from
+`CANCEL` and `ERROR` for each exact submission.
+
+Do not submit the authorised strategy export until the standalone design can
+read the exact two-filter list and selected ZIP value in the actual Save As.
+Cancel does not reset the hidden state; the accepted staging export must supply
+the proof and update. Stop on a ZIP-only dialog. Extension, metadata, and Job
+success remain insufficient on their own.
+
 Resolve every other known critical control before releasing the implementation
-gate: Rename value and post-state; Viewer Save destination, type, filename,
-extension, submission, and cancellation; every Export setting and read-back;
-the exact hand-tab close target; matching `Save Resource` prompt; Cancel and
-`Don't Save`; return to Home; and the next-simulation transition. Use
+gate: machine-readable Rename value and post-state; Viewer Save destination,
+  type, filename, extension, submission, and job result; every Export setting and
+  read-back; identity-matched Viewer and Export terminals; an exclusive
+  HRC-control lease; a validated exclusively owned staging namespace; and
+fail-if-exists publication for both outputs; guarded `Don't Save`; active Home;
+and the next-simulation transition. Use
 non-writing, Cancel-only, prior demonstration, and static evidence wherever
 possible. Do not risk the reserved smoke against a known blocker.
 
@@ -983,8 +1346,12 @@ preserving CI `10.0` before CI `1.0`. Queue Viewer Save immediately without
 waiting for Nash completion. Wait for both Nash jobs and Viewer Save to finish
 successfully before strategy export. Disappearance or idle alone is never
 success. Verify the new non-empty `.hrcv` and `.zip`, then validate the exact
-matching `Save Resource` prompt, `Don't Save`, return to Home, and the next-
-simulation transition. Negative states not encountered during the smoke remain
+matching `Save Resource` prompt and `Don't Save`. Treat every pre-smoke
+hand-editor tab as protected; immediately before close require exactly that set
+plus the completed simulation, and afterwards require exactly the unchanged
+protected set with no additions or replacements. Explicitly activate Home and
+validate the next-simulation transition. Negative
+states not encountered during the smoke remain
 `TO CONFIRM`; any unrecognised state stops it. Verify the Save As destination,
 Viewer type, filename, and extension on every save.
 

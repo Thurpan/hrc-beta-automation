@@ -48,47 +48,122 @@ Use this lifecycle for each simulation:
    change to reset prior inputs. If the final stack commit opens the next blank
    row, cancel that editor and verify that no extra player was added.
 2. Rename the hand through `Hand` → `Rename Hand`. Use names such as `HU-1` or
-   `5m-10-30-30-20-12.5`.
+   `5m-10-30-30-20-12.5`. Compare hand-tab base names independently of their
+   leading dirty `*`: require the requested base to differ from the active base
+   and to be absent from every open hand-tab base before renaming.
 3. Queue a full-tree Nash calculation with `HRC 4.0 (Default)`. Run until the
    confidence interval (CI) reaches `10.0`. Keep Reset Regret and Reset
    Strategies clear.
 4. Queue a second full-tree Nash calculation with `HRC 4.0 (Default)`. Run
    until CI reaches `1.0`. Select Reset Strategies and keep Reset Regret clear.
-5. Queue a Viewer Save as an `.hrcv` file under
-   `\\VAULT\sims\Preflop\<table-group>`. Save As can retain the previously
+5. Queue a Viewer Save under `\\VAULT\sims\Preflop\<table-group>` using a new
+   high-entropy filename inside a validated, exclusively owned staging
+   namespace. Save As can retain the previously
    selected type or open with `*.hrcz Complete Save`. Before every save, verify
-   the destination, select `*.hrcv Viewer Save`, and confirm the simulation
-   filename and `.hrcv` extension. Example folders include `HU` and `5m`.
+   the destination, select `*.hrcv Viewer Save`, and confirm the exact lowercase
+   staging filename and `.hrcv` extension. After identity-matched Job success
+   and new/non-empty/stable staging metadata, promote it with fail-if-exists
+   semantics to `<simulation-name>.hrcv`. Example folders include `HU` and `5m`.
 6. After the queued operations finish successfully, export the strategies
    through `Hand` → `Export Strategies`. Use `Complete Export`, Depth `16`,
-   clear `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save
-   `<simulation-name>.zip` in the same table-group folder with
-   `*.zip Archived Json`. In inspected HRC `4.1.1`, Complete Export is
+   clear `PrettyPrint JSON`, and set `Node Filter Threshold %` to `0.1`. Save to
+   a new high-entropy staging filename in the same exclusively owned namespace.
+   Require the exact two-filter list, select/read `*.zip Archived Json`, and
+   verify the lowercase `.zip` staging filename. After identity-matched Job
+   success and new/non-empty/stable staging metadata, promote it with
+   fail-if-exists semantics to `<simulation-name>.zip`. In the inspected
+   calculator plug-in `4.1.1`, Complete Export is
    unlimited-depth and does not consume the visible Depth setting; still set
-   and read back `16` to match the required operator workflow.
+   and read back `16` to match the required operator workflow. The visible ZIP
+   type is not a sufficient format oracle: an installed retained-index defect
+   can write plain text to the `.zip` path while the Job reports success. A
+   ZIP-only dialog is a stop condition.
 7. Move to the next simulation and repeat the workflow.
 
-Before step 1, verify that neither exact target
-`<simulation-name>.hrcv` nor `<simulation-name>.zip` already exists. Stop and
-choose a new unique simulation name if either target exists. Recheck the exact
-target immediately before each Save. If HRC shows any overwrite prompt, select
-Cancel and stop; never replace an existing output.
+For Rename uniqueness, normalise each hand-tab base by removing at most one
+leading dirty `*`, then one terminal `.hrcv` or `.hrcz` suffix
+case-insensitively; do not remove embedded suffix text. Compare bases with
+ordinal case-insensitive semantics. A requested simulation name has no HRC
+suffix, matches `^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`, does not end in `.`, and is
+not a Windows reserved device base (including before a dot). This policy covers
+the installed `100` UTF-16-unit limit and the output filename constraints.
+
+Before step 1, reserve and verify that neither canonical target
+`<simulation-name>.hrcv` nor `<simulation-name>.zip` exists. Stop and choose a
+new unique simulation name if either exists. Atomically reserve a private staging
+namespace under the table-group folder, validate its exclusive ownership, and
+generate absent high-entropy names inside it. Acquire a validated system-wide
+HRC-control lease before the first automated HRC input and hold it through both
+canonical promotions, target-tab closure, and final state verification. The
+lease must exclude another runner, all manual HRC interaction, a second HRC
+process, and other automation in scope; atomic reservation and high entropy alone
+are insufficient. Recheck the staging target immediately before the
+corresponding HRC Save, and recheck the canonical target immediately before
+fail-if-exists promotion. If either exclusivity guard is unavailable, HRC shows
+an overwrite prompt, or any unexpected Job, dialog, file, or input transition
+appears, select Cancel when safe and stop; never replace an existing output.
+
+Installed-component inspection shows that those checks do not close the final
+write race: Viewer Save finishes with replace-existing semantics, and Complete
+Export opens its final export target with create-and-truncate semantics. The
+standalone runner must therefore keep HRC away from the canonical final names.
+It must write each output inside a validated, exclusively owned staging
+namespace. Only after the identity-matched HRC Job succeeds and the staged file
+is new, stable, and non-empty may it promote to the exact simulation filename
+with a fail-if-exists operation. That publication design remains an
+implementation-gate blocker. Do not inspect ZIP contents, delete a partial file,
+or claim overwrite prevention from preflight alone.
+
+The export-format defect needs a separate live guard. Under the current no-
+content-inspection rule, neither a `.zip` extension, non-empty metadata, nor a
+successful Export Job proves that the file is an archive. Installed inspection
+shows that a fresh Hand Setup hand remains on the two-filter helper after Nash;
+accepting the actual staging export with ZIP selected updates the hidden index
+before Job submission. Cancel does not update it. Do not consume the reserved
+smoke until the two-filter list, selected ZIP value, and accepted staging route
+are safely readable through the standalone design.
+
+All installed-component findings are conditional on the exact eight-component
+filename and SHA-256 set recorded in `docs/feasibility.md`, resolved from the
+active `hrc.exe` process's own installation `plugins` directory. The set covers
+the calculator, NatTable, JFace, SWT, Commons Compress, Eclipse Core Jobs,
+Eclipse UI, and Eclipse UI Workbench. The application version itself remains
+unconfirmed. A hash match is necessary but does not prove live focus, retained
+preferences, or runtime state. Any process, path, filename, or hash mismatch
+must stop the runner and reopen feasibility validation.
 
 After tree creation, submit steps 2 through 5 without waiting for the previous
 operation to finish. The two Nash calculations can take a long time. Wait for
 these queued operations to finish successfully before step 6.
 
-After step 6, verify the new Viewer file and strategy archive. Both files must
-exist and must not be empty. Then close the completed hand tab before step 7.
-HRC shows a `Save Resource` prompt because Viewer Save does not save the
-editable hand. Confirm that the prompt names the expected completed simulation.
-Only then select `Don't Save` and confirm that HRC returns to `Home`. Stop on
-any filename or prompt mismatch.
+Before the workflow, treat every pre-existing hand-editor tab as protected and
+snapshot its stable identity, title, and dirty state. After step 6, verify the
+canonical Viewer file and intended strategy archive whose ZIP mode was proved by
+the two-filter/selected-ZIP guard. Both canonical files must exist and must not
+be empty. Immediately before closure, require the exact hand-editor set to equal
+the protected identities plus exactly one expected completed simulation. Then
+close only that completed tab before step 7. HRC shows a `Save Resource` prompt
+because Viewer Save does not save the editable hand. Confirm that the prompt
+names the expected completed simulation. Only then select `Don't Save`; require
+the post-close set to equal exactly the unchanged protected identities, with no
+addition or replacement. Explicitly activate `Home` and verify its page. Stop on
+any filename, prompt, tab-set, or Home-state mismatch.
 
-Treat an operation as queued only when HRC shows it in the expected order.
-Stop the workflow if an operation fails or the Viewer output cannot be
-verified. Also stop if the strategy archive cannot be verified or the
-completed tab cannot be closed safely.
+Do not treat a visible name or ordering as an exact queue identity. Both Nash
+Jobs use the same public `<hand-name>: Monte Carlo Sampling` name. Installed
+inspection proves that same-hand Jobs serialise, but successful and cancelled
+items can both disappear into the same idle Progress state. The current UI-only
+architecture therefore cannot meet the terminal-success requirement. Stop the
+workflow if any operation fails or lacks an identity-matched successful result,
+if either output cannot be verified, or if the completed tab cannot be closed
+safely.
+
+No later hand or file state repairs this gap. Installed inspection shows that
+achieved CI is job-local; successful, cancelled, and failed runs all retain
+incremental strategy/sample state, update the hand, mark it dirty, and trigger
+the same editor refresh. Viewer Save serialises that current state without
+checking predecessor results. Sample count, dirty state, tooltip text, Viewer
+metadata, and command state are therefore not Nash-success oracles.
 
 ## HRC tree-building candidates
 
@@ -122,8 +197,8 @@ remain unverified.
 
 A short HU demonstration covered rename, both Nash submissions, an accidental
 Complete Save, a corrected Viewer Save, and output verification. Later runs
-created non-empty strategy-export archives and verified Viewer-only tab
-closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
+created non-empty `.zip`-named strategy-export files and verified Viewer-only
+tab closure. The supervised `HU-2` run created non-empty `.hrcv` and `.zip` files,
 created no matching `.hrcz` file, and returned to `Home` after `Don't Save`.
 Long-run queue behaviour, completion or failure detection, and the remaining
 tree policy are unverified. A supervised five-player setup displayed the visible
@@ -232,6 +307,23 @@ appeared and Progress remained idle. The retained inputs and resulting name show
 that `Ctrl+W`, then `H` can inherit active-hand state and is not yet a clean next-
 simulation route. No Nash calculation ran and no file was written.
 
+An eighth non-writing check inspected the remaining lifecycle dialogs on active
+`*From Hand 7`. `Ctrl+H`, then `R` opened the fully labelled Rename Hand dialog
+with `From Hand 7` visibly selected. The provider's semantic value action
+returned an unknown outcome; a fresh observation proved that the name was
+unchanged, so it was not retried. The provider reported a background edit as
+focused despite the visible selection, and Escape cancelled the dialog.
+`Ctrl+Alt+S` then opened Save As at `\\VAULT\sims\Preflop\HU` with
+`From Hand 7.hrcv` proposed and `*.hrcv Viewer Save` selected. The provider
+reported Search as focused and did not expose the selected type text
+machine-readably, so Escape cancelled without saving. `Ctrl+H`, then `E` opened
+Export Strategies with retained Complete Export, Depth `2`, PrettyPrint JSON
+clear, and threshold `0.1`; a semantic scope action had an unknown outcome, and
+fresh observation showed no change before Escape cancelled. The File menu had
+no hand-close command. Both dirty tabs remained open, Progress stayed idle, and
+read-only checks confirmed that neither corresponding exact `From Hand 7`
+output target existed.
+
 These checks prove the keyboard portions of the supervised route,
 different-valid-value entry, visual read-back, one rejected-input recovery,
 exact candidate load, current equal-`2 bb` Preview, and observed Nash
@@ -241,7 +333,8 @@ machine-readable stack read-back or a reliable native foreground and focus
 contract for keyboard steps. The native Finish action and successful exact-one-
 hand-editor-tab set delta are now confirmed without coordinates. Its guards do
 not depend on keyboard focus. The live provider continued to disagree with
-visible focus.
+visible focus and could not operate the Rename or Export controls or expose the
+Viewer type strongly enough for a safe standalone write.
 
 Before any further pre-runner Nash OK action, use static, non-submitting, and
 prior demonstration evidence to define machine-readable candidate detectors and
@@ -258,8 +351,12 @@ terminal state after each Nash submission, while preserving CI `10.0` before CI
 `1.0`. Queue Viewer Save immediately without waiting for Nash completion. Wait
 for both Nash jobs and Viewer Save to finish successfully before strategy
 export. Disappearance or idle alone is never success. Verify both new non-empty
-outputs before the exact matching `Save Resource` prompt, `Don't Save`, and the
-next-simulation transition. Negative states not encountered during that smoke
+outputs before the exact matching `Save Resource` prompt and `Don't Save`.
+Treat every pre-existing hand-editor tab as protected. Require exactly that set
+plus the completed simulation immediately before close, and exactly the
+unchanged protected set afterwards, with no additions or replacements.
+Explicitly activate `Home`, and then validate the next-simulation transition.
+Negative states not encountered during that smoke
 remain `TO CONFIRM`; any unrecognised state stops it. Do not add the runner until
 feasibility has a supported verdict. Retain separate Preview checks for other
 table sizes and boundary stacks. Verify the Save As destination, Viewer type,
