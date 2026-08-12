@@ -32,7 +32,7 @@ required system-wide HRC-control lease.
 The server services one active client sequentially. Request frames contain
 printable ASCII plus tab, use LF or CRLF, and are limited to 8 KiB. Responses
 are limited to 256 KiB. The caller supplies a socket timeout from 1 through
-60,000 milliseconds; an arm timeout is from 1 through 300,000 milliseconds.
+60,000 milliseconds; an arm lease is from 5,000 through 300,000 milliseconds.
 
 Protocol operations are:
 
@@ -59,10 +59,13 @@ session, non-empty failed replay, rejected events without a faulted observer,
 and inconsistent fault events.
 
 Its `actionable` field is true only for `OK` replay with no observer fault,
-`HEALTHY` callback state, and no callback failure. This predicate is not yet a
-live consumer fence. `ObserverTransportControl` has no runtime implementation,
-and the adapter has no non-destructive mailbox barrier that can produce the
-required atomic checkpoint.
+`HEALTHY` callback state, and no callback failure. The
+[offline runtime assembly](../runtime-assembly/README.md) now implements
+`ObserverTransportControl` through the adapter's ordered mailbox barrier. A
+checkpoint follows all lower-ticket callbacks. It combines one atomic core
+replay/fault snapshot with the control action's authoritative post-action
+mailbox health. This is an offline consumer fence only. It has not received a
+real Eclipse callback or run in HRC.
 
 A future controller must stop on `GAP`, `CURSOR_AHEAD`, session change,
 non-actionable checkpoint, rejected event, observer fault, callback failure,
@@ -72,14 +75,20 @@ new session automatically.
 ## ARM and response loss
 
 The transport validates the expected Job-name policy before calling
-`armIfHealthy`. The offline fake-control harness returns `ACCEPTED` for a new
-request and `IDEMPOTENT` for an exact repeat. The core separately implements
-request-ID idempotency.
+`armIfHealthy`. The transport harness uses a fake control. The offline runtime
+assembly tests the concrete ordered control for all three operations. A new or
+idempotent arm can succeed only after a second control marker. That marker
+drains earlier callback tickets and atomically verifies that the same pending
+arm still exists and has not expired. It starts a fresh observer-local lease
+and emits `ARM_CONFIRMED`. `ARM_ACCEPTED` is preparation only. The future
+controller must reject a round trip that consumes its required pre-input
+margin and must not use a late or indeterminate response for HRC input.
 
 Loss of an `ARM` response does not prove that the arm failed. Reconciliation
-must reconnect to the same session and repeat the same request UUID and
-identical intent. A new request UUID could create another intent; reuse with a
-different intent faults the core.
+must reconnect to the same session and repeat the same request UUID, operation,
+Job name, and timeout. A new request UUID could create another intent. Reuse
+with any changed value faults the core. A successful exact retry emits a new
+`ARM_CONFIRMED` event and starts a fresh lease.
 
 ## Time, durability, and data
 
@@ -108,9 +117,9 @@ Run:
 & .\src\HrcJobObserver\local-transport\build.ps1
 ```
 
-The build first runs the 27 core tests. It compiles transport main and test
+The build first runs the 30 core tests. It compiles transport main and test
 outputs separately with Java 17, `-proc:none`, `-Xlint:all`, and `-Werror`, then
-runs 23 transport tests. A targeted source/output boundary scan rejects Eclipse
+runs 24 transport tests. A targeted source/output boundary scan rejects Eclipse
 imports, listener-registration and activator symbols, selected file-I/O APIs,
 and named packaging artefacts.
 
@@ -118,12 +127,13 @@ The tests cover endpoint and checkpoint invariants; bearer authentication;
 LF/CRLF and malformed framing; input and output bounds; cursor-contiguous replay
 and selected non-actionable states; control/session/checkpoint failures; all
 three operation types and repeated request identity; reconnect and cursor
-forwarding; all seven event projections and JSON escaping; client sequencing;
+forwarding; all eight event projections and JSON escaping; client sequencing;
 admitted-arm shutdown ordering; and defensive token copying.
 
-Still unvalidated: a real `ObserverTransportControl`, an atomic mailbox/core
-checkpoint barrier, bounded runtime control calls, secure token generation,
-same-user token and endpoint provisioning, controller ownership and takeover,
-cross-process IPC, OSGi assembly, listener registration, active-process identity
-checks, packaging, startup, rollback, safe unload, real HRC callbacks and
-runtime results, and standalone-runner integration.
+The current transport result is 24/24. This is offline validation only.
+
+Still unvalidated: secure token generation, same-user token and endpoint
+provisioning, controller ownership and takeover, cross-process IPC, OSGi
+packaging and activation, listener registration, active-process identity
+checks, startup, rollback, safe unload, real HRC callbacks and runtime results,
+and standalone-runner integration.

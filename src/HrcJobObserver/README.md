@@ -4,11 +4,13 @@
 
 This directory contains a package-private pure Java 17 feasibility core, an
 [offline Eclipse Jobs adapter](eclipse-adapter/README.md), and an
-[offline local transport](local-transport/README.md). It is not the standalone
+[offline local transport](local-transport/README.md). An
+[offline runtime assembly](runtime-assembly/README.md) joins those layers
+through their package-private contracts. This component is not the standalone
 runner or an installable HRC plug-in. It has no OSGi manifest, activator,
-listener registration, file writer, installer, or runtime entry point. Its
-offline adapter build accepts an HRC installation path solely to resolve and
-hash public API provider JARs.
+listener registration, file writer, installer, or HRC runtime entry point. Its
+offline adapter and runtime builds accept an HRC installation path solely to
+resolve and hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
@@ -33,15 +35,26 @@ ordered replay windows through `replayAfter`. A replay window reports `OK`,
 `LocalObserverServer` implements a bounded version `1` request-response
 protocol for authentication, session checks, arm requests, and checkpoint
 replay. `ObserverCheckpoint` validates cursor-bound replay and projects core and
-callback health. The runtime control and atomic callback barrier that must
-supply those values are not implemented.
+callback health.
+
+`OrderedObserverTransportControl` supplies those values in the offline runtime
+assembly. It places checkpoints and arm operations in the callback mailbox's
+single ticket order. A checkpoint follows every lower-ticket callback and
+combines one core replay/fault snapshot with authoritative post-action mailbox
+health. An accepted or idempotent arm requires a second ordered marker. That
+marker drains callbacks admitted before arm completion, verifies the same arm
+is still pending, and starts a fresh observer-local lease. The core emits an
+`ARM_CONFIRMED` event with that final opaque deadline. This offline result does
+not yet authorise HRC input; a future controller must enforce its own
+round-trip and pre-input margin inside that lease.
 
 ## Correlation and failure invariants
 
 - At most one arm is unmatched. A second request receives `BUSY` without
   changing observer state.
-- Repeating the same request ID and intent is idempotent and never extends its
-  original deadline. Reusing the ID for a different intent faults the session.
+- Repeating the same request ID, operation, name, and timeout is idempotent.
+  Reusing the ID with any different value faults the session. Each successful
+  request-bound confirmation renews and records a fresh observer-local lease.
 - A `SCHEDULED` input must match the injected operation profile's exact bundle,
   version, class, and public Job name. Profiles are injected only; the core has
   no API that bypasses the repository's installed-component identity gate.
@@ -107,22 +120,23 @@ build lock with the adapter script so concurrent validation cannot clean either
 script's fixed ignored output tree mid-build. It does not use or copy HRC's
 Java runtime or components.
 
-The current 27-test core harness covers input invariants, name and profile
+The current 30-test core harness covers input invariants, name and profile
 filtering, arm idempotency, busy and expiry handling, callback-time and
 wrap-safe deadlines, reference identity, all three operation profiles, two
-same-name Nash Jobs, normal and
-rejected terminal paths, callback-time ordering, post-fault evidence, status
-minimisation, replay ordering/gaps/cursor bounds/transactionality/immutability,
-and synchronized reader/writer access.
+same-name Nash Jobs, normal and rejected terminal paths, callback-time
+ordering, post-fault evidence, status minimisation, atomic core checkpoints,
+replay ordering, gaps, cursor bounds, transactionality, immutability, and
+synchronised reader/writer access.
 
 The adapter filters before reading public name, Bundle, flags, or result and
-adds a fixed-capacity mailbox with a non-waiting callback hand-off. Its 27
-offline tests are described in its own README. The local transport adds 23
-offline tests of its protocol and checkpoint schema.
+adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
+offline results are 30/30 core tests, 34/34 adapter tests, 24/24 transport
+tests, and 10/10 runtime assembly tests. The runtime tests cover the ordered
+checkpoint, two-marker arm control, and fresh lease renewal for an exact
+idempotent retry.
 
-Still unvalidated: the atomic runtime checkpoint barrier, callback-adapter
-integration, bounded runtime control calls, secure token and endpoint
-provisioning, same-user access control, cross-process IPC, OSGi resolution and
-activation, listener registration and removal, packaging, startup,
+Still unvalidated: real Eclipse callback delivery, OSGi resolution and
+activation, listener registration and removal, secure token and endpoint
+provisioning, same-user access control, cross-process IPC, packaging, startup,
 installation, rollback, safe unload, HRC runtime correlation, and every
 standalone-runner operation.

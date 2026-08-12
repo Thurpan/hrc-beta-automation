@@ -259,23 +259,34 @@ not exist.
 The project now has an
 [offline exact-status correlation core](src/HrcJobObserver/README.md), an
 [offline Eclipse Jobs adapter](src/HrcJobObserver/eclipse-adapter/README.md),
+an [offline bearer-token loopback transport](src/HrcJobObserver/local-transport/README.md),
 and an
-[offline bearer-token loopback transport](src/HrcJobObserver/local-transport/README.md).
-The current suites pass 27 core tests, 27 adapter tests, and 23 transport tests.
+[offline ordered runtime assembly](src/HrcJobObserver/runtime-assembly/README.md).
+The current suites pass 30 core tests, 34 adapter tests, 24 transport tests,
+and 10 joined-assembly tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
-checkpoint replay, and serialises only allow-listed event primitives. Its tests
-use a fake control and local sockets in one JVM. It does not implement the
-atomic mailbox/core checkpoint barrier, token or endpoint provisioning, OSGi
-startup, listener registration, controller integration, cross-process proof,
-or persistence across restart. None of these layers has interacted with
+checkpoint replay, and serialises only allow-listed event primitives. The
+offline assembly now provides the real ordered `ObserverTransportControl`:
+callbacks, checkpoints, and arms share one mailbox sequence. A second post-arm
+marker drains callbacks admitted around an arm, verifies request ownership,
+and starts a new observer-local lease. Every successfully confirmed exact
+idempotent retry renews that lease. `ARM_CONFIRMED` records each confirmed
+lease. The
+joined tests exercise this control through an actual loopback socket in one
+JVM. The response is not yet authority for HRC input: the future controller
+must enforce a local round-trip and pre-input margin within the lease. The
+project still does not implement
+token or endpoint provisioning, OSGi startup, listener registration,
+controller ownership, cross-process proof, or persistence across restart.
+None of these layers has interacted with
 running HRC, its UI, or real Eclipse callback delivery. They do not yet make
 HRC terminal results available to a controller and do not change the
 feasibility verdict.
 
-Next, implement the ordered mailbox barrier and `ObserverTransportControl`
-runtime assembly. Then add manager registration and package an uninstalled
-startup bundle with guarded build and rollback procedures. Extend the
+Next, add manager registration and package the core, adapter, transport, and
+ordered assembly together as one uninstalled startup bundle, with guarded
+build and rollback procedures. Extend the
 active-process runtime identity
 gate for the adapter's Equinox Common and Eclipse OSGi providers before live
 use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and

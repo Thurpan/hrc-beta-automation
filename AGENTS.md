@@ -146,15 +146,19 @@ through, the active-process identity gate in `docs/feasibility.md`.
   same-user protected mechanism. Never commit, persist, log, or echo the token.
 - Treat public Job names and staging filenames as sensitive local plaintext.
   Base64URL encoding does not protect them.
-- Do not activate the transport until an ordered mailbox barrier atomically
-  supplies replay, core fault state, callback health, and the adapter's
-  authoritative first-failure latch.
+- Do not activate the transport until the offline-tested ordered mailbox
+  barrier is packaged and runtime-validated to supply replay, core fault state,
+  callback health, and the adapter's authoritative first-failure latch.
 - Treat `GAP`, `CURSOR_AHEAD`, session mismatch, a non-actionable checkpoint, a
   rejected event, observer fault, callback failure, transport failure, and lost
   continuity as terminal automation stop conditions. Never reset the cursor or
   adopt a session automatically.
 - After a lost arm response, reuse only the same request UUID with identical
-  intent in the same observer session.
+  operation, Job name, and timeout in the same observer session.
+- Treat `ARM_ACCEPTED` as preparation only. Require the matching
+  `ARM_CONFIRMED`, then enforce a controller-local round-trip and pre-input
+  margin within that confirmed observer lease before any HRC input. A late or
+  indeterminate response is a stop condition.
 - Treat observer monotonic values and deadlines as opaque to other processes.
   Do not compare them with controller clocks or carry them across restart.
 - Do not unload observer code unless listener removal, mailbox drainage,

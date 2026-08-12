@@ -1381,22 +1381,27 @@ completion, or failure states.
 ## Next action
 
 The repository now contains an offline-tested, package-private Java correlation
-core, Eclipse Jobs adapter, and bearer-token loopback transport under
-`src/HrcJobObserver/`. The current suites pass 27 core tests, 27 adapter tests,
-and 23 transport tests. The transport validates cursor-bound replay and its
-offline schema combines replay, core fault, and callback health. Its tests use
-a fake control and local sockets in one JVM.
+core, Eclipse Jobs adapter, bearer-token loopback transport, and ordered runtime
+assembly under `src/HrcJobObserver/`. The current suites pass 30 core tests,
+34 adapter tests, 24 transport tests, and 10 joined-assembly tests. The assembly
+orders callbacks, checkpoints, and arms through the same mailbox worker and
+uses a second post-arm marker to verify request ownership and start a fresh
+observer-local lease. Every successfully confirmed exact idempotent retry
+renews that lease. It emits `ARM_CONFIRMED` for each confirmed lease. The joined
+harness exercises the real control through an actual loopback socket in one
+JVM. The future controller must still enforce a local round-trip and pre-input
+margin inside that lease before it can use an ARM response for HRC input.
 
 This is offline implementation evidence only. It adds no observation of
 running HRC, its UI, real Eclipse callback delivery, OSGi resolution, listener
 registration, active-process identity, token provisioning, cross-process IPC,
-or runtime terminal capture. The transport's `actionable` field is not a live
-verdict until an ordered mailbox barrier atomically supplies callback health,
-core fault state, and replay. `Feasibility` remains `TO CONFIRM`.
+or runtime terminal capture. The ordered barrier and actionable-checkpoint
+contract are offline-tested but not HRC-runtime validated. `Feasibility`
+remains `TO CONFIRM`.
 
-Next, implement the ordered mailbox barrier and `ObserverTransportControl`
-runtime assembly. Then add manager registration and package an uninstalled
-startup bundle with guarded build and rollback procedures. Before live use,
+Next, add manager registration and package all four layers together as one
+uninstalled startup bundle with guarded build and rollback procedures. Before
+live use,
 extend the
 active-process runtime identity gate for the adapter's Equinox Common and
 Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
