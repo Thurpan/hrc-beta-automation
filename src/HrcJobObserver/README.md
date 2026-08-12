@@ -19,16 +19,17 @@ fresh JVMs. An
 two-sided process identity, bounded one-shot framing, synthetic distinct-
 process frame exchange, rejection of a wrong live child, a canonical HMAC-bound
 endpoint descriptor, and eight phase- and role-bound messages. It also tests a
-capacity-one ABA-safe in-memory publication store and a one-shot broker across
-the broker harness process and persistent synthetic observer and controller
-children. The broker executes all four exchanges and fail-closed claim-versus-
-revoke arbitration. The module has no descriptor filesystem publisher, secure
-initial pipe-name handoff, dedicated production role executables, crash
-containment, or connection to the Java layers. This component is not the
-standalone runner or an installable HRC plug-in. It has no OSGi manifest,
-enabled activator, live listener registration, file writer, installer, or HRC
-runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
-an HRC installation path solely to resolve and hash public API provider JARs.
+capacity-one asynchronous in-memory publisher and a one-shot broker across the
+broker harness process and long-lived synthetic observer and controller child
+modes. The publisher returns a store-affine, coalesced exact-removal lease.
+The broker executes all four exchanges and fail-closed claim-versus-revoke
+arbitration. The module has no descriptor filesystem publisher, secure initial
+pipe-name handoff, dedicated production role executables, crash containment,
+or connection to the Java layers. This component is not the standalone runner
+or an installable HRC plug-in. It has no OSGi manifest, enabled activator, live
+listener registration, file writer, installer, or HRC runtime entry point. Its
+offline adapter, runtime, and lifecycle builds accept an HRC installation path
+solely to resolve and hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
@@ -78,24 +79,35 @@ acknowledgement, and revocation. Its decoder is phase-bound and wipes the owned
 input frame. Secret-bearing messages and frames own and wipe their buffers. A
 domain-separated receipt HMAC proves token possession within the model.
 
-`InMemoryBootstrapPublicationStore` owns one canonical descriptor at a time.
-It returns independent wipeable snapshots. An opaque registration and exact-
-reference removal prevent an old owner from removing a later equal publication.
+`InMemoryBootstrapPublicationStore` is the asynchronous reference publisher.
+It owns one canonical descriptor at a time and returns independent wipeable
+snapshots. Successful publication returns a store-affine opaque lease. The
+lease coalesces exact removal and caches its terminal result. Cross-store
+checks and exact entry identity prevent an old owner from removing a later
+equal publication.
 
 `BootstrapBrokerSession` binds distinct observer, controller, and broker
 processes in one security context. The synthetic harness runs the broker in its
-main process and uses persistent observer and controller children. Publication
-becomes visible before its acknowledgement. Claim and revoke workers validate
-their exact transcript before arbitration. The winner removes the exact
-publication before a grant or revocation acknowledgement. An already-completed
-malformed loser is terminal, and the selected loser is cancelled and drained
-within the unchanged bound.
+main process and uses long-lived observer and controller child modes.
+Publication becomes visible before its acknowledgement. Claim and revoke
+workers validate their exact transcript before arbitration. The winner removes
+the exact publication before a grant or revocation acknowledgement. An already-
+completed malformed loser is terminal. The selected loser is cancelled and
+drained within the unchanged bound.
 
 The broker uses absolute monotonic publication and session deadlines from an
-injected `TimeProvider`. A claim uses a separate receipt proof and final
-acknowledgement. The broker disposes its grant and accepted proof copies and
-wipes its retained token before the final acknowledgement. Revocation wipes
-the retained token before its acknowledgement. The first uncertainty is
+injected `TimeProvider`. The publication deadline is capped by the remaining
+session budget. These deadlines are cooperative budget checks. They do not
+hard-preempt an arbitrary blocking native call. A claim uses a separate receipt
+proof and final acknowledgement. The broker disposes its grant and accepted
+proof copies and wipes its retained token before the final acknowledgement.
+Revocation wipes the retained token before its acknowledgement. `DisposeAsync`
+cancels and awaits a running session. `RunAsync` remains the authoritative
+protocol-failure channel; `DisposeAsync` separately reports cancellation-
+request and cleanup failures. Terminal cleanup coalesces non-abandonable exact
+removal, wipes the token, and attempts every pipe close. A faulted or unknown
+removal cannot claim absence. Removal verified only after its deadline still
+fails the session before terminal acknowledgement. The first uncertainty is
 terminal; the session does not retry or republish. These are synthetic offline
 properties, not production process or Java integration evidence.
 
@@ -193,12 +205,15 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 40/40. Its 12 broker and store tests
-cover ownership and ABA defence, exact role context, all four cross-process
-exchanges, claim/revoke races, a completed malformed loser, transcript and
-proof rejection, absolute deadlines, cleanup, wiping, and name release. The
-runtime tests cover the ordered checkpoint, two-marker arm control, and fresh
-lease renewal for an exact idempotent retry.
+tests. The Windows bootstrap result is 55/55. Its 27 broker and store tests
+cover asynchronous publication, store-affine coalesced removal, cross-store and
+ABA defence, exact role context, all four cross-process exchanges, and
+claim/revoke races. They also cover a completed malformed loser, transcript and
+proof rejection, the combined absolute deadline, asynchronous cleanup, unknown
+removal status, adversarial publication and disposal interleavings, fault
+preservation, wiping, and name release. The runtime tests cover the ordered
+checkpoint, two-marker arm control, and fresh lease renewal for an exact
+idempotent retry.
 
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses

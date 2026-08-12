@@ -278,8 +278,9 @@ arbitrary early class-loading absence, or the protected tabs' safe disposition.
 ### Offline Windows bootstrap implementation evidence
 
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness at
-checkpoint `2ea4d0e` passed 40/40 tests on the licensed host. The build did not
-install, load, attach to, or interact with HRC.
+checkpoint `2ea4d0e` passed 40/40 tests on the licensed host. Checkpoint
+`6283fe8` expanded the same harness and passed 55/55 tests on the licensed host.
+Neither build installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
 path, user SID, logon SID, token session ID, and process session ID. It retains
@@ -334,29 +335,33 @@ the publication, descriptor digest, controller nonce, and receipt nonce. A
 phase-bound decoder wipes its complete owned input frame on success or failure.
 Secret-bearing messages and encoded frames own and wipe their mutable buffers.
 
-Twelve broker and store tests add a capacity-one in-memory publication store.
-The store validates and clones one canonical descriptor. Each read returns an
-independent wipeable snapshot. Each insertion returns an opaque registration,
-and removal requires that exact object reference. This prevents an old owner
-from removing a later equal publication after an ABA sequence. Removal and
-store disposal wipe the owned descriptor buffer.
+Twenty-seven broker and store tests include a capacity-one asynchronous
+in-memory reference publisher. The store validates and clones one canonical
+descriptor. Each read returns an independent wipeable snapshot. Successful
+publication returns an opaque store-affine lease. The lease coalesces exact
+removal and caches its terminal result. Exact entry identity and cross-store
+checks prevent an old owner from removing a later equal publication after an
+ABA sequence. Removal wipes the owned descriptor buffer. Store disposal
+rejects an active publication instead of claiming cleanup.
 
-The one-shot broker runs in the main harness process. Persistent synthetic
-observer and controller roles run in two child processes. All three roles must
-be distinct and must match one user, logon, token session, and process session.
-The broker requires its own exact current-process binding. The synthetic roles
-execute all four protected-pipe exchanges: publish, claim and grant, separate
-receipt and final acknowledgement, and revoke.
+The one-shot broker runs in the main harness process. Long-lived synthetic
+observer and controller child modes run in two child processes. All three roles
+must be distinct and must match one user, logon, token session, and process
+session. The broker requires its own exact current-process binding. The
+synthetic roles execute all four protected-pipe exchanges: publish, claim and
+grant, separate receipt and final acknowledgement, and revoke.
 
-The publish acknowledgement is sent only after the descriptor is visible in
-the injected store. Claim and revoke workers validate the exact publication and
-descriptor digest before they can complete. Arbitration selects one valid
-winner and removes the exact store registration before any claim grant or
-revocation acknowledgement. The tests cover a valid claim win, a valid revoke
-win, simultaneous release, and both directions where a valid winner is
-selected before an already-completed malformed loser is inspected. The
-malformed loser makes the whole session terminal before any winner
-acknowledgement.
+The publish acknowledgement is sent only after the descriptor is visible
+through the injected publisher. Claim and revoke workers validate the exact
+publication and descriptor digest before they can complete. Arbitration
+selects one valid winner and removes the exact publication lease before any
+claim grant or revocation acknowledgement. A faulted or unknown removal cannot
+claim publication absence. Removal verified only after its deadline still
+fails the session before terminal acknowledgement.
+The tests cover a valid claim win, a valid revoke win, simultaneous release,
+and both directions where a valid winner is selected before an already-
+completed malformed loser is inspected. The malformed loser makes the whole
+session terminal before any winner acknowledgement.
 
 After a valid winner, the broker cancels the other worker, drains it within the
 remaining bound, and closes its one-shot pipe. Only winner-induced cancellation
@@ -365,26 +370,40 @@ cancellation, transcript mismatch, proof mismatch, I/O uncertainty, or store-
 ownership failure ends the session. The broker does not retry or republish.
 
 An injected `TimeProvider` supplies fixed absolute monotonic publication and
-session deadlines. Later phases receive only the remaining duration; no phase
-resets either deadline. The claim path disposes the broker-owned grant token and
-encoded grant before receipt processing. It disposes the accepted receipt proof
-and wipes the retained broker token before the final acknowledgement. The
-revocation path wipes the retained token before its acknowledgement. Tests also
-cover cancellation and occupied-store cleanup, backing-array wiping, and exact
-release of every one-shot pipe name.
+session deadlines. The publication budget is capped by the remaining session
+budget when publication starts. Later phases receive only the remaining
+duration; no phase resets either deadline. These are cooperative budget checks.
+They do not hard-preempt an arbitrary blocking native call. The claim path
+disposes the broker-owned grant token and encoded grant before receipt
+processing. It disposes the accepted receipt proof and wipes the retained
+broker token before the final acknowledgement. The revocation path wipes the
+retained token before its acknowledgement.
+
+The broker implements `IAsyncDisposable`. Coalesced disposal cancels and awaits
+a running session. `RunAsync` remains the authoritative protocol-failure
+channel. `DisposeAsync` separately reports cancellation-request and cleanup
+failures. Cleanup starts one non-abandonable exact removal, wipes the retained
+token, and attempts every pipe close before it awaits the removal result.
+Primary protocol failure and cleanup failure remain independently observable.
+Adversarial tests cover cancellation before publication commit,
+disposal before and during publication, commit returned after disposal,
+synchronous disposal re-entry from the publisher, a throwing cancellation
+callback, blocked and faulting removal, unknown removal status, combined
+protocol and removal failures, and exact pipe-name release. These tests do not
+prove process-crash cleanup.
 
 The broker children receive only fixed public role arguments. Their cleared
 environment contains no secret. Public role commands use redirected standard
 input, but the bearer token travels only on authenticated protected protocol
-pipes. Each persistent child has an explicit successful exit status and must
-write no standard output or standard error.
+pipes. Each long-lived synthetic child mode has an explicit successful exit
+status and must write no standard output or standard error.
 
-This is in-memory-store and synthetic three-process broker evidence only. The
-module has no guarded LocalAppData descriptor publisher, secure initial pipe-
-name handoff, dedicated production role executables, executable-hash policy,
-kill-on-close containment, Java bridge, controller integration, or HRC entry
-point. The harness's kill-and-bounded-wait failure cleanup is not crash
-containment. The module adds no HRC runtime observation.
+This is asynchronous in-memory-publisher and synthetic three-process broker
+evidence only. The module has no guarded LocalAppData descriptor publisher,
+secure initial pipe-name handoff, dedicated production role executables,
+executable-hash policy, kill-on-close containment, Java bridge, controller
+integration, or HRC entry point. The harness's kill-and-bounded-wait failure
+cleanup is not crash containment. The module adds no HRC runtime observation.
 `Feasibility` remains `TO CONFIRM`.
 
 The runner must first identify the one active HRC process and resolve the
@@ -1655,10 +1674,10 @@ The repository now contains an offline-tested Java correlation core, Eclipse
 Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
 disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, isolated
 Equinox start-level fixture, and source/test-only Windows bootstrap module with
-an in-memory publication store and synthetic broker under
+an asynchronous in-memory publisher and synthetic broker under
 `src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 40
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 55
 Windows bootstrap tests. The start-level fixture passes 12/12 prerequisite,
 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
@@ -1687,10 +1706,14 @@ The Windows module proves exact applied DACL read-back, both endpoint-side
 process identity checks, bounded one-shot frame operations, synthetic distinct-
 process fixed-frame exchange, and rejection of a wrong live child. It also
 proves a canonical HMAC-bound descriptor, a capacity-one ABA-safe in-memory
-store, and a synthetic three-process broker. The broker executes all four
-exchanges, enforces absolute deadlines, removes the exact publication before a
+publisher with store-affine coalesced removal, and a synthetic three-process
+broker. The broker executes all four exchanges and caps publication by the
+remaining absolute session deadline. It removes the exact publication before a
 grant or revocation acknowledgement, rejects a completed malformed loser, and
 wipes its retained token before the final or revocation acknowledgement.
+Coalesced asynchronous disposal waits for non-abandonable cleanup. Faulted or
+unknown removal cannot claim absence. Late verified removal and combined
+protocol/cleanup failures remain terminal and observable.
 
 Next, implement and offline-test guarded LocalAppData descriptor publication
 with reparse-point defence and secure initial pipe-name handoff. Add dedicated

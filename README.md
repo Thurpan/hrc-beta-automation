@@ -274,13 +274,22 @@ DACL read-back, two-sided process identity, bounded one-shot framing, synthetic
 distinct-process frame exchange, rejection of a wrong live child, a canonical
 HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
 messages. It also tests a capacity-one ABA-safe in-memory publication store and
-a one-shot broker across the broker harness process and persistent synthetic
-observer and controller child processes. The broker executes all four
-exchanges, serialises claim and revoke, rejects an already-completed malformed
-loser, keeps absolute deadlines, and wipes its token copies before the final or
-revocation acknowledgement. The current suites pass 30 core tests,
+a one-shot broker across the broker harness process and long-lived synthetic
+observer and controller child modes. The store now implements an
+asynchronous publisher contract. Successful publication returns a store-affine
+lease that coalesces exact removal. The broker executes all four exchanges,
+serialises claim and revoke, rejects an already-completed malformed loser, caps
+the publication budget by the remaining absolute session deadline, and wipes
+its token copies before the final or revocation acknowledgement. Its
+asynchronous disposal coalesces cancellation and non-abandonable cleanup.
+`RunAsync` remains the authoritative protocol-failure channel; `DisposeAsync`
+separately reports cancellation-request and cleanup failures. A faulted or
+unknown removal cannot claim absence. Removal verified only after its deadline
+still fails the session before terminal acknowledgement. The deadline checks
+are cooperative and do not hard-preempt an arbitrary blocking native call. The
+current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 40 Windows bootstrap tests. The start-level
+tests, 13 packaging tests, and 55 Windows bootstrap tests. The start-level
 fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
 observer-failure tests.
 
@@ -323,11 +332,16 @@ until final framework shutdown; dynamic stop, update, uninstall, refresh, and
 republish are prohibited by policy, not proved safe.
 
 The Windows harness now executes the four protected-pipe exchanges through a
-synthetic three-process arrangement and a capacity-one in-memory store. It
-proves publication visibility before acknowledgement, exact removal before a
-grant or revocation acknowledgement, bounded loser drainage, non-resetting
-deadlines, and fail-closed semantic arbitration. This remains offline synthetic
-evidence.
+synthetic three-process arrangement and a capacity-one asynchronous in-memory
+publisher. It proves publication visibility before acknowledgement, a
+store-affine coalesced lease, exact removal before a grant or revocation
+acknowledgement, bounded loser drainage, and a publication budget capped by the
+remaining session deadline. Adversarial tests cover publication and disposal
+interleavings, synchronous re-entry, callback and removal failures, and unknown
+removal status. They require non-abandonable cleanup. Faulted or unknown
+removal cannot claim publication absence, and late verified removal still
+fails before terminal acknowledgement. The deadline checks do not hard-preempt
+arbitrary blocking native calls. This remains offline synthetic evidence.
 
 Next, implement and offline-test guarded LocalAppData descriptor publication
 with reparse-point defence and secure initial pipe-name handoff. Add dedicated
