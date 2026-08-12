@@ -262,8 +262,12 @@ The project now has an
 an [offline bearer-token loopback transport](src/HrcJobObserver/local-transport/README.md),
 and an
 [offline ordered runtime assembly](src/HrcJobObserver/runtime-assembly/README.md).
-The current suites pass 30 core tests, 34 adapter tests, 24 transport tests,
-and 10 joined-assembly tests.
+An [offline OSGi lifecycle owner](src/HrcJobObserver/osgi-lifecycle/README.md)
+tests manager registration and ordered cleanup behind a disabled activator. An
+[offline simpleconfigurator planner](src/HrcJobObserver/osgi-packaging/README.md)
+produces an in-memory proposal only. The current suites pass 30 core tests,
+34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
+tests, and 13 packaging tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The
@@ -276,20 +280,27 @@ lease. The
 joined tests exercise this control through an actual loopback socket in one
 JVM. The response is not yet authority for HRC input: the future controller
 must enforce a local round-trip and pre-input margin within the lease. The
-project still does not implement
-token or endpoint provisioning, OSGi startup, listener registration,
-controller ownership, cross-process proof, or persistence across restart.
-None of these layers has interacted with
-running HRC, its UI, or real Eclipse callback delivery. They do not yet make
+lifecycle implements synthetic manager registration, two bounded baseline
+scans, startup callback admission, rollback, and ordered shutdown. Its public
+activator remains deliberately disabled. The project still does not implement
+secure token or endpoint provisioning, an activatable manifest, controller
+ownership, cross-process proof, or persistence across restart.
+The offline adapter, runtime, and lifecycle builds read and hash public provider
+JARs from the HRC installation. A separate read-only inspection supplied the
+configuration facts to the in-memory planner. None of these layers has
+interacted with the running HRC process, its UI, or real Eclipse callback
+delivery. They do not yet make
 HRC terminal results available to a controller and do not change the
 feasibility verdict.
 
-Next, add manager registration and package the core, adapter, transport, and
-ordered assembly together as one uninstalled startup bundle, with guarded
-build and rollback procedures. Extend the
-active-process runtime identity
-gate for the adapter's Equinox Common and Eclipse OSGi providers before live
-use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
+Next, close the two lifecycle blockers before creating an installable Bundle.
+The public Eclipse APIs do not make listener registration plus `find(null)`
+atomic, and listener removal does not prove provider-level callback drainage.
+Implement secure same-user token and endpoint publication through a reviewed
+Windows native seam. Then add a deterministic JAR, manifest, guarded install,
+and rollback design. Extend the active-process runtime identity gate for the
+adapter's Equinox Common and Eclipse OSGi providers before live use. Do not
+install it or restart HRC while the dirty tabs `*Hand 7` and
 `*From Hand 7` remain protected. Resolve those resources explicitly before the
 first clean-start observer validation. Reserve the authorised smoke until the
 runtime observer and standalone control path are ready.

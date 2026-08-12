@@ -163,6 +163,12 @@ through, the active-process identity gate in `docs/feasibility.md`.
   Do not compare them with controller clocks or carry them across restart.
 - Do not unload observer code unless listener removal, mailbox drainage,
   transport shutdown, and all in-flight control calls have completed cleanly.
+- Do not enable the OSGi activator or create an installable Bundle while the
+  recorded registration-plus-baseline race and provider-level listener-drain
+  gap remain unresolved.
+- Do not treat the in-memory simpleconfigurator proposal as an installer. A
+  future installer must verify exact source and target hashes, write through a
+  guarded transaction, preserve a unique backup, and prove rollback.
 
 ## One workflow pattern
 

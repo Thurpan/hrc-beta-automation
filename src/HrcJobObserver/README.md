@@ -6,11 +6,15 @@ This directory contains a package-private pure Java 17 feasibility core, an
 [offline Eclipse Jobs adapter](eclipse-adapter/README.md), and an
 [offline local transport](local-transport/README.md). An
 [offline runtime assembly](runtime-assembly/README.md) joins those layers
-through their package-private contracts. This component is not the standalone
-runner or an installable HRC plug-in. It has no OSGi manifest, activator,
-listener registration, file writer, installer, or HRC runtime entry point. Its
-offline adapter and runtime builds accept an HRC installation path solely to
-resolve and hash public API provider JARs.
+through their package-private contracts. An
+[offline OSGi lifecycle owner](osgi-lifecycle/README.md) tests registration,
+startup, cleanup, and a disabled activator. An
+[offline simpleconfigurator planner](osgi-packaging/README.md) produces only an
+in-memory proposal for the recorded baseline. This component is not the
+standalone runner or an installable HRC plug-in. It has no OSGi manifest,
+enabled activator, live listener registration, file writer, installer, or HRC
+runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
+an HRC installation path solely to resolve and hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
@@ -130,10 +134,16 @@ synchronised reader/writer access.
 
 The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
-offline results are 30/30 core tests, 34/34 adapter tests, 24/24 transport
-tests, and 10/10 runtime assembly tests. The runtime tests cover the ordered
+offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
+tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
+tests. The runtime tests cover the ordered
 checkpoint, two-marker arm control, and fresh lease renewal for an exact
 idempotent retry.
+
+The lifecycle tests cover synthetic manager registration, bounded baseline
+scans, startup callback admission, ordered health checks, publication rollback,
+and shutdown drainage. Its public activator remains disabled. The packaging
+tests validate only in-memory bytes and cannot install the proposal.
 
 Still unvalidated: real Eclipse callback delivery, OSGi resolution and
 activation, listener registration and removal, secure token and endpoint

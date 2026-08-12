@@ -122,6 +122,36 @@ runtime gate above. Before live observer use, extend that gate deliberately and
 verify both files from the active process installation. This evidence adds no
 HRC runtime observation.
 
+### Read-only OSGi configuration evidence
+
+On 12 August 2026, a read-only check of the active HRC installation recorded
+the following startup facts:
+
+- `configuration/config.ini` had SHA-256
+  `7FB69262C0FCB2C96A605A95B1834C4FC3756724634378E1973C49ACAC0A3C72`;
+- `configuration/org.eclipse.equinox.simpleconfigurator/bundles.info` had
+  SHA-256
+  `A3B776136BAF2323357731CECEEF004C95B2553DB09900979FB277F1FFB2ED41`;
+- `org.eclipse.equinox.simpleconfigurator.configUrl` selected that
+  `bundles.info` file;
+- the default Bundle start level was `4`; and
+- `bundles.info` used UTF-8 format version `1` and contained 191 Bundle rows.
+
+The configured simpleconfigurator JAR was
+`org.eclipse.equinox.simpleconfigurator_1.5.400.v20250129-0942.jar`, with
+SHA-256
+`2970D2C5C4253E543431FADBAAE93F5DDC42923DA23348CEC7EF7CD824D7F424`.
+`hrc.ini` selected the bundled JustJ Java 21 runtime. Its `java.exe` had SHA-256
+`B495803CD2D3315A530EAB39780CF59A43FDC71EE1F3AC6C5969DEDC9387B1AA`
+and reported Temurin `21.0.11+10`.
+
+The source/test-only
+[simpleconfigurator planner](../src/HrcJobObserver/osgi-packaging/README.md)
+pins those two hashes and the required recorded rows. It accepts all 191
+recorded locations and produces only an in-memory `OFFLINE_PLAN_ONLY` proposal.
+It did not write to HRC. The simpleconfigurator and Java runtime identities are
+not enforced inputs to that planner and remain future artefact-build gates.
+
 The runner must first identify the one active HRC process and resolve the
 `plugins` directory from that process's own `hrc.exe` installation. It must
 rehash these exact files there before relying on the NatTable, Rename, Nash Job,
@@ -1380,10 +1410,12 @@ completion, or failure states.
 
 ## Next action
 
-The repository now contains an offline-tested, package-private Java correlation
-core, Eclipse Jobs adapter, bearer-token loopback transport, and ordered runtime
-assembly under `src/HrcJobObserver/`. The current suites pass 30 core tests,
-34 adapter tests, 24 transport tests, and 10 joined-assembly tests. The assembly
+The repository now contains an offline-tested Java correlation core, Eclipse
+Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
+disabled OSGi lifecycle owner, and in-memory simpleconfigurator planner under
+`src/HrcJobObserver/`. The current suites pass 30 core tests, 34 adapter tests,
+25 transport tests, 10 joined-assembly tests, 14 lifecycle tests, and 13
+packaging tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1392,17 +1424,24 @@ harness exercises the real control through an actual loopback socket in one
 JVM. The future controller must still enforce a local round-trip and pre-input
 margin inside that lease before it can use an ARM response for HRC input.
 
-This is offline implementation evidence only. It adds no observation of
-running HRC, its UI, real Eclipse callback delivery, OSGi resolution, listener
-registration, active-process identity, token provisioning, cross-process IPC,
+The lifecycle tests synthetic manager registration, two bounded baseline scans,
+startup callback admission, ordered health checks, rollback, and shutdown. Its
+public no-argument activator remains disabled. The planner validates only
+caller-supplied bytes and cannot install its proposal.
+
+This is offline implementation evidence plus the read-only configuration facts
+above. It adds no observation of real Eclipse callback delivery, OSGi
+resolution, live listener registration, token publication, cross-process IPC,
 or runtime terminal capture. The ordered barrier and actionable-checkpoint
 contract are offline-tested but not HRC-runtime validated. `Feasibility`
 remains `TO CONFIRM`.
 
-Next, add manager registration and package all four layers together as one
-uninstalled startup bundle with guarded build and rollback procedures. Before
-live use,
-extend the
+Next, close two public-API lifecycle gaps before creating an installable Bundle.
+Listener registration plus `find(null)` is not atomic. Listener removal also
+does not prove provider-level callback drainage or safe unload. Implement secure
+same-user token and endpoint publication through a reviewed Windows native seam.
+Then add a deterministic JAR, manifest, guarded install, and rollback design.
+Before live use, extend the
 active-process runtime identity gate for the adapter's Equinox Common and
 Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
 lifecycle and must not read strategy or licence data.

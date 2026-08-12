@@ -9,13 +9,14 @@ mailbox, and local transport contract in one offline classpath.
 OSGi bundle and classloader because their Java boundary is deliberately
 package-private.
 
-This layer has no OSGi manifest, activator, listener registration, server
-startup entry point, secure endpoint or token provisioning, installer,
-rollback path, or HRC entry point. It has never received a real Eclipse
-callback. It has never been loaded into or run with HRC. Its loopback
-integration test keeps the server and client in one Java virtual machine
-(JVM), so it is not cross-process evidence. It does not change the project's
-`TO CONFIRM` feasibility verdict.
+This layer has no OSGi manifest, server startup entry point, secure endpoint or
+token provisioning, installer, rollback path, or HRC entry point. The
+[offline lifecycle owner](../osgi-lifecycle/README.md) now composes these layers
+behind a deliberately disabled activator for synthetic validation. It has never
+received a real Eclipse callback. It has never been loaded into or run with
+HRC. Its loopback integration test keeps the server and client in one Java
+virtual machine (JVM), so it is not cross-process evidence. It does not change
+the project's `TO CONFIRM` feasibility verdict.
 
 ## Ordered checkpoint and arm control
 
@@ -74,7 +75,7 @@ Run:
 The build runs the 30-test core harness. It resolves and hashes the exact
 offline providers, recompiles the adapter against them, and recompiles the
 transport against the core. It does not run the 34-test adapter harness or the
-24-test transport harness. Run their own build scripts when the complete
+25-test transport harness. Run their own build scripts when the complete
 offline validation matrix is required.
 
 The runtime build compiles its main and test sources with Java 17,

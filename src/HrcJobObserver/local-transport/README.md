@@ -119,7 +119,7 @@ Run:
 
 The build first runs the 30 core tests. It compiles transport main and test
 outputs separately with Java 17, `-proc:none`, `-Xlint:all`, and `-Werror`, then
-runs 24 transport tests. A targeted source/output boundary scan rejects Eclipse
+runs 25 transport tests. A targeted source/output boundary scan rejects Eclipse
 imports, listener-registration and activator symbols, selected file-I/O APIs,
 and named packaging artefacts.
 
@@ -128,9 +128,10 @@ LF/CRLF and malformed framing; input and output bounds; cursor-contiguous replay
 and selected non-actionable states; control/session/checkpoint failures; all
 three operation types and repeated request identity; reconnect and cursor
 forwarding; all eight event projections and JSON escaping; client sequencing;
-admitted-arm shutdown ordering; and defensive token copying.
+admitted-arm shutdown ordering; defensive token copying; canonical Base64URL
+authentication; and mutable authentication-buffer wiping.
 
-The current transport result is 24/24. This is offline validation only.
+The current transport result is 25/25. This is offline validation only.
 
 Still unvalidated: secure token generation, same-user token and endpoint
 provisioning, controller ownership and takeover, cross-process IPC, OSGi

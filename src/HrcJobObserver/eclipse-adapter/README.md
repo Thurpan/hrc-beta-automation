@@ -77,9 +77,11 @@ requires the arm and exact Bundle, version, class, and name profile. Eclipse
 Jobs are reusable in general. The one-new-object-per-HRC-submission assumption
 is a fingerprint-specific HRC finding. Object reuse fails closed in the core.
 
-No code in this directory registers the listener. A later layer must start the
-mailbox before one manager-wide registration through `Job.getJobManager()`.
-It must pair `addJobChangeListener` with `removeJobChangeListener`. During
+No code in this directory registers the listener. The
+[offline lifecycle owner](../osgi-lifecycle/README.md) now implements and tests
+one manager-wide registration through `Job.getJobManager()`. It starts the
+mailbox first and pairs `addJobChangeListener` with `removeJobChangeListener`.
+During
 teardown it must remove the manager-wide listener first, then close and await
 the mailbox. Closure must drain or fault every callback and control that has
 already acquired an ordered lease. A faulted close can terminate the worker
@@ -129,9 +131,9 @@ Eclipse OSGi are not. Before live use, extend the source-of-truth gate for those
 providers and resolve them from the active HRC process. Do not treat this build
 as runtime identity proof.
 
-Still unvalidated: OSGi resolution, listener registration and removal, real
-callback delivery and latency, concrete HRC Bundle provenance, activator and
-startup, live transport integration, packaging, installation, rollback, and
+Still unvalidated: OSGi resolution, real listener registration and removal,
+provider-level callback drainage, real callback delivery and latency, concrete
+HRC Bundle provenance, live startup, packaging, installation, rollback, and
 every HRC runtime result.
 
 ## Public API references
