@@ -254,13 +254,22 @@ unattended scheduler, or durable calculation-status log. This is absence from
 the reviewed public corpus, not proof that a private or partner interface does
 not exist.
 
-Build and test the minimal project-owned exact-status observer offline. The
-observer must retain object-correlated Job lifecycle events and terminal
-`IStatus` results without reading strategy or licence data. Do not install it
-or restart HRC while the dirty tabs `*Hand 7` and `*From Hand 7` remain
-protected. Resolve those resources explicitly before the first clean-start
-observer validation. Reserve the authorised smoke until the observer and
-standalone control path are ready.
+The project now has an
+[offline exact-status correlation core](src/HrcJobObserver/README.md). It
+correlates injected lifecycle inputs by Java object identity, separates trusted
+from rejected terminal projections, and keeps a bounded replay history. Its 25
+dependency-free tests pass for Java 17. It is package-private and has no
+Eclipse adapter, OSGi activator, IPC, installer, or HRC interaction; it does not
+yet make HRC terminal results durable and does not change the feasibility
+verdict.
+
+Next, add and test the public Eclipse Jobs listener adapter offline. Then add
+the bounded authenticated local transport and package an uninstalled startup
+bundle with a guarded build and rollback design. Do not install it or restart
+HRC while the dirty tabs `*Hand 7` and `*From Hand 7` remain protected. Resolve
+those resources explicitly before the first clean-start observer validation.
+Reserve the authorised smoke until the runtime observer and standalone control
+path are ready.
 
 Installed-component inspection identified the Stacks and Blinds surface as an
 Eclipse Nebula NatTable with default selection and edit bindings. A live check

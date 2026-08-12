@@ -1363,10 +1363,19 @@ completion, or failure states.
 
 ## Next action
 
-Implement and test the minimal exact-status observer offline. It must subscribe
-to the Eclipse Jobs lifecycle, preserve Java Job object correlation, and emit
-only the required identity, lifecycle, and terminal `IStatus` fields to a local
-single-user channel. It must not read strategy or licence data.
+The repository now contains an offline-tested, package-private Java correlation
+core under `src/HrcJobObserver/`. It accepts injected lifecycle inputs, preserves
+Java object identity internally, emits only bounded status primitives, rejects
+ambiguous terminal projections, and keeps a bounded replay history. Its 25
+dependency-free tests pass for Java 17. This adds no HRC observation and proves
+no OSGi resolution, Eclipse callback capture, IPC, installation, or runtime
+terminal-status result. `Feasibility` remains `TO CONFIRM`.
+
+Next, implement and test the public Eclipse Jobs listener adapter offline. Then
+add the bounded authenticated local transport and package an uninstalled
+startup bundle with guarded build and rollback procedures. The runtime observer
+must subscribe to the Eclipse Jobs lifecycle and must not read strategy or
+licence data.
 
 Preserve both current unsaved tabs. Do not install the observer, restart HRC, or
 consume the reserved smoke until Euan explicitly resolves the protected tabs.
