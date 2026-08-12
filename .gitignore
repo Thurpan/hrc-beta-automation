@@ -7,3 +7,5 @@ __pycache__/
 /src/HrcJobObserver/runtime-assembly/build/
 /src/HrcJobObserver/osgi-lifecycle/build/
 /src/HrcJobObserver/osgi-packaging/build/
+/src/HrcJobObserver/windows-bootstrap/build/
+/src/HrcJobObserver/windows-bootstrap/obj/
