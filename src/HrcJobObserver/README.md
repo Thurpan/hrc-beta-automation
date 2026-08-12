@@ -11,6 +11,9 @@ through their package-private contracts. An
 startup, cleanup, and a disabled activator. An
 [offline simpleconfigurator planner](osgi-packaging/README.md) produces only an
 in-memory proposal for the recorded baseline. An
+[offline Equinox start-level fixture](equinox-startlevel-fixture/README.md)
+tests listener publication before a synthetic level-5 producer in isolated
+fresh JVMs. An
 [offline Windows bootstrap module](windows-bootstrap/README.md) tests owned
 32-byte secret-buffer generation and wiping, exact applied pipe-DACL read-back,
 two-sided process identity, bounded one-shot framing, synthetic distinct-
@@ -126,9 +129,19 @@ The HRC bundle/version/class/name recognisers used by the tests come from the
 version-specific static findings in [`../../docs/feasibility.md`](../../docs/feasibility.md).
 They are not a public or vendor-supported API. Core static findings remain
 conditional on the exact eight-component fingerprint and active-process path
-check. Equinox Common and Eclipse OSGi are offline compile-provider evidence
-only. Live adapter use remains blocked until the active-process gate is
-deliberately extended for them.
+check. The start-level findings also depend on the recorded `config.ini`,
+`bundles.info`, `hrc.ini`, provider JAR, and Job-class hashes. Live adapter use
+remains blocked until the active-process and startup gates deliberately cover
+every added provider.
+
+The static audit found the calculator to be the only configured artefact, or
+embedded JAR within one, that defines or literally refers to the exact Nash,
+Viewer Save, and Export Job classes. The calculator is recorded at level
+`5,false`; normal Eclipse startup advances to level 6 before launching its
+application. This supports listener publication by a level-4 observer on that
+normal route. It does not prevent arbitrary `Bundle.loadClass`, reflection, or
+another early activation mechanism. Exact rows, hashes, class provenance, and
+the remaining boundary are recorded in the feasibility evidence.
 
 ## Offline validation
 
@@ -161,14 +174,30 @@ tests. The Windows bootstrap result is 28/28. The runtime tests cover the
 ordered checkpoint, two-marker arm control, and fresh lease renewal for an
 exact idempotent retry.
 
+The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
+recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
+fresh framework storage and hash-pinned installed providers. In the recorded
+arrangement, the level-4 observer sees Core Jobs resolved and non-persistent,
+and Core Runtime active and persistent. It publishes before the synthetic
+level-5 producer schedules one real Eclipse Job. The failure scenario proves
+that Equinox can advance after observer activation failure. Publication absence
+independently refuses the synthetic controller and prevents the Job.
+
+The fixture's no-runtime-unload result is a policy model. It rejects restart,
+republish, update, uninstall, and refresh, and keeps the observer loaded until
+final framework shutdown. It does not prove provider-level listener drainage
+for dynamic Bundle changes or safe live HRC unload.
+
 The lifecycle tests cover synthetic manager registration, bounded baseline
 scans, startup callback admission, ordered health checks, publication rollback,
 and shutdown drainage. Its public activator remains disabled. The packaging
 tests validate only in-memory bytes and cannot install the proposal.
 
-Still unvalidated: real Eclipse callback delivery, OSGi resolution and
-activation, listener registration and removal, secure token and endpoint
+Still unvalidated in HRC: OSGi resolution and activation, listener registration
+and removal, real Eclipse callback delivery, secure token and endpoint
 provisioning, broker state and publication storage, cross-process token and
 endpoint publication through dedicated bootstrap roles, secure name delivery,
 Java-to-Windows integration, packaging, startup, installation, rollback, safe
-unload, HRC runtime correlation, and every standalone-runner operation.
+final shutdown, runtime correlation, and every standalone-runner operation.
+The normal clean-start evidence does not validate arbitrary early class loading
+or a different HRC startup route.

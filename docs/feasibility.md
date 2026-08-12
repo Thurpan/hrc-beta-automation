@@ -152,6 +152,129 @@ recorded locations and produces only an in-memory `OFFLINE_PLAN_ONLY` proposal.
 It did not write to HRC. The simpleconfigurator and Java runtime identities are
 not enforced inputs to that planner and remain future artefact-build gates.
 
+### Read-only Job-producer and clean-launch evidence
+
+On 12 August 2026, a read-only filesystem audit used the exact configuration
+and installed component hashes in this section. It did not interact with the
+running HRC process, its UI, or its Eclipse callbacks. The protected dirty tabs
+remained untouched.
+
+The audit recorded `hrc.ini` with SHA-256
+`DB8461D2FE88A37E238EB76481E4A0BC35DB98CD441947FEE4CF42A6640B1D73`.
+It found no framework start-level override there. Static inspection of the
+hash-pinned Eclipse OSGi launcher records a normal `EclipseStarter` target-level
+fallback of 6. The normal application launch follows completion of that level
+advance.
+
+These are the exact relevant `bundles.info` rows from the hash-pinned 191-row
+configuration:
+
+```text
+net.holdemresources.calculator,4.1.1.202607211244,plugins/net.holdemresources.calculator_4.1.1.202607211244.jar,5,false
+org.eclipse.core.jobs,3.15.500.v20250204-0817,plugins/org.eclipse.core.jobs_3.15.500.v20250204-0817.jar,4,false
+org.eclipse.core.runtime,3.33.0.v20250206-0919,plugins/org.eclipse.core.runtime_3.33.0.v20250206-0919.jar,4,true
+org.eclipse.core.contenttype,3.9.600.v20241001-1711,plugins/org.eclipse.core.contenttype_3.9.600.v20241001-1711.jar,4,false
+org.eclipse.equinox.app,1.7.300.v20250130-0528,plugins/org.eclipse.equinox.app_1.7.300.v20250130-0528.jar,4,false
+org.eclipse.equinox.preferences,3.11.300.v20250130-0533,plugins/org.eclipse.equinox.preferences_3.11.300.v20250130-0533.jar,4,false
+org.eclipse.equinox.registry,3.12.300.v20250129-1129,plugins/org.eclipse.equinox.registry_3.12.300.v20250129-1129.jar,4,false
+org.osgi.service.prefs,1.1.2.202109301733,plugins/org.osgi.service.prefs_1.1.2.202109301733.jar,4,false
+org.eclipse.equinox.common,3.20.0.v20250129-1348,plugins/org.eclipse.equinox.common_3.20.0.v20250129-1348.jar,2,true
+org.eclipse.equinox.simpleconfigurator,1.5.400.v20250129-0942,plugins/org.eclipse.equinox.simpleconfigurator_1.5.400.v20250129-0942.jar,1,true
+org.eclipse.osgi,3.23.0.v20250228-0640,plugins/org.eclipse.osgi_3.23.0.v20250228-0640.jar,-1,true
+```
+
+In addition to Eclipse OSGi, Equinox Common, and Core Jobs, Core Runtime's
+remaining direct requirements are Core Content Type, Equinox App, Equinox
+Preferences, and Equinox Registry. OSGi Preferences Service is a mandatory
+requirement of Equinox Preferences, not a direct Core Runtime requirement.
+
+The audit scanned every configured artefact and each embedded JAR. Only the
+calculator archive defines or literally refers to the exact Job classes
+`net.holdemresources.internal.bQ`, `net.holdemresources.internal.bT`, and
+`net.holdemresources.internal.af`. No Bundle at level 4 or lower defines or
+literally refers to those classes. The exact class hashes and observed roles
+are:
+
+| Class | SHA-256 | Static provenance |
+| --- | --- | --- |
+| `net.holdemresources.internal.bQ` | `869DA5F1E4AE61E5745A05221547004D77AD0F1A23CCCB3B604E3B2DA57710A4` | Nash calculation Job; constructed and scheduled by `bO`. |
+| `net.holdemresources.internal.bT` | `3841A1FC150B213D98361C62AF070211ACC8F34E3BD2F30676FF48DCE443A250` | Viewer Save Job; constructed and scheduled by `bO`. |
+| `net.holdemresources.internal.af` | `5988ECB412ED4C5E9C5CAEFC2BFC09944F3259E59697738A1A318723B45FA80D` | Strategy Export Job; constructed and scheduled by `ac`. |
+| `net.holdemresources.internal.bO` | `00B78046919B00BD2E3903F65B2919D21DEE83E6131DBED953C649AD94A24AED` | Observed caller for `bQ` and `bT`. |
+| `net.holdemresources.internal.ac` | `3A01AD29808CCAC6690692341B3C0B474CBD01989CDD02509E762325F971A6B7` | Observed caller for `af`. |
+
+The three Job types are package-private and `final`. The calculator manifest
+exports no package and declares no dynamic import. The installed scan found no
+fragment, Declarative Services metadata, or startup extension that supplies an
+alternate route to these exact Jobs. The exact Job types are not executable
+extension declarations. The calculator uses lazy activation and is recorded at
+level `5,false`.
+
+Together, these facts support the normal clean-launch sequence: a persistently
+started level-4 observer can register and publish before the level-5 calculator
+application can schedule an exact relevant Job. Start levels are ordering, not
+an access-control boundary. They do not prevent arbitrary `Bundle.loadClass`,
+reflection, or another unobserved early activation mechanism. Treat any
+configuration, provider, class, or startup-route mismatch as a stop condition.
+
+### Offline Equinox start-level fixture evidence
+
+The source/test-only
+[Equinox start-level fixture](../src/HrcJobObserver/equinox-startlevel-fixture/README.md)
+starts each scenario in a fresh JVM with unique temporary framework storage. It
+hash-checks these exact installed providers before use:
+
+| Provider | Installed filename | SHA-256 |
+| --- | --- | --- |
+| Eclipse Core Jobs | `org.eclipse.core.jobs_3.15.500.v20250204-0817.jar` | `189199CD46A284220B7B97FD59218B533FE9FD8E0AD22258F674A3F2DF4DE7C9` |
+| Equinox Common | `org.eclipse.equinox.common_3.20.0.v20250129-1348.jar` | `617C5D7E759276B7E9ED363C56A6714B7F21D4A812D533FCB90E48723CC4C001` |
+| Eclipse OSGi | `org.eclipse.osgi_3.23.0.v20250228-0640.jar` | `1AC113541A19F0C72C0421FB24058DEFCA7E3C6F282E5EE73F14D2768A9AE653` |
+| Eclipse Core Runtime | `org.eclipse.core.runtime_3.33.0.v20250206-0919.jar` | `FF59EFB6FB7D610D819D44777BD306860EC7926CD31AC95419E729EDFB38CC02` |
+| Eclipse Core Content Type | `org.eclipse.core.contenttype_3.9.600.v20241001-1711.jar` | `D8A2974F5EC3D7CFB8E3E177AA7303BABED0A1565DBE5416084A751044255002` |
+| Equinox App | `org.eclipse.equinox.app_1.7.300.v20250130-0528.jar` | `CA5D75F9228510F19250EF947E340A7A2CDEBD1A888EFDF13A3F3A4B114D4D2E` |
+| Equinox Preferences | `org.eclipse.equinox.preferences_3.11.300.v20250130-0533.jar` | `7F8B452EE5F9D836DB8534C6BD1A29A2662352D868FF94856B6B54BC8032A999` |
+| Equinox Registry | `org.eclipse.equinox.registry_3.12.300.v20250129-1129.jar` | `E2145418FF639B44FF50E83B66848F40AE38C869DB6B8F95044BBB5D0D652722` |
+| OSGi Preferences Service | `org.osgi.service.prefs_1.1.2.202109301733.jar` | `43C7C870710E363405D422DA653CCE0D798A4537F76E4930F79BCEADD3A55345` |
+
+The fixture generates only temporary test Bundles. It leaves no manifest, JAR,
+class file, `plugin.xml`, or framework storage in the repository. It does not
+install the calculator. A synthetic level-5 producer represents only the
+ordering boundary.
+
+The prerequisite scenario passed 12/12 tests with Common at `2,true`, Core Jobs
+at the intentional fixture prerequisite `3,true`, the observer at `4,true`, and
+the producer at `5,true`. It proves registration, publication, admission, and a
+real immediate Eclipse Job lifecycle when Core Jobs is available first.
+
+The recorded-row scenario passed 18/18 tests. At observer activation it
+asserted every installed provider's actual state, Bundle start level, and
+persistent-start flag. Common was active at level 2 and persistent. Core Jobs
+was resolved at level 4 and non-persistent. Core Runtime was active at level 4
+and persistent. Core Content Type, Equinox App, Equinox Preferences, Equinox
+Registry, and OSGi Preferences Service were resolved at level 4 and
+non-persistent. The level-4 observer registered through the real Jobs manager
+and published before the synthetic level-5 producer emitted `scheduled`,
+`running`, and `done`.
+
+The observer-failure scenario passed 9/9 tests. Equinox emitted
+`FrameworkEvent.ERROR` with a `BundleException`, still advanced to level 5, and
+activated the producer. No listener or publication existed. The synthetic
+controller was refused and no Job was scheduled. A production controller must
+therefore refuse all HRC input when publication is absent or invalid; framework
+advancement is not an observer-success oracle.
+
+The fixture also validates a no-runtime-unload policy model. Publication is a
+prerequisite for admission. The ordered stop-and-revoke sequence is terminal.
+Restart, republish, update, uninstall, and refresh are refused, and a stale
+callback is rejected. The observer remains loaded until final framework
+shutdown. This policy result does not prove dynamic provider-level listener
+drainage or safe live HRC unload.
+
+This is isolated public-Equinox evidence, not HRC runtime evidence. It does not
+prove an installer, a deployable observer Bundle, actual HRC listener delivery,
+arbitrary early class-loading absence, or the protected tabs' safe disposition.
+`Feasibility` remains `TO CONFIRM`.
+
 ### Offline Windows bootstrap implementation evidence
 
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
@@ -170,12 +293,16 @@ Pipe creation requests a protected DACL with exactly two full-access entries:
 canonical form equals the requested DACL. The harness directly confirmed the
 protected flag, both trustees, full-access rights, and exactly two entries.
 
-The candidate pipe accepts frames from 1 through 8,192 bytes. Connection
-acceptance and each endpoint's one send and one receive accept a positive
-timeout of at most 30 seconds. An admitted I/O failure, malformed received
-frame, or timeout disposes the channel. The forced timeout test covered receive
-and verified that the poisoned channel could not receive again. The synchronous
-client connect call is outside this timeout contract.
+The candidate pipe accepts frames from 1 through 8,192 bytes. Server acceptance,
+client connection, and each endpoint's one send and one receive require a
+positive timeout of at most 30 seconds. The connection deadlines cover PID
+lookup, process capture, exact peer authentication, and authenticated-peer
+publication. Connection operations also accept caller cancellation. An
+admitted cancellation, I/O failure, malformed received frame, or timeout
+disposes the channel. Tests cover delayed synchronous peer authentication,
+connection timeout and cancellation, pending-operation disposal, and exact
+pipe-name release. Native peer-PID and DACL calls retain the safe pipe handle
+until each call completes.
 
 Most primitive tests run both pipe endpoints as tasks inside one process. Two
 tests launch the harness as synthetic child peers. The first
@@ -1405,6 +1532,12 @@ completion, or failure states.
   is not dependency success. A UI-only observer cannot distinguish successful
   completion from cancellation after either item disappears. No supported
   external exact-result hook was found.
+- The read-only producer audit and isolated Equinox fixture support observer-
+  before-producer ordering on the exact normal clean-launch route. They do not
+  prove live HRC observer activation or prevent arbitrary `Bundle.loadClass`,
+  reflection, or a different early activation route. The no-runtime-unload
+  result is a policy model; it does not prove dynamic provider-level callback
+  drainage. These conditions remain pre-live gates.
 - Version-specific paths are conditional on the exact eight-component fingerprint
   above. The runner's filename/hash identity gate is not implemented or tested.
 - The transition to the next simulation has not been demonstrated.
@@ -1475,11 +1608,13 @@ completion, or failure states.
 
 The repository now contains an offline-tested Java correlation core, Eclipse
 Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
-disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, and
-source/test-only Windows bootstrap primitives under `src/HrcJobObserver/`.
+disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, isolated
+Equinox start-level fixture, and source/test-only Windows bootstrap primitives
+under `src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 24
-Windows bootstrap tests. The assembly
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 28
+Windows bootstrap tests. The start-level fixture passes 12/12 prerequisite,
+18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1493,9 +1628,11 @@ startup callback admission, ordered health checks, rollback, and shutdown. Its
 public no-argument activator remains disabled. The planner validates only
 caller-supplied bytes and cannot install its proposal.
 
-This is offline implementation evidence plus the read-only configuration facts
-above. It adds no observation of real Eclipse callback delivery, OSGi
-resolution, live listener registration, token publication, production
+This is offline implementation evidence plus the read-only configuration and
+producer-provenance facts above. The fixture supplies isolated public-Equinox
+resolution, activation, listener, and Job delivery evidence with synthetic
+Bundles. It adds no observation of HRC OSGi resolution, live HRC listener
+registration, real HRC callback delivery, token publication, production
 controller/observer IPC, or runtime terminal capture. The ordered barrier and
 actionable-checkpoint contract are offline-tested but not HRC-runtime validated.
 `Feasibility` remains `TO CONFIRM`.
@@ -1512,14 +1649,19 @@ boundary, secure pipe-name delivery, and dedicated observer, broker, and
 controller orchestration. Validate all four one-shot exchanges across those
 processes before integrating the seam with Java.
 
-Also close two public-API lifecycle gaps before creating an installable Bundle.
-Listener registration plus `find(null)` is not atomic. Listener removal also
-does not prove provider-level callback drainage or safe unload. Implement secure
-same-user token and endpoint publication only after the Windows prerequisites
-above. Then add a deterministic JAR, manifest, guarded install, and rollback
-design. Before live use, extend the
-active-process runtime identity gate for the adapter's Equinox Common and
-Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
+Before creating an installable Bundle, enforce the exact clean-launch
+configuration, provider rows, provider hashes, Job-class hashes, and normal
+start-level route recorded above. The static audit and isolated fixture support
+listener publication before exact Job production on that route. They do not
+prevent arbitrary `Bundle.loadClass`, reflection, or another activation route.
+Do not use runtime stop, restart, republish, update, uninstall, or refresh as a
+cleanup design. Keep the observer loaded until final framework shutdown, then
+require ordered admission closure, listener removal, mailbox drainage,
+transport shutdown, and control-call completion. Implement secure same-user
+token and endpoint publication only after the Windows prerequisites above.
+Then add a deterministic JAR, manifest, guarded install, and rollback design.
+Before live use, extend the active-process runtime identity gate for every
+added provider. The runtime observer must subscribe only to the Eclipse Jobs
 lifecycle and must not read strategy or licence data.
 
 Preserve both current unsaved tabs. Do not install the observer, restart HRC, or
@@ -1528,9 +1670,12 @@ consume the reserved smoke until Euan explicitly resolves the protected tabs.
 The authorised design relies on the version-specific findings in this
 document. Resolve the active HRC installation and rehash the exact
 eight-component identity set above from its `plugins` directory before using
-them. Before live observer use, deliberately extend that gate with Equinox
-Common and Eclipse OSGi and verify both through the active process. Stop on any
-process, path, filename, or hash mismatch.
+them. Before an install, verify the recorded baseline configuration hashes,
+Bundle rows, provider JARs, and Job-class hashes. After a guarded install,
+verify separately the deterministic target configuration hashes, exact inserted
+observer row, every preserved baseline row, provider JARs, and Job-class hashes.
+Stop on any process, path, filename, hash, row, target-level, or provenance
+mismatch.
 
 Begin the remaining non-writing probes with the statically defined exact-tab-
 focus, selection-round-trip, one-shot `Ctrl+F4`, and `Save Resource` Cancel path

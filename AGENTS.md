@@ -136,6 +136,13 @@ Their recorded hashes are compile-provider evidence only. Do not activate a
 live observer until both providers are deliberately added to, and verified
 through, the active-process identity gate in `docs/feasibility.md`.
 
+Before changing startup configuration, verify the exact baseline `config.ini`,
+`bundles.info`, and `hrc.ini` hashes recorded in `docs/feasibility.md`. Verify
+the baseline rows and provider hashes. After a guarded install, separately
+verify the deterministic target file hashes, the exact inserted observer row,
+all preserved baseline rows, and the Job-producer class hashes. Stop on any
+unexpected source or target difference.
+
 ## Exact-status transport safety
 
 - Keep the observer endpoint on IPv4 loopback. Do not treat loopback as process
@@ -183,11 +190,24 @@ through, the active-process identity gate in `docs/feasibility.md`.
   indeterminate response is a stop condition.
 - Treat observer monotonic values and deadlines as opaque to other processes.
   Do not compare them with controller clocks or carry them across restart.
-- Do not unload observer code unless listener removal, mailbox drainage,
-  transport shutdown, and all in-flight control calls have completed cleanly.
-- Do not enable the OSGi activator or create an installable Bundle while the
-  recorded registration-plus-baseline race and provider-level listener-drain
-  gap remain unresolved.
+- Treat the offline Equinox start-level fixture as synthetic evidence only. It
+  proves listener publication before a synthetic level-5 producer in isolated
+  fresh JVMs. It does not prove HRC runtime activation or prevent arbitrary
+  `Bundle.loadClass` or reflective early activation.
+- Permit controller admission only after observer listener registration and
+  endpoint publication. Observer activation failure does not stop Equinox from
+  advancing to later start levels, so missing or invalid publication must
+  independently refuse the controller and all HRC input.
+- Do not stop, restart, update, uninstall, refresh, or republish the observer in
+  a running framework. Keep it loaded until final framework shutdown. The
+  offline no-runtime-unload policy does not prove provider-level listener
+  drainage for dynamic Bundle changes. At final shutdown, require ordered
+  admission closure, listener removal, mailbox drainage, transport shutdown,
+  and completion of all in-flight control calls.
+- Do not enable the OSGi activator or create an installable Bundle until the
+  exact clean-launch configuration, provider set, Job-producer provenance, and
+  start-level route are enforced as pre-live gates. The normal recorded route
+  is not proof against a different activation mechanism.
 - Do not treat the in-memory simpleconfigurator proposal as an installer. A
   future installer must verify exact source and target hashes, write through a
   guarded transaction, preserve a unique backup, and prove rollback.

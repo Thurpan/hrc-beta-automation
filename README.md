@@ -266,6 +266,8 @@ An [offline OSGi lifecycle owner](src/HrcJobObserver/osgi-lifecycle/README.md)
 tests manager registration and ordered cleanup behind a disabled activator. An
 [offline simpleconfigurator planner](src/HrcJobObserver/osgi-packaging/README.md)
 produces an in-memory proposal only. An
+[offline Equinox start-level fixture](src/HrcJobObserver/equinox-startlevel-fixture/README.md)
+tests listener-before-producer ordering in isolated fresh JVMs. An
 [offline Windows bootstrap module](src/HrcJobObserver/windows-bootstrap/README.md)
 tests owned 32-byte secret-buffer generation and wiping, exact applied pipe-
 DACL read-back, two-sided process identity, bounded one-shot framing, synthetic
@@ -273,7 +275,9 @@ distinct-process frame exchange, rejection of a wrong live child, a canonical
 HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
 messages. The current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 28 Windows bootstrap tests.
+tests, 13 packaging tests, and 28 Windows bootstrap tests. The start-level
+fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
+observer-failure tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The
@@ -301,23 +305,35 @@ delivery. They do not yet make
 HRC terminal results available to a controller and do not change the
 feasibility verdict.
 
-Next, close the two lifecycle blockers before creating an installable Bundle.
-The public Eclipse APIs do not make listener registration plus `find(null)`
-atomic, and listener removal does not prove provider-level callback drainage.
-The Windows harness now also validates the bounded canonical descriptor and
+The read-only static audit records the calculator at level `5,false`, after a
+proposed level-4 observer, on the normal clean-launch route to framework level
+6. Only the exact calculator archive among all 191 configured artefacts and
+their embedded JARs defines or literally refers to the Nash, Viewer Save, and
+Export Job classes. Their exact class hashes are recorded in
+`docs/feasibility.md`. The fixture proves public Equinox ordering for synthetic
+Bundles with the recorded provider arrangement. This evidence does not prove
+live HRC activation and does not prevent arbitrary `Bundle.loadClass`,
+reflection, or another early activation route. The observer must remain loaded
+until final framework shutdown; dynamic stop, update, uninstall, refresh, and
+republish are prohibited by policy, not proved safe.
+
+The Windows harness validates the bounded canonical descriptor and
 eight-message codec in memory. The codec models token ownership and wiping,
 publication acknowledgement, a separate claim receipt and final
 acknowledgement, and revocation. It does not perform any of those exchanges.
 Next, implement the broker state and publication store. Add secure name
 delivery and dedicated observer, broker, and controller orchestration. Validate
 all four one-shot exchanges across those processes before connecting the
-Windows seam to Java. Then add a deterministic JAR, manifest,
-guarded install, and rollback design. Extend the active-process runtime identity
-gate for the adapter's Equinox Common and Eclipse OSGi providers before live
-use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
-`*From Hand 7` remain protected. Resolve those resources explicitly before the
-first clean-start observer validation. Reserve the authorised smoke until the
-runtime observer and standalone control path are ready.
+Windows seam to Java. Then enforce the recorded configuration, provider, class,
+and start-level gates in a deterministic JAR, manifest, guarded install, and
+rollback design. Extend the active-process runtime identity gate for all added
+providers before live use. Refuse controller admission when observer
+publication is absent or invalid; Equinox can continue after observer activation
+failure. Do not install the observer or restart HRC while the dirty tabs
+`*Hand 7` and `*From Hand 7` remain protected. Resolve those resources
+explicitly before the first clean-start observer validation. Reserve the
+authorised smoke until the runtime observer and standalone control path are
+ready.
 
 Installed-component inspection identified the Stacks and Blinds surface as an
 Eclipse Nebula NatTable with default selection and edit bindings. A live check
