@@ -23,13 +23,15 @@ capacity-one asynchronous in-memory publisher and a one-shot broker across the
 broker harness process and long-lived synthetic observer and controller child
 modes. The publisher returns a store-affine, coalesced exact-removal lease.
 The broker executes all four exchanges and fail-closed claim-versus-revoke
-arbitration. The module has no descriptor filesystem publisher, secure initial
-pipe-name handoff, dedicated production role executables, crash containment,
-or connection to the Java layers. This component is not the standalone runner
-or an installable HRC plug-in. It has no OSGi manifest, enabled activator, live
-listener registration, file writer, installer, or HRC runtime entry point. Its
-offline adapter, runtime, and lifecycle builds accept an HRC installation path
-solely to resolve and hash public API provider JARs.
+arbitration. The module also tests an internal descriptor-file publisher and an
+independent reader against caller-supplied, already-existing protected local
+NTFS directories. This existing-directory seam is not production persistence.
+The module has no secure initial pipe-name handoff, dedicated production role
+executables, crash containment, or connection to the Java layers. This
+component is not the standalone runner or an installable HRC plug-in. It has no
+OSGi manifest, enabled activator, live listener registration, installer, or HRC
+runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
+an HRC installation path solely to resolve and hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
@@ -85,6 +87,27 @@ snapshots. Successful publication returns a store-affine opaque lease. The
 lease coalesces exact removal and caches its terminal result. Cross-store
 checks and exact entry identity prevent an old owner from removing a later
 equal publication.
+
+`FileBootstrapPublicationStore` publishes only the public canonical descriptor
+as `endpoint-v1.bin` in a caller-supplied protected directory. It binds the
+expected owner to the current process account SID and requires an exact DACL
+for that account and `SYSTEM`. This DACL does not isolate logon sessions for the
+same account. A retained directory handle rejects reparse points, proves a
+local NTFS volume, and pins the namespace by denying delete sharing. Publication
+uses a random `CREATE_NEW` temporary file, exact flush and read-back checks, and
+path, volume, DACL, and file-identity checks. Native retained-root rename uses
+no replacement. The final name must reopen as the same file identity.
+The retained publication handle denies new write and delete access until exact
+removal. The store checks the fixed name-to-file identity again before it
+returns the lease.
+
+The file lease uses POSIX handle deletion and bounded retained-directory
+enumeration to prove exact absence. It preserves and rejects an ABA replacement.
+An indeterminate terminal removal forbids store reuse but permits
+operating-system handle cleanup. `FileBootstrapPublicationReader` returns
+independent wipeable snapshots after the same directory and final-file checks.
+Parsing remains structural only. The file never contains the bearer token.
+Deadlines and cancellation are cooperative around synchronous operations.
 
 `BootstrapBrokerSession` binds distinct observer, controller, and broker
 processes in one security context. The synthetic harness runs the broker in its
@@ -205,15 +228,23 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 55/55. Its 27 broker and store tests
-cover asynchronous publication, store-affine coalesced removal, cross-store and
-ABA defence, exact role context, all four cross-process exchanges, and
+tests. The Windows bootstrap result is 66/66: 20 primitive tests, 8 descriptor
+and protocol tests, 27 broker and in-memory-store tests, and 11 filesystem
+tests. The broker and in-memory-store tests cover asynchronous publication,
+store-affine coalesced removal, cross-store and ABA defence, exact role context,
+all four cross-process exchanges, and
 claim/revoke races. They also cover a completed malformed loser, transcript and
 proof rejection, the combined absolute deadline, asynchronous cleanup, unknown
 removal status, adversarial publication and disposal interleavings, fault
 preservation, wiping, and name release. The runtime tests cover the ordered
 checkpoint, two-marker arm control, and fresh lease renewal for an exact
 idempotent retry.
+
+The filesystem tests cover retained-root rename without replacement, exact
+public-byte publication and removal, independent reader snapshots, capacity and
+collision paths, deadline and cancellation boundaries, late verified removal,
+namespace pinning, bounded multi-page enumeration, file-identity and ABA
+replacement, and real fixed-leaf and root junction rejection.
 
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
@@ -236,10 +267,11 @@ tests validate only in-memory bytes and cannot install the proposal.
 
 Still unvalidated in HRC: OSGi resolution and activation, listener registration
 and removal, real Eclipse callback delivery, secure token and endpoint
-provisioning, guarded LocalAppData descriptor persistence, secure initial pipe-
-name delivery, dedicated production bootstrap executables, executable-hash
-identity, crash containment, Java-to-Windows integration, packaging, startup,
-installation, rollback, safe final shutdown, runtime correlation, and every
-standalone-runner operation.
+provisioning, Windows known-folder resolution, LocalAppData hierarchy
+provisioning and provenance, stale and crash recovery, production descriptor
+persistence, secure initial pipe-name delivery, dedicated production bootstrap
+executables, executable-hash identity, crash containment, Java-to-Windows
+integration, packaging, startup, installation, rollback, safe final shutdown,
+runtime correlation, and every standalone-runner operation.
 The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.

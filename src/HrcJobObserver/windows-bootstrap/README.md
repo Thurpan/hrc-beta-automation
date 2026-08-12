@@ -4,9 +4,12 @@
 
 This directory contains an internal `net8.0-windows` class library and a
 dependency-free console test harness. It is a source/test-only feasibility
-module. It contains an in-memory publication store and a one-shot synthetic
-broker session. It is not a production broker, controller, descriptor-file
-publisher, installer, standalone runner, Java bridge, or HRC integration.
+module. It contains an in-memory publication store, an offline guarded
+descriptor-file publication seam, an independent file reader, and a one-shot
+synthetic broker session. The file seam operates only in a caller-supplied,
+already-existing protected directory. It is not production descriptor
+persistence, a production broker or controller, an installer, a standalone
+runner, a Java bridge, or HRC integration.
 
 The module has never been loaded into, attached to, or run with HRC. Most tests
 use the test-harness process as both named-pipe endpoints or exercise the
@@ -15,8 +18,9 @@ synthetic child peers. They add cross-process process-identity and fixed
 public-frame evidence. Broker tests launch persistent synthetic observer and
 controller child roles. They transfer a generated bearer token only through
 authenticated protected pipes. The public descriptor reaches the controller
-through test-control input. The module adds no Java, Eclipse callback, HRC UI,
-or runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
+through test-control input. File-publication tests use temporary protected NTFS
+directories outside HRC. The module adds no Java, Eclipse callback, HRC UI, or
+runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
 
 ## Implemented scope
 
@@ -97,6 +101,41 @@ Successful publication returns a store-affine opaque lease. The lease
 coalesces concurrent exact-removal calls and caches their terminal result, so
 an old owner cannot remove a later equal publication.
 
+`FileBootstrapPublicationStore` is an internal offline publisher for one
+caller-supplied, already-existing directory. The caller supplies the expected
+owner SID. The store requires that SID to equal the current process account
+SID. It requires a local NTFS directory with an exact protected DACL for the
+current account and `SYSTEM`. This is account-level protection; the seam does
+not isolate separate logon sessions for the same account. It rejects reparse
+points and retains the validated directory handle. That handle deliberately
+denies delete sharing and pins the directory namespace until disposal.
+
+The file store reserves the fixed public name `endpoint-v1.bin`. It accepts at
+most one canonical public descriptor and never writes the bearer token. It
+creates a random temporary file with `CREATE_NEW`, writes and flushes the exact
+canonical bytes, and validates the bytes, DACL, path, volume, and file identity.
+It promotes the file with native `NtSetInformationFile` using
+`FileRenameInformation` class 10, the retained directory as `RootDirectory`,
+and no replacement. It then reopens the final name and requires the same file
+identity. The retained publication handle denies new write and delete access
+until exact removal. The store checks the final name-to-file identity again
+immediately before it returns the lease.
+
+The store-affine file lease removes only its retained file identity. Removal
+uses POSIX handle deletion and bounded enumeration through the retained
+directory to prove the exact name absent. An indeterminate terminal removal
+forbids store reuse and cannot claim absence. An ABA replacement remains
+preserved and rejected. Disposal can still release the retained
+operating-system handles. `FileBootstrapPublicationReader` independently
+validates the same existing directory and returns an independently owned,
+wipeable snapshot.
+The reader proves structure and canonical encoding only; it does not
+authenticate the descriptor.
+
+File publication applies cooperative cancellation and deadline checks around
+its synchronous operations. Removal applies cooperative deadline checks. These
+checks do not hard-preempt a blocking native call.
+
 `BootstrapBrokerSession` binds one observer process, one controller process,
 and the current broker process. The roles must be distinct processes in one
 user, logon, token session, and process session. The session accepts one
@@ -142,13 +181,15 @@ pipe name, public descriptor, test flags, and bounded delays. The token travels
 only on protected protocol pipes. The cleared child environment contains no
 secret. Each child must write zero bytes to standard output and standard error.
 
-The in-memory store is not a descriptor filesystem writer or reader. The
-module does not deliver an initial pipe name securely, create a LocalAppData
-descriptor, authenticate a future executable by hash, or connect to the Java
-transport. The persistent roles are test modes in one harness executable. They
-are not separate production role executables. The module contains no HRC path,
-component, private configuration, licence data, poker data, network client,
-registry access, or environment-secret input.
+The file seam does not resolve a Windows known folder. It does not provision or
+prove a LocalAppData hierarchy, recover stale or crash-left publications, or
+deliver an initial pipe name securely. It does not authenticate a future
+executable by hash or connect to the Java transport. The persistent roles are
+test modes in one harness executable. They are not separate production role
+executables. The module contains no HRC path, component, private configuration,
+licence data, poker data, network client, registry access, or environment-secret
+input. The fixed file contains only the public canonical descriptor, not the
+bearer token.
 
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
@@ -172,9 +213,10 @@ termination is not confirmed. This is not kill-on-close containment and does
 not prove cleanup after abrupt parent termination.
 
 The broker tests prove the four exchanges only for the synthetic harness roles
-and in-memory store. They do not prove production executable separation,
-executable hashing, secure initial pipe-name delivery, persisted publication,
-crash containment, or Java integration.
+and in-memory store. The file store is not integrated with those exchanges.
+These tests do not prove production executable separation, executable hashing,
+secure initial pipe-name delivery, production persistence, crash containment,
+or Java integration.
 
 ## Offline validation
 
@@ -241,11 +283,21 @@ callback faults coalesced disposal without stopping run cancellation, exact
 removal, token wiping, or protocol-pipe cleanup. Publisher, protocol, and
 removal failures remain observable together.
 
-The current result is 55/55. This is offline Windows model, codec, primitive,
-asynchronous in-memory-store, and synthetic broker evidence only.
+Eleven filesystem cases cover exact public-byte round trips, independent reader
+snapshots, capacity and collision handling, malformed and wrongly secured
+state, ABA replacement, identity replacement, cancellation, deadlines, late
+verified removal, namespace pinning, bounded multi-page enumeration, real
+fixed-leaf and root junction rejection, and retained-root cross-directory
+rename without replacement.
+
+The current result is 66/66: 20 primitive tests, 8 descriptor and protocol
+tests, 27 broker and in-memory-store tests, and 11 filesystem tests. This is
+offline Windows model, codec, primitive, publication-seam, and synthetic broker
+evidence only.
 
 Still unvalidated: production observer, broker, and controller executables;
-secure pipe-name delivery; descriptor persistence; executable-hash policy;
-crash-contained child cleanup; LocalAppData
-descriptor creation and reparse-point defence; Java integration; OSGi startup;
-installation; rollback; HRC runtime use; and every standalone-runner action.
+secure pipe-name delivery; known-folder resolution; LocalAppData hierarchy
+provisioning and provenance; stale and crash recovery; production descriptor
+persistence; executable-hash policy; crash-contained child cleanup; Java
+integration; OSGi startup; installation; rollback; HRC runtime use; and every
+standalone-runner action.

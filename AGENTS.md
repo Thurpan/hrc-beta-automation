@@ -151,41 +151,65 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 55/55
-  harness proves exact applied protected-DACL read-back, two-sided process
-  identity, bounded one-shot frames, fixed public-frame exchange with a
-  synthetic child, rejection of a wrong live child, a canonical HMAC-bound
-  descriptor model, and eight phase- and role-bound message codecs. It also
-  proves a capacity-one asynchronous in-memory publisher with independent
-  wipeable snapshots and a store-affine, coalesced exact-removal lease. The
-  lease provides cross-store and ABA defence. A one-shot broker runs all four
-  exchanges across the broker harness process and long-lived synthetic observer
-  and controller child modes. It enforces exact role bindings, one common
-  security context, a publication budget capped by the remaining absolute
-  session deadline, claim-versus-revoke arbitration, and terminal rejection of
-  an already-completed malformed loser. Its coalesced asynchronous disposal
-  waits for non-abandonable exact removal. `RunAsync` remains the authoritative
-  protocol-failure channel; `DisposeAsync` separately reports cancellation-
-  request and cleanup failures. A faulted or unknown removal cannot claim
-  absence. Removal verified only after its deadline still fails the session
-  before terminal acknowledgement.
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 66/66
+  harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
+  broker and in-memory-store tests, and 11 filesystem tests. It proves exact
+  applied protected-DACL read-back, two-sided process identity, bounded one-shot
+  frames, fixed public-frame exchange with a synthetic child, rejection of a
+  wrong live child, a canonical HMAC-bound descriptor model, and eight phase-
+  and role-bound message codecs. It also proves a capacity-one asynchronous
+  in-memory publisher with independent wipeable snapshots and a store-affine,
+  coalesced exact-removal lease. The lease provides cross-store and ABA defence.
+  A one-shot broker runs all four exchanges across the broker harness process
+  and long-lived synthetic observer and controller child modes. It enforces
+  exact role bindings, one common security context, a publication budget capped
+  by the remaining absolute session deadline, claim-versus-revoke arbitration,
+  and terminal rejection of an already-completed malformed loser. Its coalesced
+  asynchronous disposal waits for non-abandonable exact removal. `RunAsync`
+  remains the authoritative protocol-failure channel; `DisposeAsync`
+  separately reports cancellation-request and cleanup failures. A faulted or
+  unknown removal cannot claim absence. Removal verified only after its
+  deadline still fails the session before terminal acknowledgement.
   Deadline checks are cooperative. They do not hard-preempt an arbitrary
   blocking native call.
   Adversarial tests cover cancellation, disposal and publication interleavings,
   synchronous re-entry, throwing cancellation callbacks, and combined protocol
-  and cleanup failures. This evidence does not prove persistent descriptor
-  publication, secure initial pipe-name delivery, dedicated production role
-  executables, executable-hash policy, crash containment, Java integration, or
-  HRC runtime use.
+  and cleanup failures.
+  The internal file publisher and independent reader operate only in a
+  caller-supplied, already-existing protected local NTFS directory. They bind
+  the expected owner to the current process account SID and require an exact DACL
+  for that account and `SYSTEM`. This does not isolate logon sessions for the
+  same account. Their retained directory handle intentionally denies delete
+  sharing and pins the namespace. They reserve only the fixed public
+  `endpoint-v1.bin` descriptor and never write the bearer token. Publication is
+  capacity one and no-overwrite. It uses a random `CREATE_NEW` temporary file,
+  exact flush and read-back validation, path, volume, DACL, and file-identity
+  checks, and retained-root `NtSetInformationFile` rename without replacement.
+  The retained publication handle denies new write and delete access until
+  exact removal. Recheck the fixed name-to-file identity before returning its
+  lease.
+  Exact removal uses POSIX handle deletion and bounded retained-directory
+  enumeration. Terminal removal uncertainty preserves and rejects an ABA
+  replacement, forbids reuse, and permits operating-system handle cleanup. The
+  reader returns independent wipeable structural snapshots. Filesystem tests
+  include real fixed-leaf and root junction rejection, retained-root
+  cross-directory rename, namespace pinning, bounded multi-page enumeration,
+  ABA and identity replacement, collision, cancellation, deadline, and late-removal
+  paths. This evidence does not prove known-folder resolution, protected
+  LocalAppData hierarchy provisioning or provenance, stale or crash recovery,
+  production descriptor persistence, secure initial pipe-name delivery,
+  dedicated production role executables, executable-hash policy, crash
+  containment, Java integration, or HRC runtime use.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until guarded LocalAppData descriptor publication, secure initial name
-  delivery, dedicated production-role orchestration and identity, crash
-  containment, and Java lifecycle integration are implemented and validated.
-  The in-memory store and synthetic broker do not prove those runtime
-  properties.
+  until known-folder resolution, protected LocalAppData hierarchy provisioning
+  and provenance, stale and crash recovery, secure initial name delivery,
+  dedicated production-role orchestration and identity, crash containment, and
+  Java lifecycle integration are implemented and validated. The
+  existing-directory seam, in-memory store, and synthetic broker do not prove
+  those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
   system-wide HRC-control lease.
 - Do not treat the test harness's kill-and-bounded-wait cleanup as crash

@@ -275,9 +275,12 @@ distinct-process frame exchange, rejection of a wrong live child, a canonical
 HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
 messages. It also tests a capacity-one ABA-safe in-memory publication store and
 a one-shot broker across the broker harness process and long-lived synthetic
-observer and controller child modes. The store now implements an
+observer and controller child modes. The in-memory store implements an
 asynchronous publisher contract. Successful publication returns a store-affine
-lease that coalesces exact removal. The broker executes all four exchanges,
+lease that coalesces exact removal. The module also contains an internal file
+publisher and an independent reader for a caller-supplied, already-existing
+protected local NTFS directory. This is an offline existing-directory seam, not
+production descriptor persistence. The broker executes all four exchanges,
 serialises claim and revoke, rejects an already-completed malformed loser, caps
 the publication budget by the remaining absolute session deadline, and wipes
 its token copies before the final or revocation acknowledgement. Its
@@ -289,7 +292,9 @@ still fails the session before terminal acknowledgement. The deadline checks
 are cooperative and do not hard-preempt an arbitrary blocking native call. The
 current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 55 Windows bootstrap tests. The start-level
+tests, 13 packaging tests, and 66 Windows bootstrap tests. The Windows total is
+20 primitive tests, 8 descriptor and protocol tests, 27 broker and
+in-memory-store tests, and 11 filesystem tests. The start-level
 fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
 observer-failure tests.
 
@@ -307,7 +312,8 @@ must enforce a local round-trip and pre-input margin within the lease. The
 lifecycle implements synthetic manager registration, two bounded baseline
 scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
-guarded LocalAppData descriptor publication, secure initial pipe-name delivery,
+Windows known-folder resolution, protected LocalAppData hierarchy provisioning
+and provenance, stale or crash recovery, secure initial pipe-name delivery,
 dedicated production observer, broker, and controller executables, executable-
 hash identity, crash containment, an activatable manifest, controller
 ownership, Java-to-Windows integration, or persistence across restart.
@@ -343,8 +349,25 @@ removal cannot claim publication absence, and late verified removal still
 fails before terminal acknowledgement. The deadline checks do not hard-preempt
 arbitrary blocking native calls. This remains offline synthetic evidence.
 
-Next, implement and offline-test guarded LocalAppData descriptor publication
-with reparse-point defence and secure initial pipe-name handoff. Add dedicated
+The file seam reserves `endpoint-v1.bin` without replacement and never writes
+the bearer token. It requires an exact current-account-plus-`SYSTEM` DACL. It
+does not provide logon-SID isolation. A retained directory handle rejects
+reparse points, proves a local NTFS volume, and pins the namespace. Publication
+uses a random `CREATE_NEW` temporary file, exact flush and read-back checks,
+retained-root native rename, and final file-identity validation. The publisher
+retains a handle that denies new write and delete access. The store
+checks the fixed name-to-file identity again before returning its lease. POSIX
+handle deletion and bounded retained-directory enumeration prove exact absence.
+An indeterminate removal forbids reuse and cannot claim absence. The reader
+returns an independent wipeable structural snapshot. Cooperative checks do not
+hard-preempt synchronous native calls. The 11 filesystem tests include real
+junction rejection, ABA and identity replacement, namespace pinning, bounded
+multi-page enumeration, retained-root cross-directory rename, collision,
+deadline, cancellation, and late-removal cases.
+
+Next, add guarded Windows known-folder resolution, protected LocalAppData
+hierarchy provisioning and provenance, stale and crash recovery, and secure
+initial pipe-name handoff around the existing-directory seam. Add dedicated
 production observer, broker, and controller roles with exact executable-hash
 identity and kill-on-close crash containment. Do not connect this seam to Java
 or open the standalone-runner gate until those boundaries pass. Then enforce
