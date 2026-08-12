@@ -4,16 +4,19 @@
 
 This directory contains an internal `net8.0-windows` class library and a
 dependency-free console test harness. It is a source/test-only feasibility
-module. It is not a broker, controller, descriptor publisher, publication
-store, installer, standalone runner, Java bridge, or HRC integration.
+module. It contains an in-memory publication store and a one-shot synthetic
+broker session. It is not a production broker, controller, descriptor-file
+publisher, installer, standalone runner, Java bridge, or HRC integration.
 
 The module has never been loaded into, attached to, or run with HRC. Most tests
-use the test-harness process as both named-pipe endpoints or exercise the new
+use the test-harness process as both named-pipe endpoints or exercise the
 descriptor and protocol codecs in memory. Two tests launch the harness as
 synthetic child peers. They add cross-process process-identity and fixed
-public-frame evidence only. No cross-process test transfers a bearer token or
-endpoint descriptor. The module adds no Java, Eclipse callback, HRC UI, or
-runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
+public-frame evidence. Broker tests launch persistent synthetic observer and
+controller child roles. They transfer a generated bearer token only through
+authenticated protected pipes. The public descriptor reaches the controller
+through test-control input. The module adds no Java, Eclipse callback, HRC UI,
+or runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
 
 ## Implemented scope
 
@@ -87,24 +90,62 @@ possession to the publication identifier, descriptor digest, controller nonce,
 and receipt nonce. The final acknowledgement is a distinct message; receipt
 generation alone does not confirm that the broker accepted it.
 
+`InMemoryBootstrapPublicationStore` accepts at most one canonical descriptor.
+It clones the encoding on insertion and again for each read. Each read returns
+an independently owned, wipeable snapshot. Insertion returns an opaque
+registration object. Removal requires the exact registration reference. An old
+owner therefore cannot remove a later equal publication.
+
+`BootstrapBrokerSession` binds one observer process, one controller process,
+and the current broker process. The roles must be distinct processes in one
+user, logon, token session, and process session. The session accepts one
+publish request and creates one descriptor. It sends the publish
+acknowledgement only after the descriptor is visible in the injected store.
+
+The broker starts one claim worker and one revoke worker. A single lock selects
+the first valid transcript. The winner must remove the exact store registration
+before the broker sends a grant or revocation acknowledgement. The broker
+explicitly cancels the losing worker and drains it within the unchanged
+deadlines. It then disposes the losing one-shot pipe. A cancelled in-flight
+pipe fails closed in its worker. An independently completed losing failure
+remains terminal.
+
+A claim uses a separate receipt pipe. The broker validates the complete
+receipt transcript and token-possession proof. It disposes the grant token,
+encoded grant, accepted proof, and retained broker token before it sends the
+final acknowledgement. A revocation wipes the retained broker token before it
+sends the revocation acknowledgement. The first timeout, cancellation,
+transcript error, proof error, I/O uncertainty, or store-ownership failure is
+terminal. The session does not retry or republish.
+
+The broker derives fixed absolute deadlines from an injected `TimeProvider`.
+Later phases receive only the remaining duration, subject to the pipe's
+30-second operation limit. A phase cannot reset the session or publication
+deadline.
+
 ## Security and integration boundary
 
-This module defines the descriptor and protocol codecs, but it does not run
-them between dedicated processes. It has no broker state machine, publication
-store, descriptor filesystem writer or reader, secure pipe-name delivery, or
-role-specific executable orchestration. It does not publish endpoint metadata,
-perform a bearer-token claim, create a LocalAppData descriptor, authenticate a
-future executable by hash, or connect to the Java transport. The production
-library does not launch processes; the test harness launches only its own
-synthetic child mode. The module contains no HRC path, component, private
-configuration, licence data, poker data, network client, registry access, or
-environment-secret input.
+This module runs the four protocol exchanges between an in-process broker and
+persistent synthetic observer and controller children. The production library
+does not launch processes. The harness launches only its own fixed child modes.
+Each fixed mode is public on the process command line. Role commands travel on
+redirected standard input. Those commands contain only the broker PID, public
+pipe name, public descriptor, test flags, and bounded delays. The token travels
+only on protected protocol pipes. The cleared child environment contains no
+secret. Each child must write zero bytes to standard output and standard error.
+
+The in-memory store is not a descriptor filesystem writer or reader. The
+module does not deliver an initial pipe name securely, create a LocalAppData
+descriptor, authenticate a future executable by hash, or connect to the Java
+transport. The persistent roles are test modes in one harness executable. They
+are not separate production role executables. The module contains no HRC path,
+component, private configuration, licence data, poker data, network client,
+registry access, or environment-secret input.
 
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
 therefore connect first and cause denial of service before being rejected.
-Random naming, secure name handoff, lifecycle ownership, and dedicated-role
-protocol testing remain required.
+Random naming, secure name handoff, and lifecycle ownership remain required.
 
 One synthetic child test asserts distinct parent and child PIDs and nonzero
 creation identities. Each endpoint validates the other endpoint's complete
@@ -112,22 +153,20 @@ process binding before exchanging fixed public request and response bytes. A
 second test keeps the expected child live while a distinct wrong child connects
 and confirms server-side rejection.
 
-The harness's only test-control argument is the fixed child mode. When launched
+The harness arguments select one of three fixed child modes. When launched
 through `dotnet.exe`, the absolute harness assembly path is also a public host
-argument. Redirected stdin carries the public parent PID and pipe name. The
-child environment is cleared except for minimal .NET host controls, and
-redirected output is counted without being recorded; a successful child must
-write zero bytes. Normal cleanup is explicit and awaited. Test-failure disposal
-performs kill-and-bounded-wait cleanup through the retained process object and
-fails if termination is not confirmed. This is not kill-on-close containment
-and does not prove cleanup after abrupt parent termination.
+argument. Redirected input carries the role command. The child environment is
+cleared except for minimal .NET host controls. Redirected output is counted
+without being recorded. A successful child must write zero bytes. Normal
+cleanup is explicit and awaited. Test-failure disposal performs
+kill-and-bounded-wait cleanup through the retained process object and fails if
+termination is not confirmed. This is not kill-on-close containment and does
+not prove cleanup after abrupt parent termination.
 
-The in-memory codec tests model publication acknowledgement, token claim,
-separate claim receipt and final acknowledgement, and revocation. They do not
-prove that a production broker, controller, or observer performs those phases.
-They do not implement executable hashing, secure endpoint-name delivery,
-cross-process bearer-token transfer, persisted publication, or Java
-integration.
+The broker tests prove the four exchanges only for the synthetic harness roles
+and in-memory store. They do not prove production executable separation,
+executable hashing, secure initial pipe-name delivery, persisted publication,
+crash containment, or Java integration.
 
 ## Offline validation
 
@@ -144,7 +183,7 @@ scan rejects selected networking, environment, console, registry, HRC, and
 HoldemResources symbols. Process launch is forbidden in production source and
 permitted only in the exact test-harness source.
 
-The 28 tests cover current-process identity and invalid PIDs; exact binding,
+The first 28 tests cover current-process identity and invalid PIDs; exact binding,
 all identity-field mismatch paths, and SID validation; secret generation,
 copying, disposal, and wiping; bounded round-trip framing; first-instance
 collision; server-side and client-side peer
@@ -162,12 +201,22 @@ canonical protocol headers and bodies; the domain-separated claim-receipt
 proof; malformed semantic fields; and owned token, proof, message, and frame
 wiping.
 
-The current result is 28/28. This is offline Windows model, codec, and primitive
-evidence only.
+Twelve broker and store tests cover canonical clone ownership and wiping;
+capacity-one admission; exact-reference removal and ABA defence; distinct role
+and common-security-context enforcement; cross-process publish, claim, separate
+receipt, final acknowledgement, and revocation; claim and revoke races in both
+directions and from simultaneous release; rejection of an already-completed
+competing semantic mismatch before any acknowledgement; transcript and proof
+rejection; injected absolute-deadline expiry; cancellation; occupied-store
+cleanup; and one-shot pipe-name release. Every persistent synthetic child has
+an explicit exit status. Its standard output and standard error must remain
+empty.
 
-Still unvalidated: a broker state machine and publication store; dedicated
-observer, broker, and controller orchestration; cross-process bearer-token and
-endpoint transfer; secure pipe-name delivery; real acknowledgement and
-revocation; executable-hash policy; crash-contained child cleanup; LocalAppData
+The current result is 40/40. This is offline Windows model, codec, primitive,
+in-memory-store, and synthetic broker evidence only.
+
+Still unvalidated: production observer, broker, and controller executables;
+secure pipe-name delivery; descriptor persistence; executable-hash policy;
+crash-contained child cleanup; LocalAppData
 descriptor creation and reparse-point defence; Java integration; OSGi startup;
 installation; rollback; HRC runtime use; and every standalone-runner action.

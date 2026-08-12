@@ -20,6 +20,8 @@ internal static class Program
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HarnessTimeout = TimeSpan.FromSeconds(20);
     private const string ChildMode = "--cross-process-child";
+    private const string BrokerObserverChildMode = "--broker-observer-child";
+    private const string BrokerControllerChildMode = "--broker-controller-child";
     private const byte ChildConnect = 1;
     private const byte ChildExpectServerRejection = 2;
     private const byte ChildExit = 3;
@@ -40,6 +42,24 @@ internal static class Program
             string.Equals(args[0], ChildMode, StringComparison.Ordinal))
         {
             return await RunCrossProcessChild().ConfigureAwait(false);
+        }
+
+        if (args.Length == 1 &&
+            string.Equals(
+                args[0],
+                BrokerObserverChildMode,
+                StringComparison.Ordinal))
+        {
+            return await RunBrokerObserverChild().ConfigureAwait(false);
+        }
+
+        if (args.Length == 1 &&
+            string.Equals(
+                args[0],
+                BrokerControllerChildMode,
+                StringComparison.Ordinal))
+        {
+            return await RunBrokerControllerChild().ConfigureAwait(false);
         }
 
         if (args.Length != 0)
@@ -77,6 +97,18 @@ internal static class Program
             new("claim receipt proof is domain separated and bound", TestClaimReceiptProof),
             new("protocol rejects malformed semantic fields", TestProtocolMalformedFields),
             new("protocol wipes owned token frames and messages", TestProtocolSecretOwnership),
+            new("publication store owns snapshots and prevents ABA removal", TestPublicationStore),
+            new("broker enforces role identity and security context", TestBrokerRoleBindings),
+            new("broker completes a cross-process claim and receipt", TestBrokerClaim),
+            new("broker completes a cross-process revocation", TestBrokerRevoke),
+            new("broker serialises claim and revoke races", TestBrokerRaces),
+            new("broker rejects an already-completed semantic loser", TestBrokerSemanticLoser),
+            new("broker fails closed on a mismatched transcript", TestBrokerTranscriptMismatch),
+            new("broker fails closed on a bad receipt proof", TestBrokerBadProof),
+            new("broker does not reset its absolute deadline", TestBrokerDeadline),
+            new("broker cancellation cleans publication and pipes", TestBrokerCancellation),
+            new("broker rejects an occupied store and cleans its publication", TestBrokerOccupiedStore),
+            new("broker releases every one-shot pipe name", TestBrokerNameRelease),
         };
 
         using TextWriter output = new StreamWriter(System.Console.OpenStandardOutput())
@@ -2505,7 +2537,534 @@ internal static class Program
         await expected.RequireExitAsync(TestTimeout).ConfigureAwait(false);
     }
 
+    private static Task TestPublicationStore()
+    {
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            using InMemoryBootstrapPublicationStore store = new();
+            Assert(store.TryPublish(descriptor, out BootstrapPublicationRegistration? first) &&
+                first is not null, "the empty store must accept one publication");
+            BootstrapPublicationRegistration firstOwner = first ??
+                throw new InvalidOperationException("The first owner is missing.");
+            byte[] storedBorrow = GetStoredDescriptorBacking(store);
+            Assert(!store.TryPublish(descriptor, out _),
+                "the occupied store must reject a second publication");
+            Assert(store.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null, "the publication must be visible");
+            BootstrapPublicationSnapshot firstSnapshot = snapshot ??
+                throw new InvalidOperationException("The first snapshot is missing.");
+            ReadOnlySpan<byte> borrowed = firstSnapshot.Descriptor;
+            descriptor.AsSpan().Clear();
+            Assert(!AllZero(borrowed),
+                "the store snapshot must not alias the caller's descriptor");
+            firstSnapshot.Dispose();
+            Assert(AllZero(borrowed), "disposing a snapshot must wipe it");
+            Assert(store.TryRemove(firstOwner),
+                "the exact registration must remove its publication");
+            Assert(AllZero(storedBorrow),
+                "exact removal must wipe the stored descriptor backing array");
+
+            byte[] replacement = fixture.CreateDescriptor().EncodeCanonical();
+            try
+            {
+                Assert(store.TryPublish(replacement, out BootstrapPublicationRegistration? second) &&
+                    second is not null, "the empty store must accept a replacement");
+                BootstrapPublicationRegistration secondOwner = second ??
+                    throw new InvalidOperationException(
+                        "The replacement owner is missing.");
+                Assert(!store.TryRemove(firstOwner),
+                    "an old registration must not remove a replacement");
+                Assert(store.TryRead(out BootstrapPublicationSnapshot? current) &&
+                    current is not null, "the replacement must remain visible");
+                (current ?? throw new InvalidOperationException(
+                    "The replacement snapshot is missing.")).Dispose();
+                Assert(store.TryRemove(secondOwner),
+                    "the replacement's registration must remove it");
+                Assert(!store.TryRead(out _), "the store must be empty after removal");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(replacement);
+            }
+
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestBrokerClaim()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: false,
+            badProof: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0).ConfigureAwait(false);
+        BootstrapBrokerSessionResult result = await run.ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerOutcome.Claimed, result.Outcome,
+            "broker outcome");
+        AssertEqual(BootstrapBrokerSessionState.Claimed, fixture.Session.State,
+            "broker state");
+        Assert(!fixture.Store.TryRead(out _),
+            "a completed claim must remove the publication");
+        Assert(AllZero(brokerTokenBorrow),
+            "a completed claim must wipe the broker token backing array");
+        await AssertThrowsAsync<InvalidOperationException>(async () =>
+        {
+            _ = await fixture.Session.RunAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        await fixture.RequireCleanExitAsync().ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerRoleBindings()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        using InMemoryBootstrapPublicationStore store = new();
+        AssertThrows<ArgumentException>(() =>
+        {
+            using BootstrapBrokerSession _ = new(
+                fixture.BrokerBinding,
+                fixture.ControllerBinding,
+                fixture.BrokerBinding,
+                store,
+                TimeProvider.System,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2));
+        });
+        AssertThrows<ArgumentException>(() =>
+        {
+            using BootstrapBrokerSession _ = new(
+                fixture.ObserverBinding,
+                fixture.BrokerBinding,
+                fixture.BrokerBinding,
+                store,
+                TimeProvider.System,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2));
+        });
+        BootstrapBinding wrongContext = BindingWith(
+            fixture.ControllerBinding,
+            userSid: "S-1-1-0");
+        AssertThrows<ArgumentException>(() =>
+        {
+            using BootstrapBrokerSession _ = new(
+                fixture.ObserverBinding,
+                wrongContext,
+                fixture.BrokerBinding,
+                store,
+                TimeProvider.System,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2));
+        });
+        BootstrapBinding wrongBroker = BindingWith(
+            fixture.BrokerBinding,
+            processId: checked(fixture.BrokerBinding.ProcessId + 100_000));
+        AssertThrows<SecurityException>(() =>
+        {
+            using BootstrapBrokerSession _ = new(
+                fixture.ObserverBinding,
+                fixture.ControllerBinding,
+                wrongBroker,
+                store,
+                TimeProvider.System,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2));
+        });
+        await fixture.RequireCleanExitAsync(
+                observerUnused: true,
+                controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerRevoke()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: true,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 100,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
+        BootstrapBrokerSessionResult result = await run
+            .ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerOutcome.Revoked, result.Outcome,
+            "broker outcome");
+        Assert(!fixture.Store.TryRead(out _),
+            "a completed revocation must remove the publication");
+        Assert(AllZero(brokerTokenBorrow),
+            "a completed revocation must wipe the broker token backing array");
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerRaces()
+    {
+        await RunBrokerRaceAsync(claimDelay: 0, revokeDelay: 150,
+            BootstrapBrokerOutcome.Claimed).ConfigureAwait(false);
+        await RunBrokerRaceAsync(claimDelay: 300, revokeDelay: 50,
+            BootstrapBrokerOutcome.Revoked).ConfigureAwait(false);
+        BootstrapBrokerOutcome simultaneous = await RunBrokerRaceAsync(
+                claimDelay: 100,
+                revokeDelay: 100,
+                expected: null)
+            .ConfigureAwait(false);
+        Assert(simultaneous is BootstrapBrokerOutcome.Claimed or
+            BootstrapBrokerOutcome.Revoked,
+            "a simultaneous race must select exactly one terminal outcome");
+    }
+
+    private static async Task<BootstrapBrokerOutcome> RunBrokerRaceAsync(
+        int claimDelay,
+        int revokeDelay,
+        BootstrapBrokerOutcome? expected)
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: true,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: revokeDelay,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: false,
+            badProof: false,
+            allowExpectedClose: true,
+            delayMilliseconds: claimDelay).ConfigureAwait(false);
+        BootstrapBrokerSessionResult result = await run.ConfigureAwait(false);
+        if (expected is BootstrapBrokerOutcome value)
+        {
+            AssertEqual(value, result.Outcome, "race outcome");
+        }
+
+        Assert(!fixture.Store.TryRead(out _),
+            "a race must remove the exact publication");
+        await fixture.RequireCleanExitAsync()
+            .ConfigureAwait(false);
+        return result.Outcome;
+    }
+
+    private static async Task TestBrokerTranscriptMismatch()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: true,
+            badProof: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0).ConfigureAwait(false);
+        await AssertThrowsAsync<SecurityException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+            "failed broker state");
+        Assert(!fixture.Store.TryRead(out _),
+            "a transcript failure must remove the publication");
+        await fixture.RequireCleanExitAsync()
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerSemanticLoser()
+    {
+        await RunBrokerSemanticLoserAsync(
+                preferClaim: true)
+            .ConfigureAwait(false);
+        await RunBrokerSemanticLoserAsync(
+                preferClaim: false)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task RunBrokerSemanticLoserAsync(bool preferClaim)
+    {
+        using BrokerFixture fixture = BrokerFixture.Start(
+            beforeArbitrationTestHook: async (
+                claim,
+                revoke,
+                completed,
+                cancellationToken) =>
+            {
+                Task expectedWinner = preferClaim ? claim : revoke;
+                Assert(ReferenceEquals(completed, expectedWinner),
+                    "the valid request must be selected before the semantic-loser barrier");
+                await Task.WhenAll(
+                        ObserveCompletionAsync(claim, cancellationToken),
+                        ObserveCompletionAsync(revoke, cancellationToken))
+                    .ConfigureAwait(false);
+            });
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: true,
+            malformedRevoke: preferClaim,
+            allowExpectedClose: true,
+            delayMilliseconds: preferClaim ? 200 : 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: !preferClaim,
+            badProof: false,
+            allowExpectedClose: true,
+            delayMilliseconds: preferClaim ? 0 : 200).ConfigureAwait(false);
+        await AssertThrowsAsync<SecurityException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+            "semantic-loser broker state");
+        Assert(!fixture.Store.TryRead(out _),
+            "a completed semantic loser must remove the publication");
+        await fixture.RequireCleanExitAsync().ConfigureAwait(false);
+    }
+
+    private static async Task ObserveCompletionAsync(
+        Task task,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The hook observes completion only; arbitration reads the fault.
+        }
+    }
+
+    private static async Task TestBrokerBadProof()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: false,
+            badProof: true,
+            allowExpectedClose: true,
+            delayMilliseconds: 0).ConfigureAwait(false);
+        await AssertThrowsAsync<SecurityException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        Assert(!fixture.Store.TryRead(out _),
+            "a proof failure must remove the publication");
+        await fixture.RequireCleanExitAsync()
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerDeadline()
+    {
+        ManualTimeProvider clock = new(
+            CanonicalTestUtcNow());
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publicationLifetime: TimeSpan.FromSeconds(4),
+            sessionLifetime: TimeSpan.FromSeconds(5),
+            timeProvider: clock);
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        clock.Advance(fixture.PublicationLifetime);
+        await fixture.SendBrokerClaimAsync(
+            malformedTranscript: false,
+            badProof: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0).ConfigureAwait(false);
+        await AssertThrowsAnyAsync(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }, typeof(TimeoutException), typeof(OperationCanceledException))
+            .ConfigureAwait(false);
+        Assert(!fixture.Store.TryRead(out _),
+            "deadline failure must remove the publication");
+        await fixture.RequireCleanExitAsync()
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerCancellation()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        using CancellationTokenSource cancellation = new();
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync(
+            cancellation.Token);
+        string publishName = fixture.Session.PublishPipeName;
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
+        cancellation.Cancel();
+        await AssertThrowsAsync<OperationCanceledException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        Assert(!fixture.Store.TryRead(out _),
+            "cancellation must leave the store empty");
+        Assert(AllZero(brokerTokenBorrow),
+            "cancellation must wipe the broker token backing array");
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+        await fixture.RequireCleanExitAsync(
+                controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerOccupiedStore()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        using DescriptorFixture occupiedFixture = CreateDescriptorFixture();
+        byte[] occupied = occupiedFixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            Assert(fixture.Store.TryPublish(
+                    occupied,
+                    out BootstrapPublicationRegistration? owner) &&
+                owner is not null, "the fixture store must accept its sentinel");
+            BootstrapPublicationRegistration sentinelOwner = owner ??
+                throw new InvalidOperationException("The sentinel owner is missing.");
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: false,
+                malformedRevoke: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            await AssertThrowsAsync<InvalidOperationException>(async () =>
+            {
+                _ = await fixture.Session.RunAsync().ConfigureAwait(false);
+            }).ConfigureAwait(false);
+            Assert(fixture.Store.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null, "the occupied sentinel must survive rejection");
+            (snapshot ?? throw new InvalidOperationException(
+                "The sentinel snapshot is missing.")).Dispose();
+            Assert(fixture.Store.TryRemove(sentinelOwner),
+                "the sentinel owner must retain removal authority");
+            await fixture.RequireCleanExitAsync(controllerUnused: true)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(occupied);
+        }
+    }
+
+    private static async Task TestBrokerNameRelease()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        string publishName = fixture.Session.PublishPipeName;
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            publishName,
+            revokeAfterPublish: true,
+            malformedRevoke: false,
+            allowExpectedClose: false,
+            delayMilliseconds: 100,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+        string claimName = GetPublishedDescriptor(fixture.Store).ClaimPipeName;
+        string revokeName = GetBrokerPipeName(fixture.Session, "revokePipe");
+        _ = await run.ConfigureAwait(false);
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+        using ProtectedNamedPipe publishReplacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+        using ProtectedNamedPipe claimReplacement = ProtectedNamedPipe.Create(
+            claimName,
+            fixture.ControllerBinding);
+        using ProtectedNamedPipe revokeReplacement = ProtectedNamedPipe.Create(
+            revokeName,
+            fixture.ObserverBinding);
+    }
+
+    private static async Task WaitForPublicationAsync(
+        InMemoryBootstrapPublicationStore store,
+        Task<BootstrapBrokerSessionResult> session)
+    {
+        Stopwatch elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < TestTimeout)
+        {
+            if (session.IsCompleted)
+            {
+                _ = await session.ConfigureAwait(false);
+                throw new InvalidOperationException(
+                    "The broker completed before its publication was observed.");
+            }
+
+            if (store.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null)
+            {
+                snapshot.Dispose();
+                return;
+            }
+
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+
+        throw new TimeoutException("The broker did not publish in time.");
+    }
+
     private static TestChild StartChild()
+    {
+        return StartChild(ChildMode);
+    }
+
+    private static TestChild StartChild(string mode)
     {
         string executable = Environment.ProcessPath ??
             throw new InvalidOperationException("The test executable path is unavailable.");
@@ -2537,7 +3096,7 @@ internal static class Program
             start.ArgumentList.Add(entryAssembly!);
         }
 
-        start.ArgumentList.Add(ChildMode);
+        start.ArgumentList.Add(mode);
         start.Environment.Clear();
         if (usesDotnetHost)
         {
@@ -2672,6 +3231,543 @@ internal static class Program
         }
     }
 
+    private static async Task<int> RunBrokerObserverChild()
+    {
+        const byte RevokeFlag = 1;
+        const byte AllowCloseFlag = 2;
+        const byte MalformedRevokeFlag = 4;
+        try
+        {
+            Stream input = System.Console.OpenStandardInput();
+            byte[] header = new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(int) + sizeof(byte)];
+            try
+            {
+                using CancellationTokenSource cancellation = new(TestTimeout);
+                await input.ReadExactlyAsync(header, cancellation.Token)
+                    .ConfigureAwait(false);
+                uint brokerProcessId = BinaryPrimitives.ReadUInt32LittleEndian(
+                    header.AsSpan(0, sizeof(uint)));
+                byte flags = header[sizeof(uint)];
+                int delayMilliseconds = BinaryPrimitives.ReadInt32LittleEndian(
+                    header.AsSpan(sizeof(uint) + sizeof(byte), sizeof(int)));
+                int lifetimeMilliseconds = BinaryPrimitives.ReadInt32LittleEndian(
+                    header.AsSpan(
+                        sizeof(uint) + sizeof(byte) + sizeof(int),
+                        sizeof(int)));
+                int nameLength = header[^1];
+                if (brokerProcessId == 0 && flags == 0 &&
+                    delayMilliseconds == 0 && lifetimeMilliseconds == 0 &&
+                    nameLength == 0)
+                {
+                    return 0;
+                }
+
+                if (brokerProcessId == 0 || delayMilliseconds < 0 ||
+                    lifetimeMilliseconds <= 0 || nameLength is < 1 or > 120 ||
+                    (flags & ~(RevokeFlag | AllowCloseFlag |
+                        MalformedRevokeFlag)) != 0)
+                {
+                    return 20;
+                }
+
+                byte[] nameBytes = new byte[nameLength];
+                try
+                {
+                    await input.ReadExactlyAsync(nameBytes, cancellation.Token)
+                        .ConfigureAwait(false);
+                    string publishPipeName = Encoding.ASCII.GetString(nameBytes);
+                    ProtectedNamedPipe.ValidateName(publishPipeName);
+                    using ProcessIdentityLease broker =
+                        ProcessIdentityLease.Capture(brokerProcessId);
+                    using ProcessIdentityLease observer =
+                        ProcessIdentityLease.Capture(
+                            checked((uint)Environment.ProcessId));
+                    using SecretBuffer token = SecretBuffer.CreateRandom32();
+                    byte[] publicationNonce = RandomTestValue32();
+                    Guid publishRequestId = Guid.NewGuid();
+                    try
+                    {
+                        using ProtectedNamedPipeClient publish =
+                            ProtectedNamedPipeClient.Connect(
+                                publishPipeName,
+                                broker.Snapshot(),
+                                TestTimeout);
+                        using (PublishRequest request = new(
+                                   publishRequestId,
+                                   publicationNonce,
+                                   new ObserverTransportEndpoint(
+                                       32_001,
+                                       Guid.NewGuid()),
+                                   token.Bytes))
+                        using (SensitiveFrame requestFrame =
+                               BootstrapProtocol.Encode(request))
+                        {
+                            await publish.SendFrameAsync(
+                                    requestFrame.Bytes,
+                                    TestTimeout)
+                                .ConfigureAwait(false);
+                        }
+                        byte[] acknowledgementFrame = await publish
+                            .ReceiveFrameAsync(TestTimeout)
+                            .ConfigureAwait(false);
+                        PublishAck acknowledgement = (PublishAck)
+                            BootstrapProtocol.DecodeOwned(
+                                acknowledgementFrame,
+                                BootstrapMessageType.PublishAck,
+                                BootstrapRole.Broker,
+                                BootstrapRole.Observer);
+                        if (acknowledgement.RequestId != publishRequestId)
+                        {
+                            return 21;
+                        }
+
+                        BootstrapDescriptor descriptor =
+                            BootstrapDescriptor.Parse(acknowledgement.Descriptor);
+                        if (!descriptor.Verify(
+                                token.Bytes,
+                                observer.Snapshot(),
+                                broker.Snapshot(),
+                                CanonicalTestUtcNow(),
+                                TimeSpan.FromMilliseconds(lifetimeMilliseconds)))
+                        {
+                            return 22;
+                        }
+
+                        token.Dispose();
+
+                        byte[] descriptorDigest = descriptor.ComputeDigest();
+                        try
+                        {
+                            if (!CryptographicOperations.FixedTimeEquals(
+                                    descriptorDigest,
+                                    acknowledgement.DescriptorDigest))
+                            {
+                                return 23;
+                            }
+
+                            if ((flags & RevokeFlag) == 0)
+                            {
+                                return 0;
+                            }
+
+                            await Task.Delay(delayMilliseconds)
+                                .ConfigureAwait(false);
+                            try
+                            {
+                                using ProtectedNamedPipeClient revoke =
+                                    ProtectedNamedPipeClient.Connect(
+                                        acknowledgement.RevokePipeName,
+                                        broker.Snapshot(),
+                                        TimeSpan.FromSeconds(2));
+                                byte[] revocationNonce = RandomTestValue32();
+                                Guid revokeRequestId = Guid.NewGuid();
+                                try
+                                {
+                                    using SensitiveFrame revokeFrame =
+                                        BootstrapProtocol.Encode(
+                                            new RevokeRequest(
+                                                revokeRequestId,
+                                                (flags & MalformedRevokeFlag) != 0
+                                                    ? Guid.NewGuid()
+                                                    : descriptor.PublicationId,
+                                                descriptorDigest,
+                                                revocationNonce));
+                                    await revoke.SendFrameAsync(
+                                            revokeFrame.Bytes,
+                                            TimeSpan.FromSeconds(2))
+                                        .ConfigureAwait(false);
+                                    byte[] revokeAckFrame = await revoke
+                                        .ReceiveFrameAsync(
+                                            TimeSpan.FromSeconds(2))
+                                        .ConfigureAwait(false);
+                                    RevokeAck revokeAck = (RevokeAck)
+                                        BootstrapProtocol.DecodeOwned(
+                                            revokeAckFrame,
+                                            BootstrapMessageType.RevokeAck,
+                                            BootstrapRole.Broker,
+                                            BootstrapRole.Observer);
+                                    return RevokeTranscriptMatches(
+                                        revokeAck,
+                                        revokeRequestId,
+                                        descriptor.PublicationId,
+                                        descriptorDigest,
+                                        revocationNonce) ? 0 : 24;
+                                }
+                                finally
+                                {
+                                    CryptographicOperations.ZeroMemory(
+                                        revocationNonce);
+                                }
+                            }
+                            catch (Exception exception) when (
+                                (flags & AllowCloseFlag) != 0 &&
+                                IsExpectedChildClosure(exception))
+                            {
+                                return 0;
+                            }
+                        }
+                        finally
+                        {
+                            CryptographicOperations.ZeroMemory(descriptorDigest);
+                        }
+                    }
+                    catch (Exception exception) when (
+                        (flags & AllowCloseFlag) != 0 &&
+                        IsExpectedChildClosure(exception))
+                    {
+                        return 0;
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(publicationNonce);
+                    }
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(nameBytes);
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(header);
+            }
+        }
+        catch
+        {
+            return 25;
+        }
+    }
+
+    private static async Task<int> RunBrokerControllerChild()
+    {
+        const byte MalformedTranscriptFlag = 1;
+        const byte BadProofFlag = 2;
+        const byte AllowCloseFlag = 4;
+        try
+        {
+            Stream input = System.Console.OpenStandardInput();
+            byte[] header = new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(ushort)];
+            try
+            {
+                using CancellationTokenSource cancellation = new(TestTimeout);
+                await input.ReadExactlyAsync(header, cancellation.Token)
+                    .ConfigureAwait(false);
+                uint brokerProcessId = BinaryPrimitives.ReadUInt32LittleEndian(
+                    header.AsSpan(0, sizeof(uint)));
+                byte flags = header[sizeof(uint)];
+                int delayMilliseconds = BinaryPrimitives.ReadInt32LittleEndian(
+                    header.AsSpan(sizeof(uint) + sizeof(byte), sizeof(int)));
+                int descriptorLength = BinaryPrimitives.ReadUInt16LittleEndian(
+                    header.AsSpan(
+                        sizeof(uint) + sizeof(byte) + sizeof(int),
+                        sizeof(ushort)));
+                if (brokerProcessId == 0 && flags == 0 &&
+                    delayMilliseconds == 0 && descriptorLength == 0)
+                {
+                    return 0;
+                }
+
+                if (brokerProcessId == 0 || delayMilliseconds < 0 ||
+                    descriptorLength is < 1 or > BootstrapDescriptor.MaximumEncodedLength ||
+                    (flags & ~(MalformedTranscriptFlag | BadProofFlag |
+                        AllowCloseFlag)) != 0)
+                {
+                    return 30;
+                }
+
+                byte[] descriptorBytes = new byte[descriptorLength];
+                try
+                {
+                    await input.ReadExactlyAsync(
+                            descriptorBytes,
+                            cancellation.Token)
+                        .ConfigureAwait(false);
+                    BootstrapDescriptor descriptor =
+                        BootstrapDescriptor.Parse(descriptorBytes);
+                    byte[] descriptorDigest = descriptor.ComputeDigest();
+                    byte[] controllerNonce = RandomTestValue32();
+                    Guid claimRequestId = Guid.NewGuid();
+                    Guid claimedPublicationId =
+                        (flags & MalformedTranscriptFlag) != 0
+                            ? Guid.NewGuid()
+                            : descriptor.PublicationId;
+                    try
+                    {
+                        using ProcessIdentityLease broker =
+                            ProcessIdentityLease.Capture(brokerProcessId);
+                        using ProcessIdentityLease controller =
+                            ProcessIdentityLease.Capture(
+                                checked((uint)Environment.ProcessId));
+                        await Task.Delay(delayMilliseconds).ConfigureAwait(false);
+                        try
+                        {
+                            using ProtectedNamedPipeClient claim =
+                                ProtectedNamedPipeClient.Connect(
+                                    descriptor.ClaimPipeName,
+                                    broker.Snapshot(),
+                                    TimeSpan.FromSeconds(2));
+                            using (SensitiveFrame claimFrame =
+                                   BootstrapProtocol.Encode(
+                                       new ClaimRequest(
+                                           claimRequestId,
+                                           claimedPublicationId,
+                                           descriptorDigest,
+                                           controllerNonce)))
+                            {
+                                await claim.SendFrameAsync(
+                                        claimFrame.Bytes,
+                                        TimeSpan.FromSeconds(2))
+                                    .ConfigureAwait(false);
+                            }
+                            byte[] grantFrame = await claim.ReceiveFrameAsync(
+                                    TimeSpan.FromSeconds(2))
+                                .ConfigureAwait(false);
+                            ProtectedNamedPipeClient? receipt = null;
+                            byte[]? receiptNonce = null;
+                            try
+                            {
+                                using (ClaimGrant grant = (ClaimGrant)
+                                       BootstrapProtocol.DecodeOwned(
+                                           grantFrame,
+                                           BootstrapMessageType.ClaimGrant,
+                                           BootstrapRole.Broker,
+                                           BootstrapRole.Controller))
+                                {
+                                    if (!ClaimGrantMatches(
+                                            grant,
+                                            claimRequestId,
+                                            descriptor.PublicationId,
+                                            descriptorDigest,
+                                            controllerNonce) ||
+                                        !descriptor.Verify(
+                                            grant.Token.Bytes,
+                                            descriptor.ObserverBinding,
+                                            broker.Snapshot(),
+                                    CanonicalTestUtcNow(),
+                                            descriptor.ExpiresUtc -
+                                                descriptor.CreatedUtc))
+                                    {
+                                        return 31;
+                                    }
+
+                                    (receipt, receiptNonce) =
+                                        await SendClaimReceiptAsync(
+                                                grant,
+                                                broker.Snapshot(),
+                                                claimRequestId,
+                                                descriptor.PublicationId,
+                                                descriptorDigest,
+                                                controllerNonce,
+                                                (flags & BadProofFlag) != 0)
+                                            .ConfigureAwait(false);
+                                }
+
+                                byte[] finalFrame = await receipt
+                                    .ReceiveFrameAsync(
+                                        TimeSpan.FromSeconds(2))
+                                    .ConfigureAwait(false);
+                                ClaimFinalAck finalAck = (ClaimFinalAck)
+                                    BootstrapProtocol.DecodeOwned(
+                                        finalFrame,
+                                        BootstrapMessageType.ClaimFinalAck,
+                                        BootstrapRole.Broker,
+                                        BootstrapRole.Controller);
+                                return ClaimTranscriptMatches(
+                                    finalAck,
+                                    claimRequestId,
+                                    descriptor.PublicationId,
+                                    descriptorDigest,
+                                    controllerNonce,
+                                    receiptNonce) ? 0 : 32;
+                            }
+                            finally
+                            {
+                                receipt?.Dispose();
+                                if (receiptNonce is not null)
+                                {
+                                    CryptographicOperations.ZeroMemory(
+                                        receiptNonce);
+                                }
+                            }
+                        }
+                        catch (Exception exception) when (
+                            (flags & AllowCloseFlag) != 0 &&
+                            IsExpectedChildClosure(exception))
+                        {
+                            return 0;
+                        }
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(descriptorDigest);
+                        CryptographicOperations.ZeroMemory(controllerNonce);
+                    }
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(descriptorBytes);
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(header);
+            }
+        }
+        catch
+        {
+            return 33;
+        }
+    }
+
+    private static bool ClaimGrantMatches(
+        ClaimGrant grant,
+        Guid requestId,
+        Guid publicationId,
+        ReadOnlySpan<byte> descriptorDigest,
+        ReadOnlySpan<byte> controllerNonce)
+    {
+        return grant.RequestId == requestId &&
+            grant.PublicationId == publicationId &&
+            CryptographicOperations.FixedTimeEquals(
+                grant.DescriptorDigest,
+                descriptorDigest) &&
+            CryptographicOperations.FixedTimeEquals(
+                grant.ControllerNonce,
+                controllerNonce);
+    }
+
+    private static async Task<(
+        ProtectedNamedPipeClient Receipt,
+        byte[] ReceiptNonce)> SendClaimReceiptAsync(
+        ClaimGrant grant,
+        BootstrapBinding brokerBinding,
+        Guid requestId,
+        Guid publicationId,
+        ReadOnlyMemory<byte> descriptorDigest,
+        ReadOnlyMemory<byte> controllerNonce,
+        bool sendBadProof)
+    {
+        ProtectedNamedPipeClient? receipt = null;
+        byte[]? receiptNonce = grant.ReceiptNonce.ToArray();
+        try
+        {
+            receipt = ProtectedNamedPipeClient.Connect(
+                grant.ReceiptPipeName,
+                brokerBinding,
+                TimeSpan.FromSeconds(2));
+            using ClaimReceiptProof proof =
+                BootstrapProtocol.ComputeClaimReceiptProof(
+                    grant.Token.Bytes,
+                    publicationId,
+                    descriptorDigest.Span,
+                    controllerNonce.Span,
+                    receiptNonce);
+            byte[] sentProof = proof.Bytes.ToArray();
+            try
+            {
+                if (sendBadProof)
+                {
+                    sentProof[0] ^= 0x80;
+                }
+
+                using ClaimReceipt receiptMessage = new(
+                    requestId,
+                    publicationId,
+                    descriptorDigest.Span,
+                    controllerNonce.Span,
+                    receiptNonce,
+                    sentProof);
+                using SensitiveFrame receiptFrame =
+                    BootstrapProtocol.Encode(receiptMessage);
+                await receipt.SendFrameAsync(
+                        receiptFrame.Bytes,
+                        TimeSpan.FromSeconds(2))
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(sentProof);
+            }
+
+            ProtectedNamedPipeClient result = receipt;
+            byte[] resultNonce = receiptNonce;
+            receipt = null;
+            receiptNonce = null;
+            return (result, resultNonce);
+        }
+        finally
+        {
+            receipt?.Dispose();
+            if (receiptNonce is not null)
+            {
+                CryptographicOperations.ZeroMemory(receiptNonce);
+            }
+        }
+    }
+
+    private static bool ClaimTranscriptMatches(
+        ClaimTranscript transcript,
+        Guid requestId,
+        Guid publicationId,
+        ReadOnlySpan<byte> descriptorDigest,
+        ReadOnlySpan<byte> controllerNonce,
+        ReadOnlySpan<byte> receiptNonce)
+    {
+        return transcript.RequestId == requestId &&
+            transcript.PublicationId == publicationId &&
+            CryptographicOperations.FixedTimeEquals(
+                transcript.DescriptorDigest,
+                descriptorDigest) &&
+            CryptographicOperations.FixedTimeEquals(
+                transcript.ControllerNonce,
+                controllerNonce) &&
+            CryptographicOperations.FixedTimeEquals(
+                transcript.ReceiptNonce,
+                receiptNonce);
+    }
+
+    private static bool RevokeTranscriptMatches(
+        RevokeTranscript transcript,
+        Guid requestId,
+        Guid publicationId,
+        ReadOnlySpan<byte> descriptorDigest,
+        ReadOnlySpan<byte> revocationNonce)
+    {
+        return transcript.RequestId == requestId &&
+            transcript.PublicationId == publicationId &&
+            CryptographicOperations.FixedTimeEquals(
+                transcript.DescriptorDigest,
+                descriptorDigest) &&
+            CryptographicOperations.FixedTimeEquals(
+                transcript.RevocationNonce,
+                revocationNonce);
+    }
+
+    private static bool IsExpectedChildClosure(Exception exception)
+    {
+        return exception is IOException or
+            TimeoutException or
+            OperationCanceledException or
+            ObjectDisposedException;
+    }
+
+    private static byte[] RandomTestValue32()
+    {
+        using SecretBuffer value = SecretBuffer.CreateRandom32();
+        byte[] result = new byte[SecretBuffer.Length];
+        value.CopyTo(result);
+        return result;
+    }
+
+    private static DateTimeOffset CanonicalTestUtcNow()
+    {
+        DateTimeOffset utc = TimeProvider.System.GetUtcNow().ToUniversalTime();
+        long ticks = utc.Ticks - (utc.Ticks % TimeSpan.TicksPerMillisecond);
+        return new DateTimeOffset(ticks, TimeSpan.Zero);
+    }
+
     private static async Task AssertThrowsAsync<TException>(Func<Task> action)
         where TException : Exception
     {
@@ -2705,6 +3801,64 @@ internal static class Program
         throw new InvalidOperationException(
             $"Expected one of [{string.Join(", ", expectedTypes.Select(
                 type => type.Name))}] was not thrown.");
+    }
+
+    private static byte[] GetStoredDescriptorBacking(
+        InMemoryBootstrapPublicationStore store)
+    {
+        object entry = GetPrivateField(store, "current") ??
+            throw new InvalidOperationException(
+                "The publication store has no current entry.");
+        return GetPrivateField(entry, "descriptor") as byte[] ??
+            throw new InvalidOperationException(
+                "The publication store descriptor backing is unavailable.");
+    }
+
+    private static BootstrapDescriptor GetPublishedDescriptor(
+        InMemoryBootstrapPublicationStore store)
+    {
+        if (!store.TryRead(out BootstrapPublicationSnapshot? snapshot) ||
+            snapshot is null)
+        {
+            throw new InvalidOperationException(
+                "The broker publication is unavailable.");
+        }
+
+        using (snapshot)
+        {
+            return BootstrapDescriptor.Parse(snapshot.Descriptor);
+        }
+    }
+
+    private static string GetBrokerPipeName(
+        BootstrapBrokerSession session,
+        string fieldName)
+    {
+        ProtectedNamedPipe pipe = GetPrivateField(session, fieldName) as
+            ProtectedNamedPipe ?? throw new InvalidOperationException(
+                $"The broker {fieldName} is unavailable.");
+        return pipe.Name;
+    }
+
+    private static byte[] GetBrokerTokenBacking(
+        BootstrapBrokerSession session)
+    {
+        SecretBuffer token = GetPrivateField(session, "brokerToken") as
+            SecretBuffer ?? throw new InvalidOperationException(
+                "The broker token is unavailable.");
+        return GetPrivateField(token, "bytes") as byte[] ??
+            throw new InvalidOperationException(
+                "The broker token backing is unavailable.");
+    }
+
+    private static object? GetPrivateField(object target, string name)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return target.GetType().GetField(
+                name,
+                System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)?
+            .GetValue(target);
     }
 
     private static bool AllZero(ReadOnlySpan<byte> bytes)
@@ -2834,6 +3988,228 @@ internal static class Program
 
     private readonly record struct TestCase(string Name, Func<Task> Body);
 
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private readonly DateTimeOffset initialUtc;
+        private long timestamp;
+
+        internal ManualTimeProvider(DateTimeOffset initialUtc)
+        {
+            this.initialUtc = initialUtc;
+        }
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            return initialUtc + TimeSpan.FromTicks(
+                Interlocked.Read(ref timestamp));
+        }
+
+        public override long GetTimestamp()
+        {
+            return Interlocked.Read(ref timestamp);
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            return TimeProvider.System.CreateTimer(
+                callback,
+                state,
+                dueTime,
+                period);
+        }
+
+        internal void Advance(TimeSpan amount)
+        {
+            if (amount < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(nameof(amount));
+            }
+
+            Interlocked.Add(ref timestamp, amount.Ticks);
+        }
+    }
+
+    private sealed class BrokerFixture : IDisposable
+    {
+        private bool disposed;
+
+        private BrokerFixture(
+            TestChild observer,
+            TestChild controller,
+            BootstrapBinding observerBinding,
+            BootstrapBinding controllerBinding,
+            BootstrapBinding brokerBinding,
+            InMemoryBootstrapPublicationStore store,
+            BootstrapBrokerSession session,
+            TimeSpan publicationLifetime)
+        {
+            Observer = observer;
+            Controller = controller;
+            ObserverBinding = observerBinding;
+            ControllerBinding = controllerBinding;
+            BrokerBinding = brokerBinding;
+            Store = store;
+            Session = session;
+            PublicationLifetime = publicationLifetime;
+        }
+
+        internal TestChild Observer { get; }
+
+        internal TestChild Controller { get; }
+
+        internal BootstrapBinding ObserverBinding { get; }
+
+        internal BootstrapBinding ControllerBinding { get; }
+
+        internal BootstrapBinding BrokerBinding { get; }
+
+        internal InMemoryBootstrapPublicationStore Store { get; }
+
+        internal BootstrapBrokerSession Session { get; }
+
+        internal TimeSpan PublicationLifetime { get; }
+
+        internal uint BrokerProcessId => BrokerBinding.ProcessId;
+
+        internal static BrokerFixture Start(
+            TimeSpan? publicationLifetime = null,
+            TimeSpan? sessionLifetime = null,
+            TimeProvider? timeProvider = null,
+            Func<Task, Task, Task, CancellationToken, Task>?
+                beforeArbitrationTestHook = null)
+        {
+            TimeSpan publication = publicationLifetime ??
+                TimeSpan.FromSeconds(4);
+            TimeSpan session = sessionLifetime ?? TimeSpan.FromSeconds(5);
+            TestChild? observer = null;
+            TestChild? controller = null;
+            InMemoryBootstrapPublicationStore? store = null;
+            BootstrapBrokerSession? brokerSession = null;
+            try
+            {
+                observer = StartChild(BrokerObserverChildMode);
+                controller = StartChild(BrokerControllerChildMode);
+                using ProcessIdentityLease observerIdentity =
+                    ProcessIdentityLease.Capture(observer.ProcessId);
+                using ProcessIdentityLease controllerIdentity =
+                    ProcessIdentityLease.Capture(controller.ProcessId);
+                using ProcessIdentityLease brokerIdentity =
+                    ProcessIdentityLease.Capture(
+                        checked((uint)Environment.ProcessId));
+                BootstrapBinding observerBinding = observerIdentity.Snapshot();
+                BootstrapBinding controllerBinding = controllerIdentity.Snapshot();
+                BootstrapBinding brokerBinding = brokerIdentity.Snapshot();
+                store = new InMemoryBootstrapPublicationStore();
+                brokerSession = new BootstrapBrokerSession(
+                    observerBinding,
+                    controllerBinding,
+                    brokerBinding,
+                    store,
+                    timeProvider ?? TimeProvider.System,
+                    publication,
+                    session,
+                    beforeArbitrationTestHook);
+                BrokerFixture result = new(
+                    observer,
+                    controller,
+                    observerBinding,
+                    controllerBinding,
+                    brokerBinding,
+                    store,
+                    brokerSession,
+                    publication);
+                observer = null;
+                controller = null;
+                store = null;
+                brokerSession = null;
+                return result;
+            }
+            finally
+            {
+                brokerSession?.Dispose();
+                store?.Dispose();
+                controller?.Dispose();
+                observer?.Dispose();
+            }
+        }
+
+        internal async Task SendBrokerClaimAsync(
+            bool malformedTranscript,
+            bool badProof,
+            bool allowExpectedClose,
+            int delayMilliseconds)
+        {
+            if (!Store.TryRead(out BootstrapPublicationSnapshot? snapshot) ||
+                snapshot is null)
+            {
+                throw new InvalidOperationException(
+                    "The broker publication is not visible.");
+            }
+
+            using (snapshot)
+            {
+                byte[] descriptor = snapshot.Descriptor.ToArray();
+                try
+                {
+                    await Controller.SendBrokerClaimAsync(
+                            BrokerProcessId,
+                            descriptor,
+                            malformedTranscript,
+                            badProof,
+                            allowExpectedClose,
+                            delayMilliseconds)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(descriptor);
+                }
+            }
+        }
+
+        internal async Task RequireCleanExitAsync(
+            bool observerUnused = false,
+            bool controllerUnused = false)
+        {
+            if (observerUnused)
+            {
+                await Observer.SendBrokerObserverExitAsync()
+                    .ConfigureAwait(false);
+            }
+
+            if (controllerUnused)
+            {
+                await Controller.SendBrokerControllerExitAsync()
+                    .ConfigureAwait(false);
+            }
+
+            await Task.WhenAll(
+                    Observer.RequireExitAsync(TestTimeout),
+                    Controller.RequireExitAsync(TestTimeout))
+                .ConfigureAwait(false);
+        }
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            Session.Dispose();
+            Store.Dispose();
+            Controller.Dispose();
+            Observer.Dispose();
+        }
+    }
+
     private sealed class TestChild : IDisposable
     {
         private readonly Process process;
@@ -2869,6 +4245,131 @@ internal static class Program
         internal Task SendExitAsync()
         {
             return WriteCommandAsync(new byte[] { ChildExit, 0, 0, 0, 0, 0 });
+        }
+
+        internal Task SendBrokerControllerExitAsync()
+        {
+            return WriteCommandAsync(new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(ushort)]);
+        }
+
+        internal Task SendBrokerObserverExitAsync()
+        {
+            return WriteCommandAsync(new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(int) + sizeof(byte)]);
+        }
+
+        internal async Task SendBrokerPublishAsync(
+            uint brokerProcessId,
+            string pipeName,
+            bool revokeAfterPublish,
+            bool malformedRevoke,
+            bool allowExpectedClose,
+            int delayMilliseconds,
+            TimeSpan publicationLifetime)
+        {
+            ProtectedNamedPipe.ValidateName(pipeName);
+            if (brokerProcessId == 0 || delayMilliseconds < 0 ||
+                publicationLifetime <= TimeSpan.Zero ||
+                publicationLifetime.TotalMilliseconds > int.MaxValue)
+            {
+                throw new ArgumentOutOfRangeException(nameof(delayMilliseconds));
+            }
+
+            byte flags = 0;
+            if (revokeAfterPublish)
+            {
+                flags |= 1;
+            }
+
+            if (allowExpectedClose)
+            {
+                flags |= 2;
+            }
+
+            if (malformedRevoke)
+            {
+                flags |= 4;
+            }
+
+            byte[] name = Encoding.ASCII.GetBytes(pipeName);
+            byte[] command = new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(int) + sizeof(byte) + name.Length];
+            try
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(command, brokerProcessId);
+                command[sizeof(uint)] = flags;
+                BinaryPrimitives.WriteInt32LittleEndian(
+                    command.AsSpan(sizeof(uint) + sizeof(byte)),
+                    delayMilliseconds);
+                BinaryPrimitives.WriteInt32LittleEndian(
+                    command.AsSpan(
+                        sizeof(uint) + sizeof(byte) + sizeof(int)),
+                    checked((int)publicationLifetime.TotalMilliseconds));
+                command[sizeof(uint) + sizeof(byte) +
+                    sizeof(int) + sizeof(int)] = checked((byte)name.Length);
+                name.CopyTo(command, sizeof(uint) + sizeof(byte) +
+                    sizeof(int) + sizeof(int) + sizeof(byte));
+                await WriteCommandAsync(command).ConfigureAwait(false);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(name);
+                CryptographicOperations.ZeroMemory(command);
+            }
+        }
+
+        internal async Task SendBrokerClaimAsync(
+            uint brokerProcessId,
+            ReadOnlyMemory<byte> descriptor,
+            bool malformedTranscript,
+            bool badProof,
+            bool allowExpectedClose,
+            int delayMilliseconds)
+        {
+            if (brokerProcessId == 0 || delayMilliseconds < 0 ||
+                descriptor.Length is < 1 or > BootstrapDescriptor.MaximumEncodedLength)
+            {
+                throw new ArgumentOutOfRangeException(nameof(delayMilliseconds));
+            }
+
+            byte flags = 0;
+            if (malformedTranscript)
+            {
+                flags |= 1;
+            }
+
+            if (badProof)
+            {
+                flags |= 2;
+            }
+
+            if (allowExpectedClose)
+            {
+                flags |= 4;
+            }
+
+            byte[] command = new byte[sizeof(uint) + sizeof(byte) +
+                sizeof(int) + sizeof(ushort) + descriptor.Length];
+            BinaryPrimitives.WriteUInt32LittleEndian(command, brokerProcessId);
+            command[sizeof(uint)] = flags;
+            BinaryPrimitives.WriteInt32LittleEndian(
+                command.AsSpan(sizeof(uint) + sizeof(byte)),
+                delayMilliseconds);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                command.AsSpan(
+                    sizeof(uint) + sizeof(byte) + sizeof(int)),
+                checked((ushort)descriptor.Length));
+            descriptor.Span.CopyTo(command.AsSpan(
+                sizeof(uint) + sizeof(byte) + sizeof(int) + sizeof(ushort)));
+            try
+            {
+                await WriteCommandAsync(command).ConfigureAwait(false);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(command);
+            }
         }
 
         private async Task SendCommandAsync(
