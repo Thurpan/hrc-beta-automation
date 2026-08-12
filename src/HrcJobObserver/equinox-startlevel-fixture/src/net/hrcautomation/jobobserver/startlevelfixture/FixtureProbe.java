@@ -56,11 +56,6 @@ public final class FixtureProbe {
                 + ":S" + state + ":L" + level + ":P" + persistentlyStarted);
     }
 
-    public static void recordedProviderRows() {
-        EVENTS.add("ROWS:common:L2:Atrue:jobs:L4:Afalse"
-                + ":runtime:L4:Atrue:observer:L4:Atrue:producer:L5:Atrue");
-    }
-
     public static void providerStateAt(
             String phase,
             String symbolicName,

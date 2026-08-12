@@ -116,7 +116,6 @@ public final class EquinoxStartLevelFixtureTest {
                 clearPersistentStart(preferences);
                 clearPersistentStart(registry);
                 clearPersistentStart(prefsService);
-                FixtureProbe.recordedProviderRows();
                 FixtureProbe.providerStateAt(
                         "PRE_RESOLVE",
                         jobs.getSymbolicName(),
@@ -327,11 +326,20 @@ public final class EquinoxStartLevelFixtureTest {
 
     private static List<TestCase> recordedProviderRowsTests(ScenarioResult result) {
         List<TestCase> tests = new ArrayList<>(successTests(result));
-        tests.add(test("recorded provider rows configured before advancement", () ->
-                assertContains(result.eventsAtLevelFive(),
-                        "ROWS:common:L2:Atrue:jobs:L4:Afalse"
-                                + ":runtime:L4:Atrue:observer:L4:Atrue"
-                                + ":producer:L5:Atrue")));
+        tests.add(test("recorded dependency rows observed at observer start", () -> {
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.eclipse.equinox.common:S32:L2:Ptrue");
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.eclipse.core.contenttype:S4:L4:Pfalse");
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.eclipse.equinox.app:S4:L4:Pfalse");
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.eclipse.equinox.preferences:S4:L4:Pfalse");
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.eclipse.equinox.registry:S4:L4:Pfalse");
+            assertContains(result.eventsAtLevelFive(),
+                    "PROVIDER:org.osgi.service.prefs:S4:L4:Pfalse");
+        }));
         tests.add(test("Core Jobs row began installed and non-persistent", () ->
                 assertContains(result.eventsAtLevelFive(),
                         "PRE_RESOLVE:org.eclipse.core.jobs:S2:L4:Pfalse")));
@@ -353,6 +361,12 @@ public final class EquinoxStartLevelFixtureTest {
                         "POST_RESOLVE:org.eclipse.core.jobs:S4:L4:Pfalse",
                         "PRE_RUNTIME:org.eclipse.core.jobs:S4:L4:Pfalse",
                         "OBSERVER_START:L4:F4",
+                        "PROVIDER:org.eclipse.equinox.common:S32:L2:Ptrue",
+                        "PROVIDER:org.eclipse.core.contenttype:S4:L4:Pfalse",
+                        "PROVIDER:org.eclipse.equinox.app:S4:L4:Pfalse",
+                        "PROVIDER:org.eclipse.equinox.preferences:S4:L4:Pfalse",
+                        "PROVIDER:org.eclipse.equinox.registry:S4:L4:Pfalse",
+                        "PROVIDER:org.osgi.service.prefs:S4:L4:Pfalse",
                         "PROVIDER:org.eclipse.core.jobs:S4:L4:Pfalse",
                         "PROVIDER:org.eclipse.core.runtime:S32:L4:Ptrue",
                         "LISTENER_REGISTERED", "PUBLICATION_ACTIVE",

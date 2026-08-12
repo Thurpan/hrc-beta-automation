@@ -9,7 +9,8 @@ modify HRC.
 The fixture reads exact installed Eclipse provider JARs. The build verifies
 their recorded SHA-256 values before use. It does not copy these JARs into the
 repository. The recorded-row scenario includes Eclipse OSGi, Equinox Common,
-Core Jobs, Core Runtime, and Core Runtime's direct required Bundles.
+Core Jobs, Core Runtime, Core Runtime's direct required Bundles, and Equinox
+Preferences' mandatory OSGi Preferences Service requirement.
 
 The build generates two test-only Bundles under a unique temporary directory:
 
@@ -45,10 +46,12 @@ The recorded-row scenario matches the relevant installed rows:
 - The observer is level 4 with autostart enabled.
 - The synthetic producer is level 5 with autostart enabled.
 
-The scenario also installs Core Runtime's exact direct requirements at their
-recorded level 4. It leaves their recorded autostart settings disabled. These
-requirements are Core Content Type, Equinox App, Equinox Preferences, Equinox
-Registry, and OSGi Preferences Service.
+In addition to OSGi, Common, and Jobs, the scenario installs Core Runtime's
+remaining exact direct requirements at their recorded level 4. These are Core
+Content Type, Equinox App, Equinox Preferences, and Equinox Registry. Their
+recorded autostart settings are disabled. The scenario also installs OSGi
+Preferences Service. This Bundle is a mandatory requirement of Equinox
+Preferences, not a direct requirement of Core Runtime.
 
 At observer activation, Core Jobs remains resolved, level 4, and not
 persistently started. Core Runtime is active, level 4, and persistently started.
@@ -73,8 +76,11 @@ The success scenario verifies these conditions:
 1. The policy refuses republish, restart, update, uninstall, and refresh
    requests while active and after termination.
 
-The recorded-row scenario repeats those checks. It also verifies the exact
-same-level Core Jobs and Core Runtime states described above.
+The recorded-row scenario repeats those checks. At observer activation, it
+also verifies the exact recorded start level and persistent-start setting for
+Equinox Common, Core Content Type, Equinox App, Equinox Preferences, Equinox
+Registry, OSGi Preferences Service, Core Jobs, and Core Runtime. Missing or
+duplicate provider symbolic names fail observer activation.
 
 The failure scenario makes the observer activator fail at level 4. It verifies
 these conditions:
