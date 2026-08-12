@@ -25,6 +25,8 @@ public final class ObserverCoreTest {
         List<TestCase> tests = List.of(
                 test("validatesOperationNames", ObserverCoreTest::validatesOperationNames),
                 test("validatesLifecycleInput", ObserverCoreTest::validatesLifecycleInput),
+                test("faultsOnMissingStatusAndInfrastructureFailure", ObserverCoreTest::faultsOnMissingStatusAndInfrastructureFailure),
+                test("rejectsSourceMismatchWithOrderingPrecedence", ObserverCoreTest::rejectsSourceMismatchWithOrderingPrecedence),
                 test("acceptsAndRetriesArmWithoutChangingDeadline", ObserverCoreTest::acceptsAndRetriesArmWithoutChangingDeadline),
                 test("rejectsInvalidBusyAndExpiredArms", ObserverCoreTest::rejectsInvalidBusyAndExpiredArms),
                 test("rejectsArmBeforeJobCapacityIsExceeded", ObserverCoreTest::rejectsArmBeforeJobCapacityIsExceeded),
@@ -97,8 +99,53 @@ public final class ObserverCoreTest {
                 () -> LifecycleInput.scheduled(new Object(), null, UTC, 1));
         assertThrows(NullPointerException.class,
                 () -> LifecycleInput.scheduled(new Object(), descriptor, null, 1));
-        assertThrows(IllegalArgumentException.class,
-                () -> LifecycleInput.done(new Object(), descriptor, null, UTC, 1));
+        LifecycleInput missingStatus =
+                LifecycleInput.done(new Object(), descriptor, null, UTC, 1);
+        assertEquals(LifecycleInput.Kind.DONE, missingStatus.kind());
+        assertEquals(null, missingStatus.status());
+    }
+
+    private static void faultsOnMissingStatusAndInfrastructureFailure() {
+        Fixture missing = scheduledFixture("MISSING-STATUS");
+        missing.coordinator.accept(LifecycleInput.done(
+                missing.lastIdentity,
+                nashDescriptor(nashName("MISSING-STATUS")),
+                null,
+                UTC.plusNanos(102),
+                102));
+        assertEquals(FaultReason.MISSING_TERMINAL_STATUS,
+                missing.coordinator.faultReason());
+        assertEquals(0, eventsOf(missing.events(), JobTerminalEvent.class).size());
+
+        for (InfrastructureFailure failure : InfrastructureFailure.values()) {
+            Fixture fixture = fixture(100);
+            fixture.coordinator.failInfrastructure(failure, UTC, 101);
+            assertEquals(switch (failure) {
+                case CALLBACK_CAPTURE_FAILED -> FaultReason.CALLBACK_CAPTURE_FAILED;
+                case CALLBACK_QUEUE_OVERFLOW -> FaultReason.CALLBACK_QUEUE_OVERFLOW;
+                case CALLBACK_DISPATCH_FAILED -> FaultReason.CALLBACK_DISPATCH_FAILED;
+            }, fixture.coordinator.faultReason());
+            assertEquals(ArmOutcome.FAULTED,
+                    fixture.coordinator.arm(
+                            uuid(99), OperationKind.NASH, nashName("BLOCKED"), 10));
+        }
+    }
+
+    private static void rejectsSourceMismatchWithOrderingPrecedence() {
+        Fixture mismatch = fixture(100);
+        mismatch.coordinator.arm(uuid(70), OperationKind.NASH, nashName("A"), 50);
+        mismatch.coordinator.rejectSourceMismatch(UTC, 101);
+        assertEquals(FaultReason.JOB_MISMATCH, mismatch.coordinator.faultReason());
+
+        Fixture beforeArm = fixture(100);
+        beforeArm.coordinator.arm(uuid(71), OperationKind.NASH, nashName("A"), 50);
+        beforeArm.coordinator.rejectSourceMismatch(UTC, 99);
+        assertEquals(FaultReason.EVENT_BEFORE_ARM, beforeArm.coordinator.faultReason());
+
+        Fixture expired = fixture(100);
+        expired.coordinator.arm(uuid(72), OperationKind.NASH, nashName("A"), 5);
+        expired.coordinator.rejectSourceMismatch(UTC, 105);
+        assertEquals(FaultReason.ARM_DEADLINE_EXPIRED, expired.coordinator.faultReason());
     }
 
     private static void acceptsAndRetriesArmWithoutChangingDeadline() {

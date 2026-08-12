@@ -2,10 +2,12 @@
 
 ## Status
 
-This directory contains a package-private, pure Java 17 feasibility core. It is
-not the standalone runner and it is not an installable HRC plug-in. It has no
-OSGi manifest, activator, Eclipse listener, network service, file writer, or
-HRC installation path.
+This directory contains a package-private, pure Java 17 feasibility core and an
+[offline Eclipse Jobs adapter](eclipse-adapter/README.md). It is not the
+standalone runner and it is not an installable HRC plug-in. It has no OSGi
+manifest, activator, listener registration, network service, file writer, or
+runtime installation-path dependency. Its offline adapter build accepts an HRC
+installation path solely to resolve and hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
@@ -40,19 +42,22 @@ ordered replay windows through `replayAfter`. A replay window reports `OK`,
   rule; the later runner remains responsible for proving the private staging
   path, lease, uniqueness, and exact destination.
 - Correlated Jobs are tracked by Java reference identity in an `IdentityHashMap`.
-  The raw object never enters an emitted event or generated equality, hashing,
-  or string representation.
+  The raw object can pass through the adapter's bounded in-process mailbox. It
+  never enters an emitted event, generated equality, hashing, string
+  representation, log, serialisation, or transport.
 - Multiple already-correlated Jobs may remain queued or running, including two
   Nash Jobs with the same public name. Each receives a distinct positive ID in
   the observer session.
 - Only a known `OK`, `CANCEL`, or `ERROR` result with a usable plug-in identity
-  can produce a trusted terminal event. An unknown status, invalid event order,
-  omitted plug-in identity, or terminal event after an existing observer fault
-  is emitted as an explicitly rejected terminal projection and cannot be used
-  to advance a workflow.
-- Any ambiguity latches the first observer fault and rejects new arms. Exact
-  later lifecycle inputs for already tracked Jobs are still recorded as
-  rejected evidence rather than silently discarded.
+  can produce a trusted terminal event. A projectable `DONE` with an unknown
+  status, omitted plug-in identity, missing required `RUNNING`, or an existing
+  observer fault is emitted as an explicitly rejected terminal projection and
+  cannot be used to advance a workflow.
+- Any ambiguity latches the first observer fault and rejects new arms. Valid
+  later `RUNNING` and projectable `DONE` inputs for already tracked Jobs are
+  retained as rejected evidence. Other invalid, duplicate, incomplete, or
+  out-of-order callbacks latch or preserve the fault without promising a
+  terminal projection.
 - The core bounds remembered requests, Jobs, and replay events. This first
   feasibility implementation deliberately retains a small number of Job
   identities strongly; production lifetime and retention require a later
@@ -72,8 +77,11 @@ treated as sensitive by the later transport and runner.
 
 The HRC bundle/version/class/name recognisers used by the tests come from the
 version-specific static findings in [`../../docs/feasibility.md`](../../docs/feasibility.md).
-They are not a public or vendor-supported API. Runtime use remains conditional
-on the exact eight-component fingerprint and the active-process path check.
+They are not a public or vendor-supported API. Core static findings remain
+conditional on the exact eight-component fingerprint and active-process path
+check. Equinox Common and Eclipse OSGi are offline compile-provider evidence
+only. Live adapter use remains blocked until the active-process gate is
+deliberately extended for them.
 
 ## Offline validation
 
@@ -84,19 +92,25 @@ Run on the licensed development host:
 ```
 
 The script uses the existing Android Studio JBR compiler and runtime, compiles
-with `javac --release 17 -Xlint:all -Werror`, and runs the dependency-free test
-harness with assertions enabled. It does not use or copy HRC's Java runtime or
-components.
+with `javac --release 17 -proc:none -Xlint:all -Werror`, and runs the
+dependency-free test harness with assertions enabled. It shares a named local
+build lock with the adapter script so concurrent validation cannot clean either
+script's fixed ignored output tree mid-build. It does not use or copy HRC's
+Java runtime or components.
 
-The current 25-test harness covers input invariants, name/profile filtering, arm
-idempotency/busy/expiry, callback-time and wrap-safe deadlines, reference
-identity, all three operation profiles, two same-name Nash Jobs, normal and
+The current 27-test core harness covers input invariants, name and profile
+filtering, arm idempotency, busy and expiry handling, callback-time and
+wrap-safe deadlines, reference identity, all three operation profiles, two
+same-name Nash Jobs, normal and
 rejected terminal paths, callback-time ordering, post-fault evidence, status
 minimisation, replay ordering/gaps/cursor bounds/transactionality/immutability,
 and synchronized reader/writer access.
 
-The following remain unvalidated: OSGi resolution, bundle activation, Eclipse
-callback capture and latency, callback queueing, serialization, IPC,
+The adapter filters before reading public name, Bundle, flags, or result and
+adds a fixed-capacity mailbox with a non-waiting callback hand-off. Its 27
+offline tests are described in its own README. The following
+remain unvalidated: OSGi resolution, bundle activation, real Eclipse callback
+delivery and latency, listener registration/removal, serialisation, IPC,
 authentication, replay across a client connection, packaging, startup,
 installation, rollback, HRC runtime correlation, and every standalone-runner
 operation.

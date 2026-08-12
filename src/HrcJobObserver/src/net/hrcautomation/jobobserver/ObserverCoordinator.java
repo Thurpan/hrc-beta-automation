@@ -3,7 +3,6 @@ package net.hrcautomation.jobobserver;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -14,15 +13,17 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * Correlates an arm with the exact Java Job object seen at SCHEDULED. The
- * object identity never leaves this class. Calls are synchronized because a
- * later Eclipse adapter may deliver lifecycle inputs from different threads.
+ * Correlates an arm with the exact Java Job object seen at SCHEDULED. The raw
+ * identity enters through the bounded adapter hand-off but never enters an
+ * emitted event. Calls are synchronized because the mailbox worker and later
+ * controller operations such as arm, expiry, and status queries can run
+ * concurrently.
  */
-final class ObserverCoordinator {
+final class ObserverCoordinator implements ObserverIngress {
     static final long MAX_ARM_TIMEOUT_NANOS = Duration.ofMinutes(5).toNanos();
 
     private final UUID sessionId;
-    private final Map<OperationKind, OperationProfile> profiles;
+    private final OperationProfileSet profiles;
     private final int requestCapacity;
     private final int jobCapacity;
     private final LongSupplier monotonicClock;
@@ -42,8 +43,26 @@ final class ObserverCoordinator {
             int replayCapacity,
             LongSupplier monotonicClock,
             Supplier<Instant> wallClock) {
+        this(
+                sessionId,
+                new OperationProfileSet(profiles),
+                requestCapacity,
+                jobCapacity,
+                replayCapacity,
+                monotonicClock,
+                wallClock);
+    }
+
+    ObserverCoordinator(
+            UUID sessionId,
+            OperationProfileSet profiles,
+            int requestCapacity,
+            int jobCapacity,
+            int replayCapacity,
+            LongSupplier monotonicClock,
+            Supplier<Instant> wallClock) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
-        Objects.requireNonNull(profiles, "profiles");
+        this.profiles = Objects.requireNonNull(profiles, "profiles");
         if (requestCapacity < 1 || jobCapacity < 1) {
             throw new IllegalArgumentException("request and job capacities must be positive");
         }
@@ -52,18 +71,6 @@ final class ObserverCoordinator {
         this.monotonicClock = Objects.requireNonNull(monotonicClock, "monotonicClock");
         this.wallClock = Objects.requireNonNull(wallClock, "wallClock");
         this.replayBuffer = new ReplayBuffer(replayCapacity);
-        this.profiles = new EnumMap<>(OperationKind.class);
-        Map<String, OperationKind> classes = new HashMap<>();
-        for (OperationProfile profile : profiles) {
-            OperationProfile previous = this.profiles.put(profile.operation(), profile);
-            OperationKind previousClass = classes.put(profile.className(), profile.operation());
-            if (previous != null || previousClass != null) {
-                throw new IllegalArgumentException("operation profiles must be unique");
-            }
-        }
-        if (this.profiles.isEmpty()) {
-            throw new IllegalArgumentException("at least one operation profile is required");
-        }
     }
 
     synchronized ArmOutcome arm(
@@ -83,7 +90,7 @@ final class ObserverCoordinator {
         if (requestId == null
                 || operation == null
                 || !operation.acceptsExpectedName(expectedJobName)
-                || !profiles.containsKey(operation)
+                || !profiles.contains(operation)
                 || timeoutNanos <= 0
                 || timeoutNanos > MAX_ARM_TIMEOUT_NANOS) {
             return ArmOutcome.REJECTED;
@@ -128,7 +135,8 @@ final class ObserverCoordinator {
         return ArmOutcome.ACCEPTED;
     }
 
-    synchronized void accept(LifecycleInput input) {
+    @Override
+    public synchronized void accept(LifecycleInput input) {
         if (input == null) {
             if (faultReason == null) {
                 fault(FaultReason.LIFECYCLE_BEFORE_SCHEDULED,
@@ -164,6 +172,38 @@ final class ObserverCoordinator {
             case RUNNING -> acceptRunning(input, tracked);
             case DONE -> acceptDone(input, tracked);
         }
+    }
+
+    @Override
+    public synchronized void rejectSourceMismatch(
+            Instant observedUtc, long observedNanos) {
+        Objects.requireNonNull(observedUtc, "observedUtc");
+        if (faultReason != null || expireAt(observedNanos, observedUtc)) {
+            return;
+        }
+        if (pendingArm != null && pendingArm.observedBeforeArm(observedNanos)) {
+            fault(FaultReason.EVENT_BEFORE_ARM, observedUtc, observedNanos);
+            return;
+        }
+        fault(FaultReason.JOB_MISMATCH, observedUtc, observedNanos);
+    }
+
+    @Override
+    public synchronized void failInfrastructure(InfrastructureFailure failure) {
+        failInfrastructure(failure, wallClock.get(), monotonicClock.getAsLong());
+    }
+
+    @Override
+    public synchronized void failInfrastructure(
+            InfrastructureFailure failure, Instant observedUtc, long observedNanos) {
+        Objects.requireNonNull(failure, "failure");
+        Objects.requireNonNull(observedUtc, "observedUtc");
+        FaultReason reason = switch (failure) {
+            case CALLBACK_CAPTURE_FAILED -> FaultReason.CALLBACK_CAPTURE_FAILED;
+            case CALLBACK_QUEUE_OVERFLOW -> FaultReason.CALLBACK_QUEUE_OVERFLOW;
+            case CALLBACK_DISPATCH_FAILED -> FaultReason.CALLBACK_DISPATCH_FAILED;
+        };
+        fault(reason, observedUtc, observedNanos);
     }
 
     synchronized boolean expire() {
@@ -211,7 +251,7 @@ final class ObserverCoordinator {
             return;
         }
 
-        OperationProfile armedProfile = profiles.get(pendingArm.operation());
+        OperationProfile armedProfile = profiles.forOperation(pendingArm.operation());
         if (sourceProfile.operation() != pendingArm.operation()
                 || !armedProfile.matches(pendingArm, input.job())) {
             fault(FaultReason.JOB_MISMATCH, input.observedUtc(), input.observedNanos());
@@ -387,12 +427,7 @@ final class ObserverCoordinator {
     }
 
     private OperationProfile profileForClass(JobDescriptor job) {
-        for (OperationProfile profile : profiles.values()) {
-            if (profile.classMatches(job)) {
-                return profile;
-            }
-        }
-        return null;
+        return profiles.forClassName(job.className());
     }
 
     private boolean expireAt(long observedNanos, Instant observedUtc) {

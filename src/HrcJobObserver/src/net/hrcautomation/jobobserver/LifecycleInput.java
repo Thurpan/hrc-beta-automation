@@ -32,8 +32,8 @@ final class LifecycleInput {
         this.identity = Objects.requireNonNull(identity, "identity");
         this.job = Objects.requireNonNull(job, "job");
         this.observedUtc = Objects.requireNonNull(observedUtc, "observedUtc");
-        if ((kind == Kind.DONE) != (status != null)) {
-            throw new IllegalArgumentException("status must be present exactly for DONE");
+        if (kind != Kind.DONE && status != null) {
+            throw new IllegalArgumentException("status is only permitted for DONE");
         }
         this.status = status;
         this.observedNanos = observedNanos;
