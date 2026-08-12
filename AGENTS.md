@@ -131,6 +131,11 @@ confirmed. A hash match is necessary but does not prove live focus, retained
 preferences, or runtime state. Any process, path, filename, or hash mismatch
 must stop the runner and reopen feasibility validation.
 
+The offline adapter also compiles against Equinox Common and Eclipse OSGi.
+Their recorded hashes are compile-provider evidence only. Do not activate a
+live observer until both providers are deliberately added to, and verified
+through, the active-process identity gate in `docs/feasibility.md`.
+
 ## One workflow pattern
 
 Validate one representative workflow pattern first. The pattern can then run

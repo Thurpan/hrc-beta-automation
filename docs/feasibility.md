@@ -105,6 +105,23 @@ On 12 August 2026, the one active `hrc.exe` process resolved to
 All eight files were rehashed read-only from that installation's `plugins`
 directory and matched this table.
 
+### Offline adapter compile-provider evidence
+
+On 12 August 2026, the offline adapter build resolved and rehashed these
+additional public API providers from the configured HRC installation path:
+
+| Public API provider | Installed filename | SHA-256 |
+| --- | --- | --- |
+| Equinox Common | `org.eclipse.equinox.common_3.20.0.v20250129-1348.jar` | `617C5D7E759276B7E9ED363C56A6714B7F21D4A812D533FCB90E48723CC4C001` |
+| Eclipse OSGi | `org.eclipse.osgi_3.23.0.v20250228-0640.jar` | `1AC113541A19F0C72C0421FB24058DEFCA7E3C6F282E5EE73F14D2768A9AE653` |
+
+This is offline compile-provider evidence. The build used the configured
+installation path. It did not resolve these files from the active `hrc.exe`
+process. These providers are not members of the eight-component active-process
+runtime gate above. Before live observer use, extend that gate deliberately and
+verify both files from the active process installation. This evidence adds no
+HRC runtime observation.
+
 The runner must first identify the one active HRC process and resolve the
 `plugins` directory from that process's own `hrc.exe` installation. It must
 rehash these exact files there before relying on the NatTable, Rename, Nash Job,
@@ -1366,16 +1383,23 @@ completion, or failure states.
 The repository now contains an offline-tested, package-private Java correlation
 core under `src/HrcJobObserver/`. It accepts injected lifecycle inputs, preserves
 Java object identity internally, emits only bounded status primitives, rejects
-ambiguous terminal projections, and keeps a bounded replay history. Its 25
-dependency-free tests pass for Java 17. This adds no HRC observation and proves
-no OSGi resolution, Eclipse callback capture, IPC, installation, or runtime
-terminal-status result. `Feasibility` remains `TO CONFIRM`.
+ambiguous terminal projections, and keeps a bounded replay history. Its
+dependency-free core tests pass for Java 17. An offline Eclipse Jobs adapter
+filters a Job class before reading its public name, Bundle, flags, or result and
+adds a fixed-capacity mailbox with a non-waiting callback hand-off. One worker
+is the sole callback-path caller of the core ingress. This offline layer passes
+27 core tests and 27 adapter tests. Apart from the compile-provider file hashes
+recorded above, this adds no observation of running HRC, its UI, its behaviour,
+or real Eclipse callback delivery. It does not prove OSGi resolution, listener
+registration, IPC, installation, or runtime terminal-status capture.
+`Feasibility` remains `TO CONFIRM`.
 
-Next, implement and test the public Eclipse Jobs listener adapter offline. Then
-add the bounded authenticated local transport and package an uninstalled
-startup bundle with guarded build and rollback procedures. The runtime observer
-must subscribe to the Eclipse Jobs lifecycle and must not read strategy or
-licence data.
+Next, implement and test the bounded authenticated local transport and replay
+protocol. Then add manager registration and package an uninstalled startup
+bundle with guarded build and rollback procedures. Before live use, extend the
+active-process runtime identity gate for the adapter's Equinox Common and
+Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
+lifecycle and must not read strategy or licence data.
 
 Preserve both current unsaved tabs. Do not install the observer, restart HRC, or
 consume the reserved smoke until Euan explicitly resolves the protected tabs.
@@ -1383,7 +1407,9 @@ consume the reserved smoke until Euan explicitly resolves the protected tabs.
 The authorised design relies on the version-specific findings in this
 document. Resolve the active HRC installation and rehash the exact
 eight-component identity set above from its `plugins` directory before using
-them. Stop on any process, path, filename, or hash mismatch.
+them. Before live observer use, deliberately extend that gate with Equinox
+Common and Eclipse OSGi and verify both through the active process. Stop on any
+process, path, filename, or hash mismatch.
 
 Begin the remaining non-writing probes with the statically defined exact-tab-
 focus, selection-round-trip, one-shot `Ctrl+F4`, and `Save Resource` Cancel path

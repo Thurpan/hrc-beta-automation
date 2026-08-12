@@ -257,19 +257,27 @@ not exist.
 The project now has an
 [offline exact-status correlation core](src/HrcJobObserver/README.md). It
 correlates injected lifecycle inputs by Java object identity, separates trusted
-from rejected terminal projections, and keeps a bounded replay history. Its 25
-dependency-free tests pass for Java 17. It is package-private and has no
-Eclipse adapter, OSGi activator, IPC, installer, or HRC interaction; it does not
-yet make HRC terminal results durable and does not change the feasibility
-verdict.
+from rejected terminal projections, and keeps a bounded replay history. Its
+dependency-free core tests pass for Java 17. A package-private
+[offline Eclipse Jobs adapter](src/HrcJobObserver/eclipse-adapter/README.md)
+filters a Job class before reading its public name, Bundle, flags, or result and
+adds a fixed-capacity mailbox with a non-waiting callback hand-off. One worker
+is the sole callback-path caller of the core ingress. The current offline
+suites pass 27 core tests and 27 adapter tests.
+Neither layer has an OSGi activator, listener registration, IPC, or installer;
+neither has interacted with running HRC, its UI, or real Eclipse callback
+delivery. The build only reads and hashes three public API provider JARs from
+the configured HRC installation. These layers do not yet make HRC terminal
+results durable and do not change the feasibility verdict.
 
-Next, add and test the public Eclipse Jobs listener adapter offline. Then add
-the bounded authenticated local transport and package an uninstalled startup
-bundle with a guarded build and rollback design. Do not install it or restart
-HRC while the dirty tabs `*Hand 7` and `*From Hand 7` remain protected. Resolve
-those resources explicitly before the first clean-start observer validation.
-Reserve the authorised smoke until the runtime observer and standalone control
-path are ready.
+Next, add the bounded authenticated local transport and its replay protocol.
+Then add manager registration and package an uninstalled startup bundle with a
+guarded build and rollback design. Extend the active-process runtime identity
+gate for the adapter's Equinox Common and Eclipse OSGi providers before live
+use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
+`*From Hand 7` remain protected. Resolve those resources explicitly before the
+first clean-start observer validation. Reserve the authorised smoke until the
+runtime observer and standalone control path are ready.
 
 Installed-component inspection identified the Stacks and Blinds surface as an
 Eclipse Nebula NatTable with default selection and edit bindings. A live check
