@@ -4,15 +4,16 @@
 
 This directory contains an internal `net8.0-windows` class library and a
 dependency-free console test harness. It is a source/test-only feasibility
-module. It is not a broker, controller, descriptor publisher, installer,
-standalone runner, Java bridge, or HRC integration.
+module. It is not a broker, controller, descriptor publisher, publication
+store, installer, standalone runner, Java bridge, or HRC integration.
 
 The module has never been loaded into, attached to, or run with HRC. Most tests
-use the test-harness process as both named-pipe endpoints. Two tests launch the
-harness as synthetic child peers. They add cross-process
-process-identity and framing evidence only. They add no bearer-token,
-endpoint-publication, Java, Eclipse callback, HRC UI, or runtime-terminal
-evidence. Feasibility remains `TO CONFIRM`.
+use the test-harness process as both named-pipe endpoints or exercise the new
+descriptor and protocol codecs in memory. Two tests launch the harness as
+synthetic child peers. They add cross-process process-identity and fixed
+public-frame evidence only. No cross-process test transfers a bearer token or
+endpoint descriptor. The module adds no Java, Eclipse callback, HRC UI, or
+runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
 
 ## Implemented scope
 
@@ -41,15 +42,47 @@ positive timeouts through 30 seconds. Any admitted operation cancellation,
 EOF, malformed received frame, or I/O failure disposes the channel; a failed or
 completed direction cannot be retried.
 
+`BootstrapDescriptor` defines canonical, bounded, non-secret endpoint metadata.
+It binds the publication and broker identifiers, publication nonce, IPv4
+loopback endpoint, claim-pipe name, and exact observer and broker process
+identities. The observer and broker must be distinct processes in the same
+user, logon, token session, and process session. Creation and verification both
+enforce a caller-supplied maximum lifetime. The descriptor carries a
+domain-separated HMAC-SHA256 tag. Parsing validates and canonicalises structure
+only. Authentication becomes meaningful only after a controller has securely
+claimed the bearer token and verifies the HMAC, exact bindings, and half-open
+validity window.
+
+`BootstrapProtocol` defines eight type- and role-bound messages for four
+one-shot request-response exchanges:
+
+1. `PublishRequest` and `PublishAck` between observer and broker.
+1. `ClaimRequest` and `ClaimGrant` between controller and broker.
+1. `ClaimReceipt` and `ClaimFinalAck` on a separate controller-to-broker
+   receipt channel.
+1. `RevokeRequest` and `RevokeAck` between observer and broker.
+
+Every decoder requires the expected phase, sender role, and receiver role. It
+rejects trailing bytes and non-canonical or malformed fields. Decoding takes
+ownership of the complete source frame and wipes it on success or failure.
+Secret-bearing messages and encoded frames own their mutable buffers and wipe
+them on disposal. A domain-separated HMAC-SHA256 receipt proof binds token
+possession to the publication identifier, descriptor digest, controller nonce,
+and receipt nonce. The final acknowledgement is a distinct message; receipt
+generation alone does not confirm that the broker accepted it.
+
 ## Security and integration boundary
 
-This module does not transfer the observer bearer token or define the bootstrap
-protocol. It does not publish endpoint metadata, create a LocalAppData
-descriptor, authenticate a future executable by hash, or connect to the Java
-transport. The production library does not launch processes; the test harness
-launches only its own synthetic child mode. The module contains no HRC path,
-component, private configuration, licence data, poker data, network client,
-registry access, or environment-secret input.
+This module defines the descriptor and protocol codecs, but it does not run
+them between dedicated processes. It has no broker state machine, publication
+store, descriptor filesystem writer or reader, secure pipe-name delivery, or
+role-specific executable orchestration. It does not publish endpoint metadata,
+perform a bearer-token claim, create a LocalAppData descriptor, authenticate a
+future executable by hash, or connect to the Java transport. The production
+library does not launch processes; the test harness launches only its own
+synthetic child mode. The module contains no HRC path, component, private
+configuration, licence data, poker data, network client, registry access, or
+environment-secret input.
 
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
@@ -73,9 +106,12 @@ performs kill-and-bounded-wait cleanup through the retained process object and
 fails if termination is not confirmed. This is not kill-on-close containment
 and does not prove cleanup after abrupt parent termination.
 
-These tests do not prove a production broker, controller, or observer exchange.
+The in-memory codec tests model publication acknowledgement, token claim,
+separate claim receipt and final acknowledgement, and revocation. They do not
+prove that a production broker, controller, or observer performs those phases.
 They do not implement executable hashing, secure endpoint-name delivery,
-bearer-token transfer, acknowledgement, revocation, or Java integration.
+cross-process bearer-token transfer, persisted publication, or Java
+integration.
 
 ## Offline validation
 
@@ -92,20 +128,26 @@ scan rejects selected networking, environment, console, registry, HRC, and
 HoldemResources symbols. Process launch is forbidden in production source and
 permitted only in the exact test-harness source.
 
-The 16 tests cover current-process identity and invalid PIDs; exact binding,
+The 24 tests cover current-process identity and invalid PIDs; exact binding,
 all identity-field mismatch paths, and SID validation; secret generation,
 copying, disposal, and wiping; bounded round-trip framing; first-instance
 collision; server-side and client-side peer
 identity rejection; accept and operation timeout with channel poisoning;
 one-shot operation enforcement; malformed receive framing; exact applied-DACL
 readback; invalid frame bounds; two-sided synthetic parent/child identity and
-frame exchange; and server-side rejection of a distinct live child.
+frame exchange; and server-side rejection of a distinct live child. Eight
+additional tests cover canonical descriptor round trips and ownership; HMAC,
+binding, freshness, and maximum-lifetime checks; malformed and non-canonical
+descriptor rejection; all eight message and role pairs; canonical protocol
+headers and bodies; the domain-separated claim-receipt proof; malformed
+semantic fields; and owned token, proof, message, and frame wiping.
 
-The current result is 16/16. This is offline Windows-primitives evidence only.
+The current result is 24/24. This is offline Windows model, codec, and primitive
+evidence only.
 
-Still unvalidated: a production broker/controller/observer exchange,
-bearer-token transfer, secure endpoint-name delivery, protocol acknowledgement
-and revocation, executable-hash policy, crash-contained child cleanup,
-LocalAppData descriptor creation and reparse-point defence, Java integration,
-OSGi startup, installation, rollback, HRC runtime use, and every standalone-
-runner action.
+Still unvalidated: a broker state machine and publication store; dedicated
+observer, broker, and controller orchestration; cross-process bearer-token and
+endpoint transfer; secure pipe-name delivery; real acknowledgement and
+revocation; executable-hash policy; crash-contained child cleanup; LocalAppData
+descriptor creation and reparse-point defence; Java integration; OSGi startup;
+installation; rollback; HRC runtime use; and every standalone-runner action.

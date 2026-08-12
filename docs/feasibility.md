@@ -155,7 +155,7 @@ not enforced inputs to that planner and remain future artefact-build gates.
 ### Offline Windows bootstrap implementation evidence
 
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
-16/16 tests on the licensed host. The build did not install, load, attach to, or
+24/24 tests on the licensed host. The build did not install, load, attach to, or
 interact with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -189,10 +189,30 @@ harness assembly path is also a public host argument. Redirected stdin carries
 the public parent PID and pipe name. No bearer token, endpoint descriptor, HRC
 path, licence data, or poker data crosses this test channel.
 
-The module defines no endpoint-discovery descriptor, production application
-message schema, token-transfer protocol, Java bridge, publication lifecycle,
-controller integration, or HRC entry point. Its kill-and-bounded-wait failure
-cleanup is not crash containment. It adds no HRC runtime observation.
+Eight additional in-memory tests cover the new descriptor and protocol models.
+The descriptor has one canonical bounded encoding. It binds the loopback
+endpoint, publication identity, claim-pipe name, and exact observer and broker
+process identities with a domain-separated HMAC-SHA256 tag. It requires
+distinct observer and broker processes in the same user, logon, token session,
+and process session. Creation and verification enforce an explicit caller-
+supplied maximum lifetime. Parsing proves structure only. Authentication
+requires a later secure token claim, HMAC check, exact binding check, and
+freshness check.
+
+The protocol defines eight type- and role-bound messages across four one-shot
+exchanges. They model publication and acknowledgement, claim and grant, a
+separate possession receipt and final acknowledgement, and revocation and
+acknowledgement. The possession receipt uses a separate HMAC domain and binds
+the publication, descriptor digest, controller nonce, and receipt nonce. A
+phase-bound decoder wipes its complete owned input frame on success or failure.
+Secret-bearing messages and encoded frames own and wipe their mutable buffers.
+
+This is codec and model evidence only. The module defines no broker state
+machine, publication store, descriptor filesystem publisher, dedicated-role
+orchestration, Java bridge, controller integration, or HRC entry point. The
+named-pipe tests do not carry the new protocol. The kill-and-bounded-wait
+failure cleanup is not crash containment. The module adds no HRC runtime
+observation.
 `Feasibility` remains `TO CONFIRM`.
 
 The runner must first identify the one active HRC process and resolve the
@@ -1458,7 +1478,7 @@ Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
 disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, and
 source/test-only Windows bootstrap primitives under `src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 16
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 24
 Windows bootstrap tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
@@ -1483,10 +1503,14 @@ actionable-checkpoint contract are offline-tested but not HRC-runtime validated.
 The Windows primitives now prove exact applied DACL read-back, both endpoint-
 side process identity checks, bounded one-shot frame operations, synthetic
 distinct-process fixed-frame exchange, and rejection of a wrong live child.
-Next, define the endpoint-discovery descriptor, bounded bootstrap protocol,
-token-copy ownership, wiping, acknowledgement, publication, and revocation.
-Validate that protocol between dedicated bootstrap roles before integrating the
-seam with Java.
+The in-memory model now also proves a canonical HMAC-bound descriptor with an
+explicit lifetime limit and eight phase- and role-bound messages. It models
+owned-buffer wiping, publication acknowledgement, separate claim receipt and
+final acknowledgement, and revocation. It does not execute those exchanges.
+Next, implement the broker state and publication store, descriptor filesystem
+boundary, secure pipe-name delivery, and dedicated observer, broker, and
+controller orchestration. Validate all four one-shot exchanges across those
+processes before integrating the seam with Java.
 
 Also close two public-API lifecycle gaps before creating an installable Bundle.
 Listener registration plus `find(null)` is not atomic. Listener removal also

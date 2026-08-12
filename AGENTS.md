@@ -147,14 +147,21 @@ through, the active-process identity gate in `docs/feasibility.md`.
 - Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its harness
   proves exact applied protected-DACL read-back, two-sided process identity,
   bounded one-shot frames, fixed public-frame exchange with a synthetic child,
-  and rejection of a wrong live child. It does not prove bearer-token transfer,
-  endpoint publication, dedicated controller/observer roles, Java integration,
-  or HRC runtime use.
+  rejection of a wrong live child, a canonical HMAC-bound descriptor model, and
+  eight phase- and role-bound message codecs. The descriptor and protocol tests
+  run in memory. They do not prove bearer-token transfer, endpoint publication,
+  a broker or publication store, dedicated bootstrap-role orchestration, Java
+  integration, or HRC runtime use.
+- Treat descriptor parsing as structural validation only. After a secure token
+  claim, require its HMAC, exact observer and broker bindings, freshness, and
+  caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until token-copy ownership, wiping, acknowledgement, revocation, secure name
-  delivery, dedicated-role cross-process protocol tests, and Java lifecycle
-  integration are implemented and validated. Do not reuse a channel after an
-  I/O failure or timeout. The pipe is not the system-wide HRC-control lease.
+  until broker state, publication storage, secure name delivery, dedicated-role
+  cross-process protocol tests, and Java lifecycle integration are implemented
+  and validated. The codec's owned-buffer wiping, acknowledgement, receipt, and
+  revocation models are necessary but do not prove those runtime properties.
+  Do not reuse a channel after an I/O failure or timeout. The pipe is not the
+  system-wide HRC-control lease.
 - Do not treat the test harness's kill-and-bounded-wait cleanup as crash
   containment.
   Require a validated kill-on-close Job Object or equivalent before relying on

@@ -14,8 +14,11 @@ in-memory proposal for the recorded baseline. An
 [offline Windows bootstrap module](windows-bootstrap/README.md) tests owned
 32-byte secret-buffer generation and wiping, exact applied pipe-DACL read-back,
 two-sided process identity, bounded one-shot framing, synthetic distinct-
-process frame exchange, and rejection of a wrong live child. It is not
-connected to the Java layers. This component is not the
+process frame exchange, rejection of a wrong live child, a canonical HMAC-bound
+endpoint descriptor, and eight phase- and role-bound messages. The descriptor
+and protocol tests run in memory. The module has no broker, store, filesystem
+publisher, dedicated-role orchestration, or connection to the Java layers.
+This component is not the
 standalone runner or an installable HRC plug-in. It has no OSGi manifest,
 enabled activator, live listener registration, file writer, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
@@ -56,6 +59,19 @@ is still pending, and starts a fresh observer-local lease. The core emits an
 `ARM_CONFIRMED` event with that final opaque deadline. This offline result does
 not yet authorise HRC input; a future controller must enforce its own
 round-trip and pre-input margin inside that lease.
+
+`BootstrapDescriptor` provides a bounded canonical endpoint model for distinct
+observer and broker processes in one user, logon, and session. It enforces an
+explicit maximum lifetime and a domain-separated HMAC-SHA256 tag. Structural
+parsing is not authentication; verification requires the securely claimed
+token and the exact expected process bindings.
+
+`BootstrapProtocol` models four one-shot exchanges with eight exact message and
+role pairs: publication, claim grant, separate claim receipt plus final
+acknowledgement, and revocation. Its decoder is phase-bound and wipes the owned
+input frame. Secret-bearing messages and frames own and wipe their buffers. A
+domain-separated receipt HMAC proves token possession within the model. No
+production process currently performs these exchanges.
 
 ## Correlation and failure invariants
 
@@ -141,7 +157,7 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 16/16. The runtime tests cover the
+tests. The Windows bootstrap result is 24/24. The runtime tests cover the
 ordered checkpoint, two-marker arm control, and fresh lease renewal for an
 exact idempotent retry.
 
@@ -152,7 +168,7 @@ tests validate only in-memory bytes and cannot install the proposal.
 
 Still unvalidated: real Eclipse callback delivery, OSGi resolution and
 activation, listener registration and removal, secure token and endpoint
-provisioning, cross-process token and endpoint publication through dedicated
-bootstrap roles, the token-transfer protocol, Java-to-Windows integration,
-packaging, startup, installation, rollback, safe unload, HRC runtime
-correlation, and every standalone-runner operation.
+provisioning, broker state and publication storage, cross-process token and
+endpoint publication through dedicated bootstrap roles, secure name delivery,
+Java-to-Windows integration, packaging, startup, installation, rollback, safe
+unload, HRC runtime correlation, and every standalone-runner operation.

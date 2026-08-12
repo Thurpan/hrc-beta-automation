@@ -269,10 +269,11 @@ produces an in-memory proposal only. An
 [offline Windows bootstrap module](src/HrcJobObserver/windows-bootstrap/README.md)
 tests owned 32-byte secret-buffer generation and wiping, exact applied pipe-
 DACL read-back, two-sided process identity, bounded one-shot framing, synthetic
-distinct-process frame exchange, and rejection of a wrong live child. The
-current suites pass 30 core tests,
+distinct-process frame exchange, rejection of a wrong live child, a canonical
+HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
+messages. The current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 16 Windows bootstrap tests.
+tests, 13 packaging tests, and 24 Windows bootstrap tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The
@@ -288,9 +289,10 @@ must enforce a local round-trip and pre-input margin within the lease. The
 lifecycle implements synthetic manager registration, two bounded baseline
 scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
-the token-transfer protocol, secure endpoint publication, an activatable
-manifest, controller ownership, production controller/observer cross-process
-integration, or persistence across restart.
+a bootstrap broker, publication store, descriptor filesystem, secure endpoint
+publication, dedicated-role orchestration, an activatable manifest, controller
+ownership, production controller/observer cross-process integration, or
+persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -302,12 +304,14 @@ feasibility verdict.
 Next, close the two lifecycle blockers before creating an installable Bundle.
 The public Eclipse APIs do not make listener registration plus `find(null)`
 atomic, and listener removal does not prove provider-level callback drainage.
-The synthetic child harness now validates distinct-process identity, fixed
-public framing, and wrong-child rejection. Define the non-secret endpoint-
-discovery descriptor and bounded bootstrap protocol. Specify token-copy
-ownership, wiping, acknowledgement, publication, and revocation. Validate that
-protocol between dedicated bootstrap roles before connecting the Windows seam
-to Java. Then add a deterministic JAR, manifest,
+The Windows harness now also validates the bounded canonical descriptor and
+eight-message codec in memory. The codec models token ownership and wiping,
+publication acknowledgement, a separate claim receipt and final
+acknowledgement, and revocation. It does not perform any of those exchanges.
+Next, implement the broker state and publication store. Add secure name
+delivery and dedicated observer, broker, and controller orchestration. Validate
+all four one-shot exchanges across those processes before connecting the
+Windows seam to Java. Then add a deterministic JAR, manifest,
 guarded install, and rollback design. Extend the active-process runtime identity
 gate for the adapter's Equinox Common and Eclipse OSGi providers before live
 use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
