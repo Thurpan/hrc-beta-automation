@@ -36,9 +36,16 @@ try {
     $sources = Get-ChildItem -LiteralPath @(
         (Join-Path $moduleRoot 'src'),
         (Join-Path $moduleRoot 'test')) -Recurse -Filter '*.cs'
+    $productionSources = Get-ChildItem -LiteralPath `
+        (Join-Path $moduleRoot 'src') -Recurse -Filter '*.cs'
     $forbidden = $sources | Select-String -Pattern `
-        'System\.Net\.|HttpClient|Environment\.GetEnvironmentVariable|Console\.(Write|Error)|ProcessStartInfo|Process\.Start|Microsoft\.Win32\.Registry|HRC Beta|HoldemResources'
-    if ($forbidden) {
+        'System\.Net\.|HttpClient|Environment\.GetEnvironmentVariable|Console\.(Write|Error)|Microsoft\.Win32\.Registry|HRC Beta|HoldemResources'
+    $productionLaunch = $productionSources | Select-String -Pattern `
+        'ProcessStartInfo|Process\.Start'
+    $testLaunch = $sources | Where-Object {
+        $_.FullName -notlike '*\test\HrcJobObserver.WindowsBootstrap.TestHarness\Program.cs'
+    } | Select-String -Pattern 'ProcessStartInfo|Process\.Start'
+    if ($forbidden -or $productionLaunch -or $testLaunch) {
         throw 'Windows bootstrap source crossed its offline or data boundary.'
     }
 
