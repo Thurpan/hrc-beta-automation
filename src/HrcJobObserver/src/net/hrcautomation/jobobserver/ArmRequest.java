@@ -8,7 +8,9 @@ record ArmRequest(
         OperationKind operation,
         String expectedJobName,
         long armedNanos,
-        long deadlineNanos) {
+        long deadlineNanos,
+        long timeoutNanos,
+        boolean confirmed) {
 
     ArmRequest {
         Objects.requireNonNull(requestId, "requestId");
@@ -17,12 +19,31 @@ record ArmRequest(
         if (!operation.acceptsExpectedName(expectedJobName)) {
             throw new IllegalArgumentException("expectedJobName is invalid");
         }
+        if (timeoutNanos <= 0) {
+            throw new IllegalArgumentException("timeoutNanos must be positive");
+        }
     }
 
-    boolean sameIntent(UUID otherRequestId, OperationKind otherOperation, String otherName) {
+    boolean sameIntent(
+            UUID otherRequestId,
+            OperationKind otherOperation,
+            String otherName,
+            long otherTimeoutNanos) {
         return requestId.equals(otherRequestId)
                 && operation == otherOperation
-                && expectedJobName.equals(otherName);
+                && expectedJobName.equals(otherName)
+                && timeoutNanos == otherTimeoutNanos;
+    }
+
+    ArmRequest confirmedAt(long observedNanos) {
+        return new ArmRequest(
+                requestId,
+                operation,
+                expectedJobName,
+                armedNanos,
+                observedNanos + timeoutNanos,
+                timeoutNanos,
+                true);
     }
 
     boolean expiredAt(long observedNanos) {

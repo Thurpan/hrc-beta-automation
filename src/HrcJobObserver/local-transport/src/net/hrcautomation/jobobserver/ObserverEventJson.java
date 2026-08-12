@@ -18,6 +18,11 @@ final class ObserverEventJson {
             field(output, "operation", arm.operation().name());
             field(output, "expectedJobName", arm.expectedJobName());
             number(output, "deadlineNanos", arm.deadlineNanos());
+        } else if (event instanceof ArmConfirmedEvent arm) {
+            field(output, "requestId", arm.requestId().toString());
+            field(output, "operation", arm.operation().name());
+            field(output, "expectedJobName", arm.expectedJobName());
+            number(output, "deadlineNanos", arm.deadlineNanos());
         } else if (event instanceof JobScheduledEvent scheduled) {
             jobEvent(output, scheduled.requestId().toString(),
                     scheduled.operation(), scheduled.jobId(), scheduled.job());
@@ -99,6 +104,9 @@ final class ObserverEventJson {
     private static String type(ObserverEvent event) {
         if (event instanceof ArmAcceptedEvent) {
             return "ARM_ACCEPTED";
+        }
+        if (event instanceof ArmConfirmedEvent) {
+            return "ARM_CONFIRMED";
         }
         if (event instanceof JobScheduledEvent) {
             return "JOB_SCHEDULED";

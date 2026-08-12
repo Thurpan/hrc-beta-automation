@@ -1,8 +1,8 @@
 package net.hrcautomation.jobobserver;
 
-sealed interface ObserverEvent permits ArmAcceptedEvent, JobScheduledEvent,
-        JobRunningEvent, JobRunningRejectedEvent, JobTerminalEvent,
-        JobTerminalRejectedEvent, ObserverFaultEvent {
+sealed interface ObserverEvent permits ArmAcceptedEvent, ArmConfirmedEvent,
+        JobScheduledEvent, JobRunningEvent, JobRunningRejectedEvent,
+        JobTerminalEvent, JobTerminalRejectedEvent, ObserverFaultEvent {
 
     EventMetadata metadata();
 

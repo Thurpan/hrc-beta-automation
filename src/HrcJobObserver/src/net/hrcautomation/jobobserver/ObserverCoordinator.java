@@ -98,7 +98,8 @@ final class ObserverCoordinator implements ObserverIngress {
 
         ArmRequest known = knownRequests.get(requestId);
         if (known != null) {
-            if (known.sameIntent(requestId, operation, expectedJobName)) {
+            if (known.sameIntent(
+                    requestId, operation, expectedJobName, timeoutNanos)) {
                 return ArmOutcome.IDEMPOTENT;
             }
             fault(FaultReason.REQUEST_ID_REUSED, nowUtc, nowNanos);
@@ -121,7 +122,13 @@ final class ObserverCoordinator implements ObserverIngress {
         }
 
         ArmRequest request = new ArmRequest(
-                requestId, operation, expectedJobName, nowNanos, nowNanos + timeoutNanos);
+                requestId,
+                operation,
+                expectedJobName,
+                nowNanos,
+                nowNanos + timeoutNanos,
+                timeoutNanos,
+                false);
         knownRequests.put(requestId, request);
         pendingArm = request;
         if (!emit(sequence -> new ArmAcceptedEvent(
@@ -213,12 +220,65 @@ final class ObserverCoordinator implements ObserverIngress {
         return expireAt(monotonicClock.getAsLong(), wallClock.get());
     }
 
+    /**
+     * Confirms that an accepted arm is still valid at the current observer
+     * time. The expiry check, request match, and final lease start share the
+     * coordinator lock. This method does not itself authorise external input.
+     */
+    synchronized boolean confirmArmHealthy(UUID requestId) {
+        Objects.requireNonNull(requestId, "requestId");
+        long nowNanos = monotonicClock.getAsLong();
+        Instant nowUtc = wallClock.get();
+        if (faultReason == null) {
+            expireAt(nowNanos, nowUtc);
+        }
+        if (faultReason == null
+                && (pendingArm == null
+                        || !pendingArm.requestId().equals(requestId))) {
+            fault(FaultReason.ARM_CONFIRMATION_LOST, nowUtc, nowNanos);
+        }
+        if (faultReason == null) {
+            ArmRequest confirmed = pendingArm.confirmedAt(nowNanos);
+            pendingArm = confirmed;
+            knownRequests.put(requestId, confirmed);
+            if (!emit(sequence -> new ArmConfirmedEvent(
+                    metadata(sequence, nowUtc, nowNanos),
+                    confirmed.requestId(),
+                    confirmed.operation(),
+                    confirmed.expectedJobName(),
+                    confirmed.deadlineNanos()))) {
+                return false;
+            }
+        }
+        return faultReason == null;
+    }
+
     synchronized boolean isFaulted() {
         return faultReason != null;
     }
 
     synchronized FaultReason faultReason() {
         return faultReason;
+    }
+
+    UUID sessionId() {
+        return sessionId;
+    }
+
+    int replayCapacity() {
+        return replayBuffer.capacity();
+    }
+
+    synchronized ObserverCoreSnapshot checkpoint(long lastSeenSequence) {
+        if (lastSeenSequence < 0) {
+            throw new IllegalArgumentException(
+                    "last seen sequence must not be negative");
+        }
+        if (faultReason == null) {
+            expireAt(monotonicClock.getAsLong(), wallClock.get());
+        }
+        return new ObserverCoreSnapshot(
+                replayBuffer.replayAfter(lastSeenSequence), faultReason);
     }
 
     ReplayQuery replayAfter(long lastSeenSequence) {

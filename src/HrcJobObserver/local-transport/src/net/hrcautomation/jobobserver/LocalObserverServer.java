@@ -24,6 +24,7 @@ final class LocalObserverServer {
     static final int PROTOCOL_VERSION = 1;
     static final int MAX_FRAME_BYTES = 8 * 1024;
     static final int TOKEN_BYTES = 32;
+    static final long MIN_ARM_TIMEOUT_MILLIS = Duration.ofSeconds(5).toMillis();
     static final long MAX_ARM_TIMEOUT_MILLIS = Duration.ofMinutes(5).toMillis();
 
     private enum State {
@@ -267,6 +268,9 @@ final class LocalObserverServer {
                 throw new ProtocolFailure(TransportFailure.PROTOCOL_VIOLATION);
             }
             long timeoutMillis = parsePositiveLong(fields[5], MAX_ARM_TIMEOUT_MILLIS);
+            if (timeoutMillis < MIN_ARM_TIMEOUT_MILLIS) {
+                throw new ProtocolFailure(TransportFailure.PROTOCOL_VIOLATION);
+            }
             if (!admitControlCall()) {
                 return true;
             }

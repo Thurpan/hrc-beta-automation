@@ -22,7 +22,11 @@ import java.util.concurrent.atomic.AtomicReference;
 final class EclipseCallbackMailbox {
     private static final long ADMISSIONS_ACTIVE = Long.MIN_VALUE;
     private static final long FAILURE_PENDING = 1L << 62;
-    private static final long LEASE_COUNT_MASK = FAILURE_PENDING - 1;
+    private static final int TICKET_SHIFT = 31;
+    private static final long COUNTER_MASK = (1L << TICKET_SHIFT) - 1;
+    private static final long LEASE_COUNT_MASK = COUNTER_MASK;
+    private static final long TICKET_MASK = COUNTER_MASK << TICKET_SHIFT;
+    private static final long TICKET_INCREMENT = 1L << TICKET_SHIFT;
 
     private enum State {
         NEW,
@@ -33,7 +37,7 @@ final class EclipseCallbackMailbox {
 
     private final int capacity;
     private final ObserverIngress ingress;
-    private final ConcurrentHashMap<Long, CallbackEnvelope> completed =
+    private final ConcurrentHashMap<Long, OrderedEnvelope> completed =
             new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Long, Boolean> openTickets =
             new ConcurrentHashMap<>();
@@ -41,7 +45,7 @@ final class EclipseCallbackMailbox {
     private final AtomicBoolean wakePending = new AtomicBoolean();
     private final AtomicInteger reserved = new AtomicInteger();
     private final AtomicLong admissionGate = new AtomicLong();
-    private final AtomicLong nextCallbackTicket = new AtomicLong(1);
+    private final AtomicBoolean controlPending = new AtomicBoolean();
     private final AtomicReference<InfrastructureIncident> firstFailure =
             new AtomicReference<>();
     private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
@@ -49,14 +53,23 @@ final class EclipseCallbackMailbox {
     private final AtomicBoolean failureNotificationSucceeded = new AtomicBoolean();
     private final CountDownLatch workerTerminated = new CountDownLatch(1);
     private final Runnable admissionReadProbe;
+    private final Runnable controlReleaseProbe;
     private final Thread worker;
 
     EclipseCallbackMailbox(int capacity, ObserverIngress ingress) {
-        this(capacity, ingress, () -> { });
+        this(capacity, ingress, () -> { }, () -> { });
     }
 
     EclipseCallbackMailbox(
             int capacity, ObserverIngress ingress, Runnable admissionReadProbe) {
+        this(capacity, ingress, admissionReadProbe, () -> { });
+    }
+
+    EclipseCallbackMailbox(
+            int capacity,
+            ObserverIngress ingress,
+            Runnable admissionReadProbe,
+            Runnable controlReleaseProbe) {
         if (capacity < 1) {
             throw new IllegalArgumentException("mailbox capacity must be positive");
         }
@@ -64,6 +77,8 @@ final class EclipseCallbackMailbox {
         this.ingress = Objects.requireNonNull(ingress, "ingress");
         this.admissionReadProbe = Objects.requireNonNull(
                 admissionReadProbe, "admissionReadProbe");
+        this.controlReleaseProbe = Objects.requireNonNull(
+                controlReleaseProbe, "controlReleaseProbe");
         worker = new Thread(this::pump, "hrc-job-observer-mailbox");
         worker.setDaemon(true);
     }
@@ -90,12 +105,15 @@ final class EclipseCallbackMailbox {
         admissionReadProbe.run();
         while (admissionsActive(current) && !failurePending(current)) {
             long count = current & LEASE_COUNT_MASK;
-            if (count == LEASE_COUNT_MASK) {
+            long priorTicket = ticketCounter(current);
+            if (count == LEASE_COUNT_MASK || priorTicket == COUNTER_MASK) {
                 latch(InfrastructureIncident.unobserved(
                         InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
                 return null;
             }
-            if (admissionGate.compareAndSet(current, current + 1)) {
+            long updated = current + 1 + TICKET_INCREMENT;
+            if (admissionGate.compareAndSet(current, updated)) {
+                entry.assignTicket(priorTicket + 1);
                 return entry;
             }
             current = admissionGate.get();
@@ -135,14 +153,7 @@ final class EclipseCallbackMailbox {
             finishEntered(entry);
             return false;
         }
-        long ticket = nextCallbackTicket.getAndIncrement();
-        if (ticket <= 0) {
-            reserved.decrementAndGet();
-            latch(InfrastructureIncident.unobserved(
-                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
-            finishEntered(entry);
-            return false;
-        }
+        long ticket = entry.ticket();
         if (openTickets.putIfAbsent(ticket, Boolean.TRUE) != null) {
             reserved.decrementAndGet();
             latch(InfrastructureIncident.unobserved(
@@ -150,7 +161,7 @@ final class EclipseCallbackMailbox {
             finishEntered(entry);
             return false;
         }
-        if (!entry.admit(ticket)) {
+        if (!entry.admit()) {
             openTickets.remove(ticket);
             reserved.decrementAndGet();
             latch(InfrastructureIncident.unobserved(
@@ -159,6 +170,60 @@ final class EclipseCallbackMailbox {
             return false;
         }
         return true;
+    }
+
+    <T> MailboxControlHandle<T> submitControl(MailboxControlAction<T> action) {
+        Objects.requireNonNull(action, "action");
+        MailboxControlHandle<T> handle = new MailboxControlHandle<>(this);
+        ControlEnvelope<T> envelope = new ControlEnvelope<>(handle, action);
+        if (!controlPending.compareAndSet(false, true)) {
+            throw new MailboxControlException(
+                    MailboxControlFailure.MAILBOX_UNAVAILABLE);
+        }
+        long ticket = acquireOrderedProducerLease();
+        if (ticket == 0) {
+            releaseControlCapacity(handle);
+            throw new MailboxControlException(
+                    MailboxControlFailure.MAILBOX_UNAVAILABLE);
+        }
+        try {
+            handle.queue(ticket);
+            if (completed.putIfAbsent(ticket, envelope) != null) {
+                releaseControlCapacity(handle);
+                handle.fail(MailboxControlFailure.ACTION_FAILED);
+                latch(InfrastructureIncident.unobserved(
+                        InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+            }
+        } catch (VirtualMachineError | ThreadDeath fatal) {
+            releaseControlCapacity(handle);
+            handle.fail(MailboxControlFailure.ACTION_FAILED);
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+            throw fatal;
+        } catch (Throwable failure) {
+            releaseControlCapacity(handle);
+            handle.fail(MailboxControlFailure.ACTION_FAILED);
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+        } finally {
+            releaseCallbackLease();
+            signalWorker();
+        }
+        return handle;
+    }
+
+    void timeoutControl(
+            MailboxControlHandle<?> handle,
+            MailboxControlHandle.TimeoutDisposition disposition) {
+        Objects.requireNonNull(handle, "handle");
+        Objects.requireNonNull(disposition, "disposition");
+        if (disposition == MailboxControlHandle.TimeoutDisposition.IN_FLIGHT
+                || disposition
+                        == MailboxControlHandle.TimeoutDisposition.COMPLETED_AFTER_WAIT) {
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+        }
+        signalWorker();
     }
 
     /** Completes one ticket. A null payload records an intentionally ignored Job. */
@@ -183,7 +248,7 @@ final class EclipseCallbackMailbox {
             signalWorker();
             return;
         }
-        CallbackEnvelope previous = completed.putIfAbsent(
+        OrderedEnvelope previous = completed.putIfAbsent(
                 ticket, new CallbackEnvelope(ticket, payload));
         if (previous != null) {
             releaseCallbackLease();
@@ -227,6 +292,10 @@ final class EclipseCallbackMailbox {
 
     Optional<InfrastructureIncident> firstFailure() {
         return Optional.ofNullable(firstFailure.get());
+    }
+
+    boolean dispatchesTo(ObserverIngress candidate) {
+        return ingress == Objects.requireNonNull(candidate, "candidate");
     }
 
     synchronized MailboxCloseResult closeAndAwait(Duration timeout) {
@@ -315,22 +384,10 @@ final class EclipseCallbackMailbox {
                         wakePending.set(false);
                         continue;
                     }
-                    CallbackEnvelope envelope = completed.remove(expectedTicket);
+                    OrderedEnvelope envelope = completed.remove(expectedTicket);
                     if (envelope != null) {
                         expectedTicket++;
-                        reserved.decrementAndGet();
-                        if (envelope.payload() != null) {
-                            try {
-                                dispatch(envelope.payload());
-                            } catch (VirtualMachineError | ThreadDeath fatal) {
-                                latch(observedDispatchFailure(envelope.payload()));
-                                discardCompleted();
-                                notifyFailure();
-                                return;
-                            } catch (Throwable failure) {
-                                latch(observedDispatchFailure(envelope.payload()));
-                            }
-                        }
+                        processEnvelope(envelope);
                         continue;
                     }
                     if (state.get() == State.CLOSING) {
@@ -377,6 +434,132 @@ final class EclipseCallbackMailbox {
         } else {
             throw new IllegalStateException("unknown callback payload type");
         }
+    }
+
+    private void processEnvelope(OrderedEnvelope envelope) {
+        if (envelope instanceof CallbackEnvelope callback) {
+            reserved.decrementAndGet();
+            if (callback.payload() == null) {
+                return;
+            }
+            try {
+                dispatch(callback.payload());
+            } catch (VirtualMachineError | ThreadDeath fatal) {
+                latch(observedDispatchFailure(callback.payload()));
+                throw fatal;
+            } catch (Throwable failure) {
+                latch(observedDispatchFailure(callback.payload()));
+            }
+            return;
+        }
+        if (envelope instanceof ControlEnvelope<?> control) {
+            processControl(control);
+            return;
+        }
+        latch(InfrastructureIncident.unobserved(
+                InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+    }
+
+    private <T> void processControl(ControlEnvelope<T> control) {
+        MailboxControlHandle<T> handle = control.handle();
+        boolean terminalPublished = false;
+        try {
+            if (!handle.claim()) {
+                return;
+            }
+            MailboxHealthSnapshot before = healthSnapshot();
+            if (!before.healthy()) {
+                releaseControlCapacity(handle);
+                handle.fail(MailboxControlFailure.MAILBOX_UNAVAILABLE);
+                terminalPublished = true;
+                return;
+            }
+            T value;
+            try {
+                value = Objects.requireNonNull(
+                        control.action().execute(before), "control result");
+            } catch (VirtualMachineError | ThreadDeath fatal) {
+                releaseControlCapacity(handle);
+                handle.fail(MailboxControlFailure.ACTION_FAILED);
+                terminalPublished = true;
+                latch(InfrastructureIncident.unobserved(
+                        InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+                throw fatal;
+            } catch (Throwable failure) {
+                releaseControlCapacity(handle);
+                handle.fail(MailboxControlFailure.ACTION_FAILED);
+                terminalPublished = true;
+                latch(InfrastructureIncident.unobserved(
+                        InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+                return;
+            }
+            releaseControlCapacity(handle);
+            MailboxControlResult<T> completed = new MailboxControlResult<>(
+                    control.ticket(), value, before, healthSnapshot());
+            handle.complete(completed);
+            terminalPublished = true;
+        } catch (VirtualMachineError | ThreadDeath fatal) {
+            releaseControlCapacity(handle);
+            if (!terminalPublished) {
+                handle.fail(MailboxControlFailure.ACTION_FAILED);
+            }
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+            throw fatal;
+        } catch (Throwable failure) {
+            releaseControlCapacity(handle);
+            if (!terminalPublished) {
+                handle.fail(MailboxControlFailure.ACTION_FAILED);
+            }
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+        } finally {
+            releaseControlCapacity(handle);
+        }
+    }
+
+    private void releaseControlCapacity(MailboxControlHandle<?> handle) {
+        if (!handle.releaseCapacityOwnership()) {
+            return;
+        }
+        if (!controlPending.compareAndSet(true, false)) {
+            latch(InfrastructureIncident.unobserved(
+                    InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+            return;
+        }
+        controlReleaseProbe.run();
+    }
+
+    private MailboxHealthSnapshot healthSnapshot() {
+        InfrastructureIncident incident = firstFailure.get();
+        long gate = admissionGate.get();
+        return new MailboxHealthSnapshot(
+                incident,
+                failurePending(gate),
+                state.get() != State.ACTIVE || !admissionsActive(gate));
+    }
+
+    private long acquireOrderedProducerLease() {
+        long current = admissionGate.get();
+        while (admissionsActive(current) && !failurePending(current)) {
+            long count = current & LEASE_COUNT_MASK;
+            long priorTicket = ticketCounter(current);
+            if (count == LEASE_COUNT_MASK || priorTicket == COUNTER_MASK) {
+                latch(InfrastructureIncident.unobserved(
+                        InfrastructureFailure.CALLBACK_DISPATCH_FAILED));
+                return 0;
+            }
+            if (admissionGate.compareAndSet(
+                    current, current + 1 + TICKET_INCREMENT)) {
+                return priorTicket + 1;
+            }
+            current = admissionGate.get();
+        }
+        return 0;
+    }
+
+    private static long ticketCounter(long gate) {
+        return (gate & TICKET_MASK) >>> TICKET_SHIFT;
     }
 
     private InfrastructureIncident observedDispatchFailure(CapturedLifecycle item) {
@@ -446,8 +629,12 @@ final class EclipseCallbackMailbox {
     private void discardCompleted() {
         int discarded = 0;
         for (Long ticket : completed.keySet()) {
-            if (completed.remove(ticket) != null) {
+            OrderedEnvelope removed = completed.remove(ticket);
+            if (removed instanceof CallbackEnvelope) {
                 discarded++;
+            } else if (removed instanceof ControlEnvelope<?> control) {
+                control.handle().fail(MailboxControlFailure.MAILBOX_UNAVAILABLE);
+                releaseControlCapacity(control.handle());
             }
         }
         reserved.addAndGet(-discarded);
@@ -504,11 +691,31 @@ final class EclipseCallbackMailbox {
                 terminated);
     }
 
-    private record CallbackEnvelope(long ticket, CapturedLifecycle payload) {
+    private sealed interface OrderedEnvelope
+            permits CallbackEnvelope, ControlEnvelope {
+        long ticket();
+    }
+
+    private record CallbackEnvelope(long ticket, CapturedLifecycle payload)
+            implements OrderedEnvelope {
         CallbackEnvelope {
             if (ticket <= 0) {
                 throw new IllegalArgumentException("callback ticket must be positive");
             }
+        }
+    }
+
+    private record ControlEnvelope<T>(
+            MailboxControlHandle<T> handle,
+            MailboxControlAction<T> action) implements OrderedEnvelope {
+        ControlEnvelope {
+            Objects.requireNonNull(handle, "handle");
+            Objects.requireNonNull(action, "action");
+        }
+
+        @Override
+        public long ticket() {
+            return handle.ticket();
         }
     }
 }

@@ -4,3 +4,4 @@ __pycache__/
 /src/HrcJobObserver/build/
 /src/HrcJobObserver/eclipse-adapter/build/
 /src/HrcJobObserver/local-transport/build/
+/src/HrcJobObserver/runtime-assembly/build/

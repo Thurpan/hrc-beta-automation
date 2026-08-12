@@ -43,6 +43,7 @@ public final class LocalTransportTest {
                 test("rejectsSessionMismatch", LocalTransportTest::rejectsSessionMismatch),
                 test("armsAllOperationsAndPreservesIdempotency", LocalTransportTest::armsAllOperationsAndPreservesIdempotency),
                 test("rejectsInvalidArmInputs", LocalTransportTest::rejectsInvalidArmInputs),
+                test("rejectsArmLeaseBelowMinimum", LocalTransportTest::rejectsArmLeaseBelowMinimum),
                 test("reconnectsWithSameSessionAndReplayCursor", LocalTransportTest::reconnectsWithSameSessionAndReplayCursor),
                 test("serialisesEveryEventWithoutSensitiveFields", LocalTransportTest::serialisesEveryEventWithoutSensitiveFields),
                 test("escapesJsonFields", LocalTransportTest::escapesJsonFields),
@@ -261,11 +262,13 @@ public final class LocalTransportTest {
                     new Arm(OperationKind.VIEWER_SAVE, "Saving hand to: stage-a.hrcv"),
                     new Arm(OperationKind.EXPORT, "Exporting ranges to stage-a.zip"))) {
                 UUID request = UUID.randomUUID();
-                String frame = armFrame(request, arm.operation(), arm.name(), 1_000);
+                String frame = armFrame(request, arm.operation(), arm.name(), 5_000);
                 assertEquals("ARM\t" + request + "\tACCEPTED", client.exchange(frame));
                 assertEquals("ARM\t" + request + "\tIDEMPOTENT", client.exchange(frame));
+                assertEquals("ARM\t" + request + "\tFAULTED", client.exchange(
+                        armFrame(request, arm.operation(), arm.name(), 5_001)));
             }
-            assertEquals(6, control.armCalls.get());
+            assertEquals(9, control.armCalls.get());
         }
     }
 
@@ -274,6 +277,21 @@ public final class LocalTransportTest {
                 Client client = server.connect()) {
             assertReady(client);
             client.write("ARM\t" + SESSION + "\tbad\tNASH\tQQ\t1000");
+            assertEquals(null, client.read());
+            awaitFailure(server.server, TransportFailure.PROTOCOL_VIOLATION);
+        }
+    }
+
+    private static void rejectsArmLeaseBelowMinimum() throws Exception {
+        try (ServerHarness server = server(new FakeControl());
+                Client client = server.connect()) {
+            assertReady(client);
+            UUID request = UUID.randomUUID();
+            client.write(armFrame(
+                    request,
+                    OperationKind.NASH,
+                    "SHORT: Monte Carlo Sampling",
+                    LocalObserverServer.MIN_ARM_TIMEOUT_MILLIS - 1));
             assertEquals(null, client.read());
             awaitFailure(server.server, TransportFailure.PROTOCOL_VIOLATION);
         }
@@ -295,6 +313,7 @@ public final class LocalTransportTest {
 
     private static void serialisesEveryEventWithoutSensitiveFields() throws Exception {
         List<ObserverEvent> events = allEvents();
+        assertEquals(8, events.size());
         for (ObserverEvent event : events) {
             String json = ObserverEventJson.encode(event);
             assertContains(json, "\"sessionId\":\"" + SESSION + "\"");
@@ -383,7 +402,7 @@ public final class LocalTransportTest {
         assertReady(client);
         UUID request = UUID.randomUUID();
         client.write(armFrame(
-                request, OperationKind.NASH, "HU-2: Monte Carlo Sampling", 1_000));
+                request, OperationKind.NASH, "HU-2: Monte Carlo Sampling", 5_000));
         assertTrue(control.entered.await(1, TimeUnit.SECONDS));
 
         AtomicReference<TransportCloseResult> closed = new AtomicReference<>();
@@ -504,18 +523,20 @@ public final class LocalTransportTest {
         return List.of(
                 new ArmAcceptedEvent(metadata(1), request, OperationKind.NASH,
                         "HU-2: Monte Carlo Sampling", 100),
-                new JobScheduledEvent(metadata(2), request, OperationKind.NASH, 1, job),
-                new JobRunningEvent(metadata(3), request, OperationKind.NASH, 1, job),
-                new JobRunningRejectedEvent(metadata(4), request, OperationKind.NASH, 1,
+                new ArmConfirmedEvent(metadata(2), request, OperationKind.NASH,
+                        "HU-2: Monte Carlo Sampling", 110),
+                new JobScheduledEvent(metadata(3), request, OperationKind.NASH, 1, job),
+                new JobRunningEvent(metadata(4), request, OperationKind.NASH, 1, job),
+                new JobRunningRejectedEvent(metadata(5), request, OperationKind.NASH, 1,
                         job, FaultReason.TERMINAL_EVENT_REJECTED),
-                new JobTerminalEvent(metadata(5), request, OperationKind.NASH, 1, job,
+                new JobTerminalEvent(metadata(6), request, OperationKind.NASH, 1, job,
                         TerminalResult.OK, 0, true, 0, "org.eclipse.core.runtime",
                         false, true),
-                new JobTerminalRejectedEvent(metadata(6), request, OperationKind.NASH, 1,
+                new JobTerminalRejectedEvent(metadata(7), request, OperationKind.NASH, 1,
                         job, TerminalResult.ERROR, 4, false, 1,
                         "org.eclipse.core.runtime", false, true,
                         FaultReason.TERMINAL_EVENT_REJECTED),
-                new ObserverFaultEvent(metadata(7), FaultReason.JOB_MISMATCH));
+                new ObserverFaultEvent(metadata(8), FaultReason.JOB_MISMATCH));
     }
 
     private static void awaitFailure(
@@ -614,7 +635,7 @@ public final class LocalTransportTest {
             if (!operation.acceptsExpectedName(expectedJobName)) {
                 return ArmOutcome.REJECTED;
             }
-            String intent = operation + "\t" + expectedJobName;
+            String intent = operation + "\t" + expectedJobName + "\t" + timeoutNanos;
             String prior = arms.putIfAbsent(requestId, intent);
             if (prior == null) {
                 return ArmOutcome.ACCEPTED;

@@ -1,14 +1,16 @@
 package net.hrcautomation.jobobserver;
 
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
-/** Single-use lease for one callback that entered while the mailbox was active. */
+/** Single-use, pre-ticketed lease for one callback admitted while active. */
 final class CallbackEntry {
-    private static final long ENTERED = 0;
-    private static final long TERMINATED = -1;
+    private static final int ENTERED = 0;
+    private static final int ADMITTED = 1;
+    private static final int TERMINATED = 2;
 
     private final EclipseCallbackMailbox owner;
-    private final AtomicLong state = new AtomicLong(ENTERED);
+    private volatile long ticket;
+    private final AtomicInteger state = new AtomicInteger(ENTERED);
 
     CallbackEntry(EclipseCallbackMailbox owner) {
         this.owner = owner;
@@ -18,21 +20,31 @@ final class CallbackEntry {
         return owner == mailbox;
     }
 
-    boolean admit(long ticket) {
+    long ticket() {
         if (ticket <= 0) {
-            throw new IllegalArgumentException("callback ticket must be positive");
+            throw new IllegalStateException("callback ticket is not assigned");
         }
-        return state.compareAndSet(ENTERED, ticket);
+        return ticket;
+    }
+
+    void assignTicket(long assignedTicket) {
+        if (assignedTicket <= 0 || ticket != 0) {
+            throw new IllegalStateException("callback ticket cannot be assigned");
+        }
+        ticket = assignedTicket;
+    }
+
+    boolean admit() {
+        return state.compareAndSet(ENTERED, ADMITTED);
     }
 
     long admittedTicket() {
-        long current = state.get();
-        return current > 0 ? current : 0;
+        return state.get() == ADMITTED ? ticket : 0;
     }
 
     boolean terminate() {
         while (true) {
-            long current = state.get();
+            int current = state.get();
             if (current == TERMINATED) {
                 return false;
             }

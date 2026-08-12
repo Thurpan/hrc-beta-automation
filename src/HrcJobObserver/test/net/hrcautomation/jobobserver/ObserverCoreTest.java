@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -46,6 +48,12 @@ public final class ObserverCoreTest {
                 test("faultsOnCallbackTimeRegression", ObserverCoreTest::faultsOnCallbackTimeRegression),
                 test("usesCallbackTimeForArmDeadline", ObserverCoreTest::usesCallbackTimeForArmDeadline),
                 test("handlesNanoTimeWrap", ObserverCoreTest::handlesNanoTimeWrap),
+                test("checkpointsReplayAndExpiryAtomically",
+                        ObserverCoreTest::checkpointsReplayAndExpiryAtomically),
+                test("rejectsInvalidCheckpointWithoutMutation",
+                        ObserverCoreTest::rejectsInvalidCheckpointWithoutMutation),
+                test("serializesCheckpointAgainstLifecycleInput",
+                        ObserverCoreTest::serializesCheckpointAgainstLifecycleInput),
                 test("replayBufferBoundariesAndImmutability", ObserverCoreTest::replayBufferBoundariesAndImmutability),
                 test("replayBufferFactoryFailureIsTransactional", ObserverCoreTest::replayBufferFactoryFailureIsTransactional),
                 test("replayBufferIsThreadSafe", ObserverCoreTest::replayBufferIsThreadSafe),
@@ -156,7 +164,7 @@ public final class ObserverCoreTest {
         ArmAcceptedEvent first = cast(fixture.events().get(0), ArmAcceptedEvent.class);
         fixture.nano.set(120);
         assertEquals(ArmOutcome.IDEMPOTENT,
-                fixture.coordinator.arm(request, OperationKind.NASH, nashName("A"), 80));
+                fixture.coordinator.arm(request, OperationKind.NASH, nashName("A"), 50));
         assertEquals(1, fixture.events().size());
         assertEquals(150L, first.deadlineNanos());
         fixture.nano.set(150);
@@ -190,6 +198,16 @@ public final class ObserverCoreTest {
         assertEquals(ArmOutcome.FAULTED,
                 fixture.coordinator.arm(request, OperationKind.NASH, nashName("B"), 20));
         assertEquals(FaultReason.REQUEST_ID_REUSED, fixture.coordinator.faultReason());
+
+        Fixture timeout = fixture(1);
+        UUID timeoutRequest = uuid(4);
+        timeout.coordinator.arm(
+                timeoutRequest, OperationKind.NASH, nashName("A"), 20);
+        assertEquals(ArmOutcome.FAULTED,
+                timeout.coordinator.arm(
+                        timeoutRequest, OperationKind.NASH, nashName("A"), 21));
+        assertEquals(FaultReason.REQUEST_ID_REUSED,
+                timeout.coordinator.faultReason());
     }
 
     private static void rejectsArmBeforeJobCapacityIsExceeded() {
@@ -657,6 +675,124 @@ public final class ObserverCoreTest {
         fixture.coordinator.arm(uuid(1), OperationKind.NASH, nashName(hand), 100);
         fixture.coordinator.accept(scheduled(identity, nashDescriptor(nashName(hand)), 101));
         return fixture;
+    }
+
+    private static void checkpointsReplayAndExpiryAtomically() {
+        Fixture fixture = fixture(100);
+        assertEquals(SESSION, fixture.coordinator.sessionId());
+        assertEquals(128, fixture.coordinator.replayCapacity());
+        assertEquals(ArmOutcome.ACCEPTED, fixture.coordinator.arm(
+                uuid(30), OperationKind.NASH, nashName("CHECKPOINT"), 10));
+
+        fixture.nano.set(111);
+        ObserverCoreSnapshot snapshot = fixture.coordinator.checkpoint(0);
+
+        assertEquals(FaultReason.ARM_DEADLINE_EXPIRED, snapshot.faultReason());
+        assertEquals(ReplayQuery.Disposition.OK, snapshot.replay().disposition());
+        assertEquals(2, snapshot.replay().events().size());
+        assertTrue(snapshot.replay().events().get(0) instanceof ArmAcceptedEvent);
+        assertTrue(snapshot.replay().events().get(1) instanceof ObserverFaultEvent);
+        assertEquals(FaultReason.ARM_DEADLINE_EXPIRED,
+                ((ObserverFaultEvent) snapshot.replay().events().get(1)).reason());
+    }
+
+    private static void rejectsInvalidCheckpointWithoutMutation() {
+        Fixture fixture = fixture(100);
+        assertEquals(ArmOutcome.ACCEPTED, fixture.coordinator.arm(
+                uuid(31), OperationKind.NASH, nashName("INVALID-CURSOR"), 10));
+        fixture.nano.set(111);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> fixture.coordinator.checkpoint(-1));
+
+        assertFalse(fixture.coordinator.isFaulted());
+        assertEquals(1, fixture.events().size());
+        assertTrue(fixture.events().get(0) instanceof ArmAcceptedEvent);
+    }
+
+    private static void serializesCheckpointAgainstLifecycleInput()
+            throws Exception {
+        AtomicLong clock = new AtomicLong(100);
+        AtomicBoolean blockClock = new AtomicBoolean();
+        CountDownLatch clockEntered = new CountDownLatch(1);
+        CountDownLatch releaseClock = new CountDownLatch(1);
+        ObserverCoordinator coordinator = new ObserverCoordinator(
+                SESSION,
+                profiles(),
+                32,
+                32,
+                128,
+                () -> {
+                    if (blockClock.compareAndSet(true, false)) {
+                        clockEntered.countDown();
+                        awaitLatch(releaseClock, "checkpoint clock release");
+                    }
+                    return clock.get();
+                },
+                () -> UTC);
+        assertEquals(ArmOutcome.ACCEPTED, coordinator.arm(
+                uuid(32), OperationKind.NASH, nashName("SERIALIZED"), 100));
+        Object identity = new Object();
+        AtomicReference<ObserverCoreSnapshot> snapshot = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch callbackStarted = new CountDownLatch(1);
+        CountDownLatch callbackFinished = new CountDownLatch(1);
+        blockClock.set(true);
+
+        Thread checkpointThread = new Thread(() -> {
+            try {
+                snapshot.set(coordinator.checkpoint(0));
+            } catch (Throwable thrown) {
+                failure.compareAndSet(null, thrown);
+            }
+        }, "observer-checkpoint-test");
+        checkpointThread.start();
+        assertTrue(clockEntered.await(2, TimeUnit.SECONDS));
+
+        Thread callbackThread = new Thread(() -> {
+            callbackStarted.countDown();
+            try {
+                coordinator.accept(scheduled(
+                        identity,
+                        nashDescriptor(nashName("SERIALIZED")),
+                        101));
+            } catch (Throwable thrown) {
+                failure.compareAndSet(null, thrown);
+            } finally {
+                callbackFinished.countDown();
+            }
+        }, "observer-callback-test");
+        callbackThread.start();
+        assertTrue(callbackStarted.await(2, TimeUnit.SECONDS));
+        assertFalse(callbackFinished.await(100, TimeUnit.MILLISECONDS));
+
+        releaseClock.countDown();
+        checkpointThread.join(2_000);
+        callbackThread.join(2_000);
+        assertFalse(checkpointThread.isAlive());
+        assertFalse(callbackThread.isAlive());
+        if (failure.get() != null) {
+            throw new AssertionError("concurrent checkpoint failed", failure.get());
+        }
+
+        assertEquals(1, snapshot.get().replay().events().size());
+        assertTrue(snapshot.get().replay().events().get(0)
+                instanceof ArmAcceptedEvent);
+        assertEquals(2, coordinator.replayAfter(0).events().size());
+        assertTrue(coordinator.replayAfter(0).events().get(1)
+                instanceof JobScheduledEvent);
+    }
+
+    private static void awaitLatch(CountDownLatch latch, String description) {
+        try {
+            if (!latch.await(2, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting for " + description);
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted waiting for " + description,
+                    interrupted);
+        }
     }
 
     private static Fixture fixture(long initialNanos) {

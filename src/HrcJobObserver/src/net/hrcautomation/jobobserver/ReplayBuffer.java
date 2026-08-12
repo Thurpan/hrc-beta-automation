@@ -27,6 +27,10 @@ final class ReplayBuffer {
         this.nextSequence = initialSequence;
     }
 
+    int capacity() {
+        return capacity;
+    }
+
     synchronized ObserverEvent append(LongFunction<ObserverEvent> eventFactory) {
         if (nextSequence == Long.MAX_VALUE) {
             throw new IllegalStateException("event sequence exhausted");

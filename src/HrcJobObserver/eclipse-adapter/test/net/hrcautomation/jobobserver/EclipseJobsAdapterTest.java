@@ -49,6 +49,20 @@ public final class EclipseJobsAdapterTest {
                         EclipseJobsAdapterTest::faultsOnBoundedMailboxOverflow),
                 test("dispatchesCallbacksInTicketOrder",
                         EclipseJobsAdapterTest::dispatchesCallbacksInTicketOrder),
+                test("ordersControlsAfterEarlierCallbacks",
+                        EclipseJobsAdapterTest::ordersControlsAfterEarlierCallbacks),
+                test("callbackAdmittedDuringControlRunsBeforeFollowingControl",
+                        EclipseJobsAdapterTest::callbackAdmittedDuringControlRunsBeforeFollowingControl),
+                test("allowsImmediateControlResubmissionAfterCompletion",
+                        EclipseJobsAdapterTest::allowsImmediateControlResubmissionAfterCompletion),
+                test("doesNotReleaseFollowingControlOwnership",
+                        EclipseJobsAdapterTest::doesNotReleaseFollowingControlOwnership),
+                test("cancelsUnclaimedTimedOutControl",
+                        EclipseJobsAdapterTest::cancelsUnclaimedTimedOutControl),
+                test("faultsOnClaimedControlTimeout",
+                        EclipseJobsAdapterTest::faultsOnClaimedControlTimeout),
+                test("rejectsCompletionAfterTimedWait",
+                        EclipseJobsAdapterTest::rejectsCompletionAfterTimedWait),
                 test("preArmCallbackTimestampIsRejected",
                         EclipseJobsAdapterTest::preArmCallbackTimestampIsRejected),
                 test("sustainedCallbacksCoalesceWorkerWakeups",
@@ -403,6 +417,230 @@ public final class EclipseJobsAdapterTest {
         assertEquals(List.of(101L, 102L), inputs.stream()
                 .map(LifecycleInput::observedNanos)
                 .toList());
+    }
+
+    private static void ordersControlsAfterEarlierCallbacks() throws Exception {
+        BlockingIngress ingress = new BlockingIngress();
+        ListenerHarness harness = listener(
+                ingress, exactResolver(), new FixedClock(observed(101)), 4);
+        harness.listener.scheduled(new TestEvent(
+                new FakeNashJob("before-control"), null));
+        await(ingress.acceptEntered,
+                "earlier callback did not enter observer ingress");
+        AtomicInteger executions = new AtomicInteger();
+        MailboxControlHandle<String> control = harness.mailbox.submitControl(
+                before -> {
+                    assertTrue(before.healthy());
+                    executions.incrementAndGet();
+                    return "checkpoint";
+                });
+        AsyncResult<MailboxControlResult<String>> awaited = startAsyncResult(
+                "ordered-control-wait",
+                () -> control.await(CLOSE_TIMEOUT));
+        assertNotSignalled(awaited.finished,
+                "control overtook the earlier callback");
+
+        ingress.releaseAccept.countDown();
+        await(awaited.finished, "ordered control did not finish");
+        MailboxControlResult<String> result = awaited.get();
+        MailboxCloseResult close = harness.finish();
+        harness.close();
+
+        assertTrue(close.clean());
+        assertEquals(1, executions.get());
+        assertEquals("checkpoint", result.value());
+        assertTrue(result.before().healthy());
+        assertTrue(result.after().healthy());
+        assertTrue(result.barrierId() > 1);
+        assertEquals(1, ingress.accepted.get());
+    }
+
+    private static void callbackAdmittedDuringControlRunsBeforeFollowingControl()
+            throws Exception {
+        RecordingIngress ingress = new RecordingIngress(1, 0, 0);
+        EclipseCallbackMailbox mailbox = new EclipseCallbackMailbox(4, ingress);
+        CountDownLatch actionEntered = new CountDownLatch(1);
+        CountDownLatch releaseAction = new CountDownLatch(1);
+        mailbox.start();
+        MailboxControlHandle<String> first = mailbox.submitControl(before -> {
+            actionEntered.countDown();
+            awaitUnchecked(releaseAction, "first control was not released");
+            return "first";
+        });
+        await(actionEntered, "first control did not start");
+        CallbackEntry callback = mailbox.beginCallback();
+        assertTrue(callback != null);
+        assertTrue(mailbox.admitCallback(callback, observed(101)));
+        mailbox.completeCallback(callback, new ProfiledLifecycle(
+                LifecycleInput.scheduled(
+                        new Object(),
+                        new JobDescriptor(
+                                BUNDLE,
+                                VERSION,
+                                FakeNashJob.class.getName(),
+                                "between-controls",
+                                true,
+                                false),
+                        UTC,
+                        101)));
+        releaseAction.countDown();
+        assertEquals("first", first.await(CLOSE_TIMEOUT).value());
+        MailboxControlResult<String> following = mailbox.submitControl(
+                before -> "following").await(CLOSE_TIMEOUT);
+        MailboxCloseResult close = mailbox.closeAndAwait(CLOSE_TIMEOUT);
+
+        assertTrue(close.clean());
+        assertEquals(1, ingress.inputs().size());
+        assertEquals("between-controls", ingress.inputs().get(0).job().name());
+        assertEquals("following", following.value());
+        assertTrue(following.before().healthy());
+        assertTrue(following.after().healthy());
+    }
+
+    private static void allowsImmediateControlResubmissionAfterCompletion() {
+        RecordingIngress ingress = new RecordingIngress(0, 0, 0);
+        EclipseCallbackMailbox mailbox = new EclipseCallbackMailbox(2, ingress);
+        mailbox.start();
+        MailboxControlResult<String> first = mailbox.submitControl(
+                before -> "first").await(CLOSE_TIMEOUT);
+        MailboxControlResult<String> second = mailbox.submitControl(
+                before -> "second").await(CLOSE_TIMEOUT);
+        MailboxCloseResult close = mailbox.closeAndAwait(CLOSE_TIMEOUT);
+
+        assertTrue(close.clean());
+        assertEquals("first", first.value());
+        assertEquals("second", second.value());
+        assertTrue(first.barrierId() < second.barrierId());
+        assertTrue(second.before().healthy());
+        assertTrue(second.after().healthy());
+    }
+
+    private static void doesNotReleaseFollowingControlOwnership()
+            throws Exception {
+        RecordingIngress ingress = new RecordingIngress(0, 0, 0);
+        CountDownLatch firstRelease = new CountDownLatch(1);
+        CountDownLatch continueFirst = new CountDownLatch(1);
+        AtomicInteger releases = new AtomicInteger();
+        EclipseCallbackMailbox mailbox = new EclipseCallbackMailbox(
+                2,
+                ingress,
+                () -> { },
+                () -> {
+                    if (releases.getAndIncrement() == 0) {
+                        firstRelease.countDown();
+                        awaitUnchecked(continueFirst,
+                                "first control release did not continue");
+                    }
+                });
+        mailbox.start();
+        MailboxControlHandle<String> first = mailbox.submitControl(
+                before -> "first");
+        await(firstRelease, "first control did not release capacity");
+        MailboxControlHandle<String> second = mailbox.submitControl(
+                before -> "second");
+        MailboxControlException third = assertThrowsResult(
+                MailboxControlException.class,
+                () -> mailbox.submitControl(before -> "third"));
+        assertEquals(MailboxControlFailure.MAILBOX_UNAVAILABLE,
+                third.failure());
+        continueFirst.countDown();
+
+        assertEquals("first", first.await(CLOSE_TIMEOUT).value());
+        assertEquals("second", second.await(CLOSE_TIMEOUT).value());
+        assertTrue(mailbox.closeAndAwait(CLOSE_TIMEOUT).clean());
+        assertEquals(2, releases.get());
+    }
+
+    private static void cancelsUnclaimedTimedOutControl() throws Exception {
+        BlockingIngress ingress = new BlockingIngress();
+        ListenerHarness harness = listener(
+                ingress, exactResolver(), new FixedClock(observed(101)), 4);
+        harness.listener.scheduled(new TestEvent(
+                new FakeNashJob("blocks-control"), null));
+        await(ingress.acceptEntered,
+                "blocking callback did not enter observer ingress");
+        AtomicInteger executions = new AtomicInteger();
+        MailboxControlHandle<String> control = harness.mailbox.submitControl(
+                before -> {
+                    executions.incrementAndGet();
+                    return "must-not-run";
+                });
+
+        MailboxControlException timeout = assertThrowsResult(
+                MailboxControlException.class,
+                () -> control.await(Duration.ofMillis(50)));
+        assertEquals(MailboxControlFailure.TIMED_OUT, timeout.failure());
+        ingress.releaseAccept.countDown();
+        MailboxControlHandle<String> following = harness.mailbox.submitControl(
+                before -> "following");
+        MailboxControlResult<String> followingResult = following.await(CLOSE_TIMEOUT);
+        MailboxCloseResult close = harness.finish();
+        harness.close();
+
+        assertTrue(close.clean());
+        assertEquals(0, executions.get());
+        assertEquals("following", followingResult.value());
+        assertTrue(followingResult.before().healthy());
+        assertTrue(followingResult.after().healthy());
+    }
+
+    private static void faultsOnClaimedControlTimeout() throws Exception {
+        RecordingIngress ingress = new RecordingIngress(0, 0, 1);
+        EclipseCallbackMailbox mailbox = new EclipseCallbackMailbox(2, ingress);
+        CountDownLatch actionEntered = new CountDownLatch(1);
+        CountDownLatch releaseAction = new CountDownLatch(1);
+        mailbox.start();
+        MailboxControlHandle<String> control = mailbox.submitControl(before -> {
+            actionEntered.countDown();
+            awaitUnchecked(releaseAction, "claimed control was not released");
+            return "late";
+        });
+        await(actionEntered, "control was not claimed by the worker");
+
+        MailboxControlException timeout = assertThrowsResult(
+                MailboxControlException.class,
+                () -> control.await(Duration.ofMillis(50)));
+        assertEquals(MailboxControlFailure.TIMED_OUT, timeout.failure());
+        releaseAction.countDown();
+        MailboxCloseResult close = mailbox.closeAndAwait(CLOSE_TIMEOUT);
+
+        assertIncident(close,
+                InfrastructureFailure.CALLBACK_DISPATCH_FAILED,
+                null);
+        assertTrue(close.workerTerminated());
+        assertTrue(close.failureNotificationSucceeded());
+        assertEquals(List.of(new FailureRecord(
+                InfrastructureFailure.CALLBACK_DISPATCH_FAILED, null)),
+                ingress.failures());
+    }
+
+    private static void rejectsCompletionAfterTimedWait() {
+        RecordingIngress ingress = new RecordingIngress(0, 0, 1);
+        EclipseCallbackMailbox mailbox = new EclipseCallbackMailbox(2, ingress);
+        AtomicReference<MailboxControlHandle<String>> reference =
+                new AtomicReference<>();
+        MailboxHealthSnapshot healthy =
+                new MailboxHealthSnapshot(null, false, false);
+        MailboxControlHandle<String> handle = new MailboxControlHandle<>(
+                mailbox,
+                () -> reference.get().complete(new MailboxControlResult<>(
+                        1, "too-late", healthy, healthy)));
+        reference.set(handle);
+        mailbox.start();
+        handle.queue(1);
+        assertTrue(handle.claim());
+
+        MailboxControlException timeout = assertThrowsResult(
+                MailboxControlException.class,
+                () -> handle.await(Duration.ofNanos(1)));
+        MailboxCloseResult close = mailbox.closeAndAwait(CLOSE_TIMEOUT);
+
+        assertEquals(MailboxControlFailure.TIMED_OUT, timeout.failure());
+        assertIncident(close,
+                InfrastructureFailure.CALLBACK_DISPATCH_FAILED,
+                null);
+        assertTrue(close.workerTerminated());
+        assertTrue(close.failureNotificationSucceeded());
     }
 
     private static void preArmCallbackTimestampIsRejected() throws Exception {
@@ -1024,6 +1262,25 @@ public final class EclipseJobsAdapterTest {
         return new AsyncCall(finished, failure);
     }
 
+    private static <T> AsyncResult<T> startAsyncResult(
+            String name, ThrowingSupplier<T> body) {
+        AtomicReference<T> value = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try {
+                value.set(body.get());
+            } catch (Throwable caught) {
+                failure.set(caught);
+            } finally {
+                finished.countDown();
+            }
+        }, name);
+        thread.setDaemon(true);
+        thread.start();
+        return new AsyncResult<>(finished, value, failure);
+    }
+
     private static <T> List<T> eventsOf(List<ObserverEvent> events, Class<T> type) {
         List<T> values = new ArrayList<>();
         for (ObserverEvent event : events) {
@@ -1084,12 +1341,31 @@ public final class EclipseJobsAdapterTest {
         throw new AssertionError("expected " + type.getName());
     }
 
+    private static <T extends Throwable> T assertThrowsResult(
+            Class<T> type, ThrowingRunnable body) {
+        try {
+            body.run();
+        } catch (Throwable failure) {
+            if (type.isInstance(failure)) {
+                return type.cast(failure);
+            }
+            throw new AssertionError("expected " + type.getName() + " but got "
+                    + failure, failure);
+        }
+        throw new AssertionError("expected " + type.getName());
+    }
+
     private record TestCase(String name, ThrowingRunnable body) {
     }
 
     @FunctionalInterface
     private interface ThrowingRunnable {
         void run() throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T> {
+        T get() throws Exception;
     }
 
     private static final class ListenerHarness implements AutoCloseable {
@@ -1128,6 +1404,19 @@ public final class EclipseJobsAdapterTest {
                 throw error;
             }
             throw new AssertionError("asynchronous call failed", caught);
+        }
+    }
+
+    private record AsyncResult<T>(
+            CountDownLatch finished,
+            AtomicReference<T> value,
+            AtomicReference<Throwable> failure) {
+        private T get() {
+            Throwable caught = failure.get();
+            if (caught != null) {
+                throw new AssertionError("asynchronous result failed", caught);
+            }
+            return value.get();
         }
     }
 
