@@ -31,6 +31,30 @@ internal sealed class SecretBuffer : IDisposable
         return new SecretBuffer(value);
     }
 
+    /// <summary>
+    /// Copies a caller-owned secret into a separately owned, wipeable buffer.
+    /// The caller remains responsible for the source buffer's lifetime.
+    /// </summary>
+    internal static SecretBuffer CreateOwned(ReadOnlySpan<byte> source)
+    {
+        if (source.Length != Length)
+        {
+            throw new ArgumentException(
+                "The secret must be exactly 32 bytes.",
+                nameof(source));
+        }
+
+        Span<byte> zero = stackalloc byte[Length];
+        if (CryptographicOperations.FixedTimeEquals(source, zero))
+        {
+            throw new ArgumentException(
+                "The secret must not be all zero.",
+                nameof(source));
+        }
+
+        return new SecretBuffer(source.ToArray());
+    }
+
     internal void CopyTo(Span<byte> destination)
     {
         byte[] value = bytes ??
