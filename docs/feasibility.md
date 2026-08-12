@@ -44,10 +44,23 @@ This is current official vendor-documentation evidence, not legal advice.
   tree-related `IDecisionContext`, `IPlayerAction`, `IPlayerAction.ActionType`,
   `IPotState`, and `ITreeBuildingScript` types. It exposes no Nash, sampling,
   queue, save, export, Job, callback, or terminal-status type.
-- Searches of current official documentation found no advertised lifecycle API,
-  CLI/headless solver, per-Job status log, or third-party plug-in SDK. This is
-  absence of published evidence, not proof that no private or partner interface
-  exists.
+- A 12 August 2026 public-interface review covered the official documentation
+  index and all ten articles it listed, the full News/changelog page, FAQ,
+  download and pricing pages, relevant HRC release posts, the complete public
+  scripting Javadoc package/class indices, and exact site searches for API,
+  CLI, SDK, plug-in, callback, headless, status, unattended, scheduler, and
+  remote-operation terms. It found no advertised lifecycle API, CLI/headless
+  solver, per-Job status log, unattended scheduler, or third-party plug-in SDK.
+  This is absence from the reviewed public corpus, not proof that no private or
+  partner interface exists.
+- The official
+  [Monte Carlo documentation](https://www.holdemresources.net/docs/monte-carlo-sampling/)
+  describes an interactive flow in which the user creates a hand, invokes Run
+  Nash Calculation, accepts the dialog, and watches progress and ETA. Its
+  cancellation/resume guidance does not expose a programmatic terminal-status
+  callback. The only documented log found in the
+  [troubleshooting documentation](https://www.holdemresources.net/docs/troubleshooting/)
+  is the JVM crash-only `hs_err_pid*.log`, not a calculation result log.
 - The official [contact page](https://www.holdemresources.net/contact) lists
   `support@holdemresources.net` and the HRC Discord community.
 
@@ -1351,15 +1364,23 @@ send additional HRC input, and do not consume the reserved smoke. Offline
 candidate tests, repository validation, and public-documentation research may
 continue without HRC interaction.
 
-If written permission covers the intended design, first resolve the active HRC
-installation and rehash the exact eight-component identity set above from its
-`plugins` directory. Stop on any process, path, filename, or hash mismatch.
-Then resume the remaining non-writing probes, beginning with the statically
-defined exact-tab-focus, selection-round-trip, one-shot `Ctrl+F4`, and
-`Save Resource` Cancel path on active `*From Hand 7` only after native focus and
-active-editor identity can be proved. Require both dirty tabs, selected tab,
-Progress, HRC bounds, and files to remain unchanged, and stop without retry on
-any mismatch or unknown outcome.
+If the authorised design relies on the version-specific findings in this
+document, first require permission for the narrow component-identity check or a
+vendor-supported build identifier that replaces it. Only when that file check
+is explicitly permitted, resolve the active HRC installation and rehash the
+exact eight-component identity set above from its `plugins` directory. Stop on
+any process, path, filename, or hash mismatch. A fully vendor-supported design
+that does not rely on these private/static findings must use the vendor's own
+documented compatibility contract instead and must not trigger component
+inspection merely because it is recorded here.
+
+Then resume only the actions covered by the written permission. If that scope
+includes the existing accessibility design, begin the remaining non-writing
+probes with the statically defined exact-tab-focus, selection-round-trip,
+one-shot `Ctrl+F4`, and `Save Resource` Cancel path on active `*From Hand 7` only
+after native focus and active-editor identity can be proved. Require both dirty
+tabs, selected tab, Progress, HRC bounds, and files to remain unchanged, and
+stop without retry on any mismatch or unknown outcome.
 
 Integrate the confirmed per-cell Nash route with exact native-focus,
 clipboard-transition, and CI `10.0` post-edit read-back assertions. Before any

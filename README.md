@@ -239,11 +239,15 @@ official HRC v4+ EULA licenses the Product in unmodified binary form, limits
 usage to the provided launcher, permits component use only through the UI
 accessible via that launcher, expressly prohibits automated scraping of the UI
 or memory, and prohibits decompilation, reverse engineering, or modification
-without the licensor's consent, subject to applicable law. The published scripting API is
-limited to tree-building decisions and exposes no Nash, Job, save, export, or
-terminal-status callback. No public supported lifecycle API, CLI, or durable
-status log was found. This is absence of published evidence, not proof that a
-private or partner interface does not exist.
+without the licensor's consent, subject to applicable law. The published
+scripting API is limited to tree-building decisions and exposes no Nash, Job,
+save, export, or terminal-status callback. An exhaustive 12 August 2026 review
+of the official documentation index and its ten listed articles, full
+changelog, public scripting Javadoc, FAQ/download material, and relevant
+release posts found no public supported lifecycle API, CLI/headless mode,
+unattended scheduler, or durable calculation-status log. This is absence from
+the reviewed public corpus, not proof that a private or partner interface does
+not exist.
 
 Ask HoldemResources for written confirmation that this local, single-user
 project may operate HRC through a project-owned accessibility runner and may
