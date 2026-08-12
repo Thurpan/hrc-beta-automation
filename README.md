@@ -273,9 +273,14 @@ tests owned 32-byte secret-buffer generation and wiping, exact applied pipe-
 DACL read-back, two-sided process identity, bounded one-shot framing, synthetic
 distinct-process frame exchange, rejection of a wrong live child, a canonical
 HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
-messages. The current suites pass 30 core tests,
+messages. It also tests a capacity-one ABA-safe in-memory publication store and
+a one-shot broker across the broker harness process and persistent synthetic
+observer and controller child processes. The broker executes all four
+exchanges, serialises claim and revoke, rejects an already-completed malformed
+loser, keeps absolute deadlines, and wipes its token copies before the final or
+revocation acknowledgement. The current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 28 Windows bootstrap tests. The start-level
+tests, 13 packaging tests, and 40 Windows bootstrap tests. The start-level
 fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
 observer-failure tests.
 
@@ -293,10 +298,10 @@ must enforce a local round-trip and pre-input margin within the lease. The
 lifecycle implements synthetic manager registration, two bounded baseline
 scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
-a bootstrap broker, publication store, descriptor filesystem, secure endpoint
-publication, dedicated-role orchestration, an activatable manifest, controller
-ownership, production controller/observer cross-process integration, or
-persistence across restart.
+guarded LocalAppData descriptor publication, secure initial pipe-name delivery,
+dedicated production observer, broker, and controller executables, executable-
+hash identity, crash containment, an activatable manifest, controller
+ownership, Java-to-Windows integration, or persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -317,23 +322,27 @@ reflection, or another early activation route. The observer must remain loaded
 until final framework shutdown; dynamic stop, update, uninstall, refresh, and
 republish are prohibited by policy, not proved safe.
 
-The Windows harness validates the bounded canonical descriptor and
-eight-message codec in memory. The codec models token ownership and wiping,
-publication acknowledgement, a separate claim receipt and final
-acknowledgement, and revocation. It does not perform any of those exchanges.
-Next, implement the broker state and publication store. Add secure name
-delivery and dedicated observer, broker, and controller orchestration. Validate
-all four one-shot exchanges across those processes before connecting the
-Windows seam to Java. Then enforce the recorded configuration, provider, class,
-and start-level gates in a deterministic JAR, manifest, guarded install, and
-rollback design. Extend the active-process runtime identity gate for all added
-providers before live use. Refuse controller admission when observer
-publication is absent or invalid; Equinox can continue after observer activation
-failure. Do not install the observer or restart HRC while the dirty tabs
-`*Hand 7` and `*From Hand 7` remain protected. Resolve those resources
-explicitly before the first clean-start observer validation. Reserve the
-authorised smoke until the runtime observer and standalone control path are
-ready.
+The Windows harness now executes the four protected-pipe exchanges through a
+synthetic three-process arrangement and a capacity-one in-memory store. It
+proves publication visibility before acknowledgement, exact removal before a
+grant or revocation acknowledgement, bounded loser drainage, non-resetting
+deadlines, and fail-closed semantic arbitration. This remains offline synthetic
+evidence.
+
+Next, implement and offline-test guarded LocalAppData descriptor publication
+with reparse-point defence and secure initial pipe-name handoff. Add dedicated
+production observer, broker, and controller roles with exact executable-hash
+identity and kill-on-close crash containment. Do not connect this seam to Java
+or open the standalone-runner gate until those boundaries pass. Then enforce
+the recorded configuration, provider, class, and start-level gates in a
+deterministic JAR, manifest, guarded install, and rollback design. Extend the
+active-process runtime identity gate for all added providers before live use.
+Refuse controller admission when observer publication is absent or invalid;
+Equinox can continue after observer activation failure. Do not install the
+observer or restart HRC while the dirty tabs `*Hand 7` and `*From Hand 7`
+remain protected. Resolve those resources explicitly before the first clean-
+start observer validation. Reserve the authorised smoke until the runtime
+observer and standalone control path are ready.
 
 Installed-component inspection identified the Stacks and Blinds surface as an
 Eclipse Nebula NatTable with default selection and edit bindings. A live check

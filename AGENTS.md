@@ -151,22 +151,31 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its harness
-  proves exact applied protected-DACL read-back, two-sided process identity,
-  bounded one-shot frames, fixed public-frame exchange with a synthetic child,
-  rejection of a wrong live child, a canonical HMAC-bound descriptor model, and
-  eight phase- and role-bound message codecs. The descriptor and protocol tests
-  run in memory. They do not prove bearer-token transfer, endpoint publication,
-  a broker or publication store, dedicated bootstrap-role orchestration, Java
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 40/40
+  harness proves exact applied protected-DACL read-back, two-sided process
+  identity, bounded one-shot frames, fixed public-frame exchange with a
+  synthetic child, rejection of a wrong live child, a canonical HMAC-bound
+  descriptor model, and
+  eight phase- and role-bound message codecs. It also proves a capacity-one
+  in-memory canonical publication store with independent wipeable snapshots,
+  opaque registrations, exact-reference removal, and ABA defence. A one-shot
+  broker runs all four exchanges across the broker harness process and
+  persistent synthetic observer and controller child processes. It enforces
+  exact role bindings, one common security context, absolute monotonic
+  deadlines, claim-versus-revoke arbitration, and terminal rejection of an
+  already-completed malformed loser. This evidence does not prove persistent
+  descriptor publication, secure initial pipe-name delivery, dedicated
+  production role executables, executable-hash policy, crash containment, Java
   integration, or HRC runtime use.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until broker state, publication storage, secure name delivery, dedicated-role
-  cross-process protocol tests, and Java lifecycle integration are implemented
-  and validated. The codec's owned-buffer wiping, acknowledgement, receipt, and
-  revocation models are necessary but do not prove those runtime properties.
+  until guarded LocalAppData descriptor publication, secure initial name
+  delivery, dedicated production-role orchestration and identity, crash
+  containment, and Java lifecycle integration are implemented and validated.
+  The in-memory store and synthetic broker do not prove those runtime
+  properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
   system-wide HRC-control lease.
 - Do not treat the test harness's kill-and-bounded-wait cleanup as crash

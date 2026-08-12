@@ -277,9 +277,9 @@ arbitrary early class-loading absence, or the protected tabs' safe disposition.
 
 ### Offline Windows bootstrap implementation evidence
 
-On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
-28/28 tests on the licensed host. The build did not install, load, attach to, or
-interact with HRC.
+On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness at
+checkpoint `2ea4d0e` passed 40/40 tests on the licensed host. The build did not
+install, load, attach to, or interact with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
 path, user SID, logon SID, token session ID, and process session ID. It retains
@@ -305,7 +305,7 @@ pipe-name release. Native peer-PID and DACL calls retain the safe pipe handle
 until each call completes.
 
 Most primitive tests run both pipe endpoints as tasks inside one process. Two
-tests launch the harness as synthetic child peers. The first
+primitive tests launch the harness as synthetic child peers. The first
 requires distinct parent and child PIDs, nonzero process-creation identities,
 two-sided full process-binding checks, fixed public-frame exchange, silent child
 output, and a clean child exit. The second retains separate parent, expected-
@@ -334,12 +334,57 @@ the publication, descriptor digest, controller nonce, and receipt nonce. A
 phase-bound decoder wipes its complete owned input frame on success or failure.
 Secret-bearing messages and encoded frames own and wipe their mutable buffers.
 
-This is codec and model evidence only. The module defines no broker state
-machine, publication store, descriptor filesystem publisher, dedicated-role
-orchestration, Java bridge, controller integration, or HRC entry point. The
-named-pipe tests do not carry the new protocol. The kill-and-bounded-wait
-failure cleanup is not crash containment. The module adds no HRC runtime
-observation.
+Twelve broker and store tests add a capacity-one in-memory publication store.
+The store validates and clones one canonical descriptor. Each read returns an
+independent wipeable snapshot. Each insertion returns an opaque registration,
+and removal requires that exact object reference. This prevents an old owner
+from removing a later equal publication after an ABA sequence. Removal and
+store disposal wipe the owned descriptor buffer.
+
+The one-shot broker runs in the main harness process. Persistent synthetic
+observer and controller roles run in two child processes. All three roles must
+be distinct and must match one user, logon, token session, and process session.
+The broker requires its own exact current-process binding. The synthetic roles
+execute all four protected-pipe exchanges: publish, claim and grant, separate
+receipt and final acknowledgement, and revoke.
+
+The publish acknowledgement is sent only after the descriptor is visible in
+the injected store. Claim and revoke workers validate the exact publication and
+descriptor digest before they can complete. Arbitration selects one valid
+winner and removes the exact store registration before any claim grant or
+revocation acknowledgement. The tests cover a valid claim win, a valid revoke
+win, simultaneous release, and both directions where a valid winner is
+selected before an already-completed malformed loser is inspected. The
+malformed loser makes the whole session terminal before any winner
+acknowledgement.
+
+After a valid winner, the broker cancels the other worker, drains it within the
+remaining bound, and closes its one-shot pipe. Only winner-induced cancellation
+is ignored. An independent loser failure remains terminal. The first timeout,
+cancellation, transcript mismatch, proof mismatch, I/O uncertainty, or store-
+ownership failure ends the session. The broker does not retry or republish.
+
+An injected `TimeProvider` supplies fixed absolute monotonic publication and
+session deadlines. Later phases receive only the remaining duration; no phase
+resets either deadline. The claim path disposes the broker-owned grant token and
+encoded grant before receipt processing. It disposes the accepted receipt proof
+and wipes the retained broker token before the final acknowledgement. The
+revocation path wipes the retained token before its acknowledgement. Tests also
+cover cancellation and occupied-store cleanup, backing-array wiping, and exact
+release of every one-shot pipe name.
+
+The broker children receive only fixed public role arguments. Their cleared
+environment contains no secret. Public role commands use redirected standard
+input, but the bearer token travels only on authenticated protected protocol
+pipes. Each persistent child has an explicit successful exit status and must
+write no standard output or standard error.
+
+This is in-memory-store and synthetic three-process broker evidence only. The
+module has no guarded LocalAppData descriptor publisher, secure initial pipe-
+name handoff, dedicated production role executables, executable-hash policy,
+kill-on-close containment, Java bridge, controller integration, or HRC entry
+point. The harness's kill-and-bounded-wait failure cleanup is not crash
+containment. The module adds no HRC runtime observation.
 `Feasibility` remains `TO CONFIRM`.
 
 The runner must first identify the one active HRC process and resolve the
@@ -1609,10 +1654,11 @@ completion, or failure states.
 The repository now contains an offline-tested Java correlation core, Eclipse
 Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
 disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, isolated
-Equinox start-level fixture, and source/test-only Windows bootstrap primitives
-under `src/HrcJobObserver/`.
+Equinox start-level fixture, and source/test-only Windows bootstrap module with
+an in-memory publication store and synthetic broker under
+`src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 28
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 40
 Windows bootstrap tests. The start-level fixture passes 12/12 prerequisite,
 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
@@ -1637,17 +1683,20 @@ controller/observer IPC, or runtime terminal capture. The ordered barrier and
 actionable-checkpoint contract are offline-tested but not HRC-runtime validated.
 `Feasibility` remains `TO CONFIRM`.
 
-The Windows primitives now prove exact applied DACL read-back, both endpoint-
-side process identity checks, bounded one-shot frame operations, synthetic
-distinct-process fixed-frame exchange, and rejection of a wrong live child.
-The in-memory model now also proves a canonical HMAC-bound descriptor with an
-explicit lifetime limit and eight phase- and role-bound messages. It models
-owned-buffer wiping, publication acknowledgement, separate claim receipt and
-final acknowledgement, and revocation. It does not execute those exchanges.
-Next, implement the broker state and publication store, descriptor filesystem
-boundary, secure pipe-name delivery, and dedicated observer, broker, and
-controller orchestration. Validate all four one-shot exchanges across those
-processes before integrating the seam with Java.
+The Windows module proves exact applied DACL read-back, both endpoint-side
+process identity checks, bounded one-shot frame operations, synthetic distinct-
+process fixed-frame exchange, and rejection of a wrong live child. It also
+proves a canonical HMAC-bound descriptor, a capacity-one ABA-safe in-memory
+store, and a synthetic three-process broker. The broker executes all four
+exchanges, enforces absolute deadlines, removes the exact publication before a
+grant or revocation acknowledgement, rejects a completed malformed loser, and
+wipes its retained token before the final or revocation acknowledgement.
+
+Next, implement and offline-test guarded LocalAppData descriptor publication
+with reparse-point defence and secure initial pipe-name handoff. Add dedicated
+production observer, broker, and controller roles with exact executable-hash
+identity and kill-on-close crash containment. Do not integrate this seam with
+Java or open the standalone-runner gate until those boundaries pass.
 
 Before creating an installable Bundle, enforce the exact clean-launch
 configuration, provider rows, provider hashes, Job-class hashes, and normal
@@ -1657,8 +1706,9 @@ prevent arbitrary `Bundle.loadClass`, reflection, or another activation route.
 Do not use runtime stop, restart, republish, update, uninstall, or refresh as a
 cleanup design. Keep the observer loaded until final framework shutdown, then
 require ordered admission closure, listener removal, mailbox drainage,
-transport shutdown, and control-call completion. Implement secure same-user
-token and endpoint publication only after the Windows prerequisites above.
+transport shutdown, and control-call completion. Integrate same-user token and
+endpoint publication with Java only after the production Windows prerequisites
+above.
 Then add a deterministic JAR, manifest, guarded install, and rollback design.
 Before live use, extend the active-process runtime identity gate for every
 added provider. The runtime observer must subscribe only to the Eclipse Jobs

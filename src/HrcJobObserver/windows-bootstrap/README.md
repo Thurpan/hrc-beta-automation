@@ -183,7 +183,7 @@ scan rejects selected networking, environment, console, registry, HRC, and
 HoldemResources symbols. Process launch is forbidden in production source and
 permitted only in the exact test-harness source.
 
-The first 28 tests cover current-process identity and invalid PIDs; exact binding,
+The first 20 tests cover current-process identity and invalid PIDs; exact binding,
 all identity-field mismatch paths, and SID validation; secret generation,
 copying, disposal, and wiping; bounded round-trip framing; first-instance
 collision; server-side and client-side peer
