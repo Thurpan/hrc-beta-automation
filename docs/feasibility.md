@@ -155,7 +155,7 @@ not enforced inputs to that planner and remain future artefact-build gates.
 ### Offline Windows bootstrap implementation evidence
 
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
-14/14 tests on the licensed host. The build did not install, load, attach to, or
+16/16 tests on the licensed host. The build did not install, load, attach to, or
 interact with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -177,11 +177,23 @@ frame, or timeout disposes the channel. The forced timeout test covered receive
 and verified that the poisoned channel could not receive again. The synchronous
 client connect call is outside this timeout contract.
 
-Both pipe endpoints ran as tasks inside one test process. No independently
-launched peer participated. The module defines no endpoint-discovery
-descriptor, application message schema, token-transfer protocol, Java bridge,
-publication lifecycle, controller integration, or HRC entry point. It adds no
-HRC runtime observation. `Feasibility` remains `TO CONFIRM`.
+Most primitive tests run both pipe endpoints as tasks inside one process. Two
+tests launch the harness as synthetic child peers. The first
+requires distinct parent and child PIDs, nonzero process-creation identities,
+two-sided full process-binding checks, fixed public-frame exchange, silent child
+output, and a clean child exit. The second retains separate parent, expected-
+child, and wrong-child identity leases while proving that the server rejects the
+wrong live child and the untouched expected child exits cleanly. The child gets
+a fixed public mode argument. When launched through `dotnet.exe`, the absolute
+harness assembly path is also a public host argument. Redirected stdin carries
+the public parent PID and pipe name. No bearer token, endpoint descriptor, HRC
+path, licence data, or poker data crosses this test channel.
+
+The module defines no endpoint-discovery descriptor, production application
+message schema, token-transfer protocol, Java bridge, publication lifecycle,
+controller integration, or HRC entry point. Its kill-and-bounded-wait failure
+cleanup is not crash containment. It adds no HRC runtime observation.
+`Feasibility` remains `TO CONFIRM`.
 
 The runner must first identify the one active HRC process and resolve the
 `plugins` directory from that process's own `hrc.exe` installation. It must
@@ -1446,7 +1458,7 @@ Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
 disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, and
 source/test-only Windows bootstrap primitives under `src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 14
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 16
 Windows bootstrap tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
@@ -1463,17 +1475,18 @@ caller-supplied bytes and cannot install its proposal.
 
 This is offline implementation evidence plus the read-only configuration facts
 above. It adds no observation of real Eclipse callback delivery, OSGi
-resolution, live listener registration, token publication, cross-process IPC,
-or runtime terminal capture. The ordered barrier and actionable-checkpoint
-contract are offline-tested but not HRC-runtime validated. `Feasibility`
-remains `TO CONFIRM`.
+resolution, live listener registration, token publication, production
+controller/observer IPC, or runtime terminal capture. The ordered barrier and
+actionable-checkpoint contract are offline-tested but not HRC-runtime validated.
+`Feasibility` remains `TO CONFIRM`.
 
 The Windows primitives now prove exact applied DACL read-back, both endpoint-
-side process identity checks, and bounded one-shot frame operations in one
-process. Next, define the endpoint-discovery descriptor, bounded bootstrap
-protocol, token-copy ownership, wiping, acknowledgement, publication, and
-revocation. Validate them between independently launched processes before
-integrating the seam with Java.
+side process identity checks, bounded one-shot frame operations, synthetic
+distinct-process fixed-frame exchange, and rejection of a wrong live child.
+Next, define the endpoint-discovery descriptor, bounded bootstrap protocol,
+token-copy ownership, wiping, acknowledgement, publication, and revocation.
+Validate that protocol between dedicated bootstrap roles before integrating the
+seam with Java.
 
 Also close two public-API lifecycle gaps before creating an installable Bundle.
 Listener registration plus `find(null)` is not atomic. Listener removal also

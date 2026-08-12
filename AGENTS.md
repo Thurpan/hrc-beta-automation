@@ -144,16 +144,21 @@ through, the active-process identity gate in `docs/feasibility.md`.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its
-  same-process harness proves an exact applied protected DACL, process identity
-  checks from both pipe endpoints, and bounded one-shot frame operations only.
-  It does not prove a token-transfer protocol, independent cross-process
-  operation, Java integration, or HRC runtime use.
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its harness
+  proves exact applied protected-DACL read-back, two-sided process identity,
+  bounded one-shot frames, fixed public-frame exchange with a synthetic child,
+  and rejection of a wrong live child. It does not prove bearer-token transfer,
+  endpoint publication, dedicated controller/observer roles, Java integration,
+  or HRC runtime use.
 - Do not publish or transfer a real observer token through the Windows seam
   until token-copy ownership, wiping, acknowledgement, revocation, secure name
-  delivery, independent-process tests, and Java lifecycle integration are
-  implemented and validated. Do not reuse a channel after an I/O failure or
-  timeout. The pipe is not the system-wide HRC-control lease.
+  delivery, dedicated-role cross-process protocol tests, and Java lifecycle
+  integration are implemented and validated. Do not reuse a channel after an
+  I/O failure or timeout. The pipe is not the system-wide HRC-control lease.
+- Do not treat the test harness's kill-and-bounded-wait cleanup as crash
+  containment.
+  Require a validated kill-on-close Job Object or equivalent before relying on
+  cleanup after abrupt parent termination.
 - Treat public Job names and staging filenames as sensitive local plaintext.
   Base64URL encoding does not protect them.
 - Do not activate the transport until the offline-tested ordered mailbox

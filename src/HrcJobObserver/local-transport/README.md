@@ -22,9 +22,10 @@ It does not generate the token, provision it to a controller, protect endpoint
 metadata, or wipe the caller-owned copy.
 The separate
 [offline Windows bootstrap module](../windows-bootstrap/README.md) now tests an
-owned random-secret buffer and candidate local pipe primitives. It does not call
-`LocalObserverServer`, supply its token, publish its endpoint, or carry this
-transport protocol.
+owned random-secret buffer and candidate local pipe primitives. Its synthetic
+child tests exchange fixed public frames and reject a wrong live process. It
+does not call `LocalObserverServer`, transfer its bearer token, publish its
+endpoint, or carry this Java transport protocol.
 
 The token is a bearer credential. It and all protocol data travel as
 unencrypted plaintext over IPv4 loopback. Base64URL is an encoding, not
@@ -139,8 +140,9 @@ authentication; and mutable authentication-buffer wiping.
 The current transport result is 25/25. This is offline validation only.
 
 Still unvalidated: per-observer integration of fresh token generation; token
-and endpoint provisioning; controller ownership and takeover; independent
-cross-process IPC; Java/Windows integration; OSGi packaging and activation;
+and endpoint provisioning; controller ownership and takeover; cross-process
+transfer of this transport's bearer token and endpoint; cross-process carriage
+of this Java protocol; Java/Windows integration; OSGi packaging and activation;
 listener registration; active-process identity checks; startup; rollback; safe
 unload; real HRC callbacks and runtime results; and standalone-runner
 integration.

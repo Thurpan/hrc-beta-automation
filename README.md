@@ -267,11 +267,12 @@ tests manager registration and ordered cleanup behind a disabled activator. An
 [offline simpleconfigurator planner](src/HrcJobObserver/osgi-packaging/README.md)
 produces an in-memory proposal only. An
 [offline Windows bootstrap module](src/HrcJobObserver/windows-bootstrap/README.md)
-tests secret ownership, exact applied pipe-DACL read-back, process identity at
-both pipe endpoints, and bounded one-shot framing. The current suites pass 30
-core tests,
+tests owned 32-byte secret-buffer generation and wiping, exact applied pipe-
+DACL read-back, two-sided process identity, bounded one-shot framing, synthetic
+distinct-process frame exchange, and rejection of a wrong live child. The
+current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 14 Windows bootstrap tests.
+tests, 13 packaging tests, and 16 Windows bootstrap tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The
@@ -288,8 +289,8 @@ lifecycle implements synthetic manager registration, two bounded baseline
 scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
 the token-transfer protocol, secure endpoint publication, an activatable
-manifest, controller ownership, independent cross-process proof, or
-persistence across restart.
+manifest, controller ownership, production controller/observer cross-process
+integration, or persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -301,10 +302,12 @@ feasibility verdict.
 Next, close the two lifecycle blockers before creating an installable Bundle.
 The public Eclipse APIs do not make listener registration plus `find(null)`
 atomic, and listener removal does not prove provider-level callback drainage.
-Define the non-secret endpoint-discovery descriptor and bounded bootstrap
-protocol. Specify token-copy ownership, wiping, acknowledgement, publication,
-and revocation, then test between independently launched processes before
-connecting the Windows seam to Java. Then add a deterministic JAR, manifest,
+The synthetic child harness now validates distinct-process identity, fixed
+public framing, and wrong-child rejection. Define the non-secret endpoint-
+discovery descriptor and bounded bootstrap protocol. Specify token-copy
+ownership, wiping, acknowledgement, publication, and revocation. Validate that
+protocol between dedicated bootstrap roles before connecting the Windows seam
+to Java. Then add a deterministic JAR, manifest,
 guarded install, and rollback design. Extend the active-process runtime identity
 gate for the adapter's Equinox Common and Eclipse OSGi providers before live
 use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and

@@ -11,10 +11,11 @@ through their package-private contracts. An
 startup, cleanup, and a disabled activator. An
 [offline simpleconfigurator planner](osgi-packaging/README.md) produces only an
 in-memory proposal for the recorded baseline. An
-[offline Windows bootstrap module](windows-bootstrap/README.md) tests secret
-ownership, exact applied pipe-DACL read-back, process identity at both pipe
-endpoints, and bounded one-shot framing. It is not connected to the Java
-layers. This component is not the
+[offline Windows bootstrap module](windows-bootstrap/README.md) tests owned
+32-byte secret-buffer generation and wiping, exact applied pipe-DACL read-back,
+two-sided process identity, bounded one-shot framing, synthetic distinct-
+process frame exchange, and rejection of a wrong live child. It is not
+connected to the Java layers. This component is not the
 standalone runner or an installable HRC plug-in. It has no OSGi manifest,
 enabled activator, live listener registration, file writer, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
@@ -140,7 +141,7 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 14/14. The runtime tests cover the
+tests. The Windows bootstrap result is 16/16. The runtime tests cover the
 ordered checkpoint, two-marker arm control, and fresh lease renewal for an
 exact idempotent retry.
 
@@ -151,6 +152,7 @@ tests validate only in-memory bytes and cannot install the proposal.
 
 Still unvalidated: real Eclipse callback delivery, OSGi resolution and
 activation, listener registration and removal, secure token and endpoint
-provisioning, independent cross-process IPC, the token-transfer protocol,
-Java-to-Windows integration, packaging, startup, installation, rollback, safe
-unload, HRC runtime correlation, and every standalone-runner operation.
+provisioning, cross-process token and endpoint publication through dedicated
+bootstrap roles, the token-transfer protocol, Java-to-Windows integration,
+packaging, startup, installation, rollback, safe unload, HRC runtime
+correlation, and every standalone-runner operation.
