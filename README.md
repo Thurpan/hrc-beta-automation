@@ -219,18 +219,29 @@ without submission. One whole-grid `Ctrl+A`, `Ctrl+C` attempt copied only
 each cell. The separate CI `10.0` edit was not copied after editing. Progress
 remained idle and no file was written.
 
+A seventh disposable check established a non-coordinate Finish action.
+`Ctrl+W`, then `H` opened Hand Setup from active `*Hand 7`; that setup retained
+the prior equal-`2 bb` rows and HU script. After HU was explicitly selected and
+`Alt+N` reached the two-node estimate, read-only native enumeration found exactly
+one owned `Hand Setup` `#32770` and one visible enabled `Button` with raw caption
+`&Finish`. The discovery provider could not target its indexed element and HRC
+remained unchanged. One guarded `SendMessageTimeout(BM_CLICK)` then closed the
+wizard. Compared with the pre-action editor-tab set, HRC added exactly one
+accessible hand-editor tab, `*From Hand 7`, alongside `*Hand 7`. No error
+appeared and Progress remained idle. The retained inputs and resulting name show
+that `Ctrl+W`, then `H` can inherit active-hand state and is not yet a clean next-
+simulation route. No Nash calculation ran and no file was written.
+
 These checks prove the keyboard portions of the supervised route,
 different-valid-value entry, visual read-back, one rejected-input recovery,
 exact candidate load, current equal-`2 bb` Preview, and observed Nash
 configuration, per-cell machine-readable Nash read-back, exact Reset Strategies
 verification, and non-submitting close routes. They do not yet provide
-machine-readable stack read-back. They also do not establish a reliable native
-foreground and focus contract or a durable Finish operation. The live provider
-continued to disagree with visible focus. Continue supervised discovery of a
-uniquely identified, non-coordinate Finish action and require exactly one new
-hand tab or an explicit failure or cancellation; dialog closure alone is not
-success. Native foreground and focus are required for any keyboard fallback,
-not for a directly invoked, uniquely identified Finish button.
+machine-readable stack read-back or a reliable native foreground and focus
+contract for keyboard steps. The native Finish action and successful exact-one-
+hand-editor-tab set delta are now confirmed without coordinates. Its guards do
+not depend on keyboard focus. The live provider continued to disagree with
+visible focus.
 
 Before any further pre-runner Nash OK action, use static, non-submitting, and
 prior demonstration evidence to define machine-readable candidate detectors and
