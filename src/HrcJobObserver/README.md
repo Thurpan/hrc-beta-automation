@@ -2,17 +2,19 @@
 
 ## Status
 
-This directory contains a package-private, pure Java 17 feasibility core and an
-[offline Eclipse Jobs adapter](eclipse-adapter/README.md). It is not the
-standalone runner and it is not an installable HRC plug-in. It has no OSGi
-manifest, activator, listener registration, network service, file writer, or
-runtime installation-path dependency. Its offline adapter build accepts an HRC
-installation path solely to resolve and hash public API provider JARs.
+This directory contains a package-private pure Java 17 feasibility core, an
+[offline Eclipse Jobs adapter](eclipse-adapter/README.md), and an
+[offline local transport](local-transport/README.md). It is not the standalone
+runner or an installable HRC plug-in. It has no OSGi manifest, activator,
+listener registration, file writer, installer, or runtime entry point. Its
+offline adapter build accepts an HRC installation path solely to resolve and
+hash public API provider JARs.
 
 The core has never been installed, loaded, attached to, or run with HRC. Its
 offline tests add no HRC observation and do not change the `TO CONFIRM`
 feasibility verdict. The dirty HRC tabs `*Hand 7` and `*From Hand 7` remain
 protected; do not restart HRC or consume the authorised smoke for this core.
+The transport opens IPv4 loopback sockets only during offline tests.
 
 ## Implemented scope
 
@@ -27,6 +29,12 @@ protected; do not restart HRC or consume the authorised smoke for this core.
 `ReplayBuffer` owns positive per-session sequence numbers and returns immutable,
 ordered replay windows through `replayAfter`. A replay window reports `OK`,
 `GAP`, or `CURSOR_AHEAD`; eviction can never be mistaken for a complete replay.
+
+`LocalObserverServer` implements a bounded version `1` request-response
+protocol for authentication, session checks, arm requests, and checkpoint
+replay. `ObserverCheckpoint` validates cursor-bound replay and projects core and
+callback health. The runtime control and atomic callback barrier that must
+supply those values are not implemented.
 
 ## Correlation and failure invariants
 
@@ -72,8 +80,9 @@ and enumerated fault reasons.
 
 Status messages, exception objects, exception text, stack traces, strategies,
 licence material, and unrelated HRC memory are excluded. Necessary public Job
-names can contain a hand or staging-output name and must remain local and be
-treated as sensitive by the later transport and runner.
+names can contain a hand or staging-output name and must remain local. They
+cross the local transport as sensitive plaintext. The transport serialises only
+the allow-listed primitives described in its README.
 
 The HRC bundle/version/class/name recognisers used by the tests come from the
 version-specific static findings in [`../../docs/feasibility.md`](../../docs/feasibility.md).
@@ -108,9 +117,12 @@ and synchronized reader/writer access.
 
 The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. Its 27
-offline tests are described in its own README. The following
-remain unvalidated: OSGi resolution, bundle activation, real Eclipse callback
-delivery and latency, listener registration/removal, serialisation, IPC,
-authentication, replay across a client connection, packaging, startup,
-installation, rollback, HRC runtime correlation, and every standalone-runner
-operation.
+offline tests are described in its own README. The local transport adds 23
+offline tests of its protocol and checkpoint schema.
+
+Still unvalidated: the atomic runtime checkpoint barrier, callback-adapter
+integration, bounded runtime control calls, secure token and endpoint
+provisioning, same-user access control, cross-process IPC, OSGi resolution and
+activation, listener registration and removal, packaging, startup,
+installation, rollback, safe unload, HRC runtime correlation, and every
+standalone-runner operation.

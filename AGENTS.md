@@ -136,6 +136,30 @@ Their recorded hashes are compile-provider evidence only. Do not activate a
 live observer until both providers are deliberately added to, and verified
 through, the active-process identity gate in `docs/feasibility.md`.
 
+## Exact-status transport safety
+
+- Keep the observer endpoint on IPv4 loopback. Do not treat loopback as process
+  identity, same-user access control, encryption, confidentiality, or the
+  HRC-control lease.
+- Generate a fresh cryptographically random 32-byte bearer token for each
+  observer start. Transfer the token and endpoint only through a validated
+  same-user protected mechanism. Never commit, persist, log, or echo the token.
+- Treat public Job names and staging filenames as sensitive local plaintext.
+  Base64URL encoding does not protect them.
+- Do not activate the transport until an ordered mailbox barrier atomically
+  supplies replay, core fault state, callback health, and the adapter's
+  authoritative first-failure latch.
+- Treat `GAP`, `CURSOR_AHEAD`, session mismatch, a non-actionable checkpoint, a
+  rejected event, observer fault, callback failure, transport failure, and lost
+  continuity as terminal automation stop conditions. Never reset the cursor or
+  adopt a session automatically.
+- After a lost arm response, reuse only the same request UUID with identical
+  intent in the same observer session.
+- Treat observer monotonic values and deadlines as opaque to other processes.
+  Do not compare them with controller clocks or carry them across restart.
+- Do not unload observer code unless listener removal, mailbox drainage,
+  transport shutdown, and all in-flight control calls have completed cleanly.
+
 ## One workflow pattern
 
 Validate one representative workflow pattern first. The pattern can then run

@@ -25,7 +25,9 @@ Euan attests that HRC Beta's owner personally authorised any use required by
 this project provided it remains non-commercial. Euan confirms that this
 project is personal and wholly non-commercial. Feasibility work may therefore
 resume within that scope. The immediate implementation target is a minimal
-startup observer that makes each HRC Job's exact terminal result durable.
+startup observer designed to expose exact terminal results to a standalone
+controller with bounded replay scoped to one observer process and session. It
+does not preserve events across observer restart.
 
 The earlier 5950X portfolio reference was incorrect for this host. Local
 machine evidence and Euan's licence confirmation supersede that reference.
@@ -255,24 +257,26 @@ the reviewed public corpus, not proof that a private or partner interface does
 not exist.
 
 The project now has an
-[offline exact-status correlation core](src/HrcJobObserver/README.md). It
-correlates injected lifecycle inputs by Java object identity, separates trusted
-from rejected terminal projections, and keeps a bounded replay history. Its
-dependency-free core tests pass for Java 17. A package-private
-[offline Eclipse Jobs adapter](src/HrcJobObserver/eclipse-adapter/README.md)
-filters a Job class before reading its public name, Bundle, flags, or result and
-adds a fixed-capacity mailbox with a non-waiting callback hand-off. One worker
-is the sole callback-path caller of the core ingress. The current offline
-suites pass 27 core tests and 27 adapter tests.
-Neither layer has an OSGi activator, listener registration, IPC, or installer;
-neither has interacted with running HRC, its UI, or real Eclipse callback
-delivery. The build only reads and hashes three public API provider JARs from
-the configured HRC installation. These layers do not yet make HRC terminal
-results durable and do not change the feasibility verdict.
+[offline exact-status correlation core](src/HrcJobObserver/README.md), an
+[offline Eclipse Jobs adapter](src/HrcJobObserver/eclipse-adapter/README.md),
+and an
+[offline bearer-token loopback transport](src/HrcJobObserver/local-transport/README.md).
+The current suites pass 27 core tests, 27 adapter tests, and 23 transport tests.
 
-Next, add the bounded authenticated local transport and its replay protocol.
-Then add manager registration and package an uninstalled startup bundle with a
-guarded build and rollback design. Extend the active-process runtime identity
+The transport implements bounded protocol version `1`, validates cursor-bound
+checkpoint replay, and serialises only allow-listed event primitives. Its tests
+use a fake control and local sockets in one JVM. It does not implement the
+atomic mailbox/core checkpoint barrier, token or endpoint provisioning, OSGi
+startup, listener registration, controller integration, cross-process proof,
+or persistence across restart. None of these layers has interacted with
+running HRC, its UI, or real Eclipse callback delivery. They do not yet make
+HRC terminal results available to a controller and do not change the
+feasibility verdict.
+
+Next, implement the ordered mailbox barrier and `ObserverTransportControl`
+runtime assembly. Then add manager registration and package an uninstalled
+startup bundle with guarded build and rollback procedures. Extend the
+active-process runtime identity
 gate for the adapter's Equinox Common and Eclipse OSGi providers before live
 use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
 `*From Hand 7` remain protected. Resolve those resources explicitly before the

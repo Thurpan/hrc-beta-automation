@@ -5,9 +5,8 @@
 This directory contains a package-private Java 17 adapter. It compiles offline
 against exact public Eclipse Core Jobs, Equinox Common, and OSGi API providers
 on the licensed host. It is not registered with a Job manager and has no OSGi
-activator, manifest, authenticated transport, network or file service,
-installer, or runtime entry point. It has never been loaded into or run with
-HRC.
+activator, manifest, network or file service, installer, or runtime entry
+point. It has never been loaded into or run with HRC.
 
 The adapter does not make HRC Job results durable. It does not change the
 project's `TO CONFIRM` feasibility verdict.
@@ -45,16 +44,22 @@ data, or other HRC state. A missing `done` result reaches the core's explicit
 `EclipseCallbackMailbox` is a fixed-capacity in-process hand-off. Each callback
 reserves a numbered slot and completes it without waiting for the core. One
 daemon worker dispatches completed slots in mailbox-ticket order. The worker
-is the only callback-path caller of `ObserverIngress`. This mailbox is not the future
-authenticated local transport.
+is the only callback-path caller of `ObserverIngress`. This mailbox is not the
+local transport.
 
-The mailbox independently latches capture, overflow, and dispatch failures.
+The mailbox is separate from the
+[offline local transport](../local-transport/README.md); raw Job references
+never cross that transport boundary. It independently latches capture,
+overflow, and dispatch failures.
 After the first mailbox infrastructure failure, it rejects new callbacks and
 discards work that has not already been authorised for dispatch. A lower-ticket
 dispatch already inside `ObserverIngress` may finish before a later-ticket
-failure is reported. The future transport and controller must not act on an
-individual callback event before verifying mailbox health and replay
-continuity; that consumer fence is not implemented here. A failure in the
+failure is reported. A controller must not act on an individual callback event
+before verifying mailbox health and replay continuity. The offline transport
+defines the checkpoint representation needed by that future fence, but it is
+not connected to this adapter. No implementation currently places a
+non-destructive barrier into mailbox-ticket order or atomically reads mailbox
+health, core fault state, and replay. A failure in the
 core's failure-reporting method cannot erase the independent latch. Callbacks
 do no I/O, IPC, logging, serialisation, Job mutation, or UI work. The hand-off
 does not wait for `ObserverIngress` or the worker; real callback latency remains
@@ -114,8 +119,8 @@ as runtime identity proof.
 
 Still unvalidated: OSGi resolution, listener registration and removal, real
 callback delivery and latency, concrete HRC Bundle provenance, activator and
-startup, authenticated transport, packaging, installation, rollback, and every
-HRC runtime result.
+startup, transport integration and its atomic checkpoint barrier, packaging,
+installation, rollback, and every HRC runtime result.
 
 ## Public API references
 

@@ -1381,22 +1381,23 @@ completion, or failure states.
 ## Next action
 
 The repository now contains an offline-tested, package-private Java correlation
-core under `src/HrcJobObserver/`. It accepts injected lifecycle inputs, preserves
-Java object identity internally, emits only bounded status primitives, rejects
-ambiguous terminal projections, and keeps a bounded replay history. Its
-dependency-free core tests pass for Java 17. An offline Eclipse Jobs adapter
-filters a Job class before reading its public name, Bundle, flags, or result and
-adds a fixed-capacity mailbox with a non-waiting callback hand-off. One worker
-is the sole callback-path caller of the core ingress. This offline layer passes
-27 core tests and 27 adapter tests. Apart from the compile-provider file hashes
-recorded above, this adds no observation of running HRC, its UI, its behaviour,
-or real Eclipse callback delivery. It does not prove OSGi resolution, listener
-registration, IPC, installation, or runtime terminal-status capture.
-`Feasibility` remains `TO CONFIRM`.
+core, Eclipse Jobs adapter, and bearer-token loopback transport under
+`src/HrcJobObserver/`. The current suites pass 27 core tests, 27 adapter tests,
+and 23 transport tests. The transport validates cursor-bound replay and its
+offline schema combines replay, core fault, and callback health. Its tests use
+a fake control and local sockets in one JVM.
 
-Next, implement and test the bounded authenticated local transport and replay
-protocol. Then add manager registration and package an uninstalled startup
-bundle with guarded build and rollback procedures. Before live use, extend the
+This is offline implementation evidence only. It adds no observation of
+running HRC, its UI, real Eclipse callback delivery, OSGi resolution, listener
+registration, active-process identity, token provisioning, cross-process IPC,
+or runtime terminal capture. The transport's `actionable` field is not a live
+verdict until an ordered mailbox barrier atomically supplies callback health,
+core fault state, and replay. `Feasibility` remains `TO CONFIRM`.
+
+Next, implement the ordered mailbox barrier and `ObserverTransportControl`
+runtime assembly. Then add manager registration and package an uninstalled
+startup bundle with guarded build and rollback procedures. Before live use,
+extend the
 active-process runtime identity gate for the adapter's Equinox Common and
 Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
 lifecycle and must not read strategy or licence data.
