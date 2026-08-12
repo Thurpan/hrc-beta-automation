@@ -273,7 +273,7 @@ distinct-process frame exchange, rejection of a wrong live child, a canonical
 HMAC-bound endpoint descriptor, and eight phase- and role-bound bootstrap
 messages. The current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 24 Windows bootstrap tests.
+tests, 13 packaging tests, and 28 Windows bootstrap tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The

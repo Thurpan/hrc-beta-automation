@@ -155,7 +155,7 @@ not enforced inputs to that planner and remain future artefact-build gates.
 ### Offline Windows bootstrap implementation evidence
 
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
-24/24 tests on the licensed host. The build did not install, load, attach to, or
+28/28 tests on the licensed host. The build did not install, load, attach to, or
 interact with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image

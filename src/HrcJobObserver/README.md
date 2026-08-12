@@ -157,7 +157,7 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 24/24. The runtime tests cover the
+tests. The Windows bootstrap result is 28/28. The runtime tests cover the
 ordered checkpoint, two-marker arm control, and fresh lease renewal for an
 exact idempotent retry.
 

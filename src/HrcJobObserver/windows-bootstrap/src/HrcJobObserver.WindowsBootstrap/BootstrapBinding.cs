@@ -82,6 +82,21 @@ internal sealed record BootstrapBinding
             string.Equals(LogonSid, candidate.LogonSid, StringComparison.Ordinal);
     }
 
+    internal bool SemanticallyEquals(BootstrapBinding candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        return ProcessId == candidate.ProcessId &&
+            CreationTimeFileTime == candidate.CreationTimeFileTime &&
+            TokenSessionId == candidate.TokenSessionId &&
+            ProcessSessionId == candidate.ProcessSessionId &&
+            string.Equals(
+                ImagePath,
+                candidate.ImagePath,
+                StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(UserSid, candidate.UserSid, StringComparison.Ordinal) &&
+            string.Equals(LogonSid, candidate.LogonSid, StringComparison.Ordinal);
+    }
+
     private static string CanonicaliseSid(string value, string parameterName)
     {
         try

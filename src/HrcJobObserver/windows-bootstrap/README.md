@@ -38,9 +38,25 @@ process identity lease, and require the exact expected PID, creation time,
 image, account SID, logon SID, and session. Each authenticated connection
 permits at most one send and one receive. Frames contain a four-byte
 little-endian length and 1 through 8,192 payload bytes. Operations accept only
-positive timeouts through 30 seconds. Any admitted operation cancellation,
-EOF, malformed received frame, or I/O failure disposes the channel; a failed or
-completed direction cannot be retried.
+positive timeouts through the shared 30-second maximum. The client connection
+uses an asynchronous local pipe with identification-only impersonation. It
+requires an explicit bounded timeout and accepts caller cancellation. The
+client validates the complete server process identity before it returns. The
+same operation deadline remains active during PID lookup, process capture,
+identity comparison, and final result publication. The server applies the same
+rule from accept through final authenticated-peer publication.
+
+Accept, send, and receive operations also accept caller cancellation. Disposal
+cancels the channel lifetime before it closes the pipe and process handles.
+This unblocks a pending accept or receive so its owning worker can await it with
+a separate bound. Any admitted operation cancellation, end of file, malformed
+received frame, or I/O failure disposes the channel. A failed or completed
+direction cannot be retried.
+
+Native peer-PID and DACL reads retain the `SafePipeHandle` with
+`DangerousAddRef` until the native call completes. Concurrent disposal can
+therefore close the managed channel without invalidating an admitted native
+handle use.
 
 `BootstrapDescriptor` defines canonical, bounded, non-secret endpoint metadata.
 It binds the publication and broker identifiers, publication nonce, IPv4
@@ -128,21 +144,25 @@ scan rejects selected networking, environment, console, registry, HRC, and
 HoldemResources symbols. Process launch is forbidden in production source and
 permitted only in the exact test-harness source.
 
-The 24 tests cover current-process identity and invalid PIDs; exact binding,
+The 28 tests cover current-process identity and invalid PIDs; exact binding,
 all identity-field mismatch paths, and SID validation; secret generation,
 copying, disposal, and wiping; bounded round-trip framing; first-instance
 collision; server-side and client-side peer
 identity rejection; accept and operation timeout with channel poisoning;
-one-shot operation enforcement; malformed receive framing; exact applied-DACL
-readback; invalid frame bounds; two-sided synthetic parent/child identity and
-frame exchange; and server-side rejection of a distinct live child. Eight
-additional tests cover canonical descriptor round trips and ownership; HMAC,
-binding, freshness, and maximum-lifetime checks; malformed and non-canonical
-descriptor rejection; all eight message and role pairs; canonical protocol
-headers and bodies; the domain-separated claim-receipt proof; malformed
-semantic fields; and owned token, proof, message, and frame wiping.
+bounded and cancellable client connection; disposal during pending accept and
+receive on both endpoints; exact pipe-name release after each disposal path;
+deadline and caller-cancellation enforcement during delayed synchronous peer
+authentication; one-shot operation enforcement; malformed receive framing;
+exact applied-DACL readback; invalid frame bounds; two-sided synthetic
+parent/child identity and frame exchange; and server-side rejection of a
+distinct live child. Eight tests cover canonical descriptor round trips and
+ownership; HMAC, binding, freshness, and maximum-lifetime checks; malformed
+and non-canonical descriptor rejection; all eight message and role pairs;
+canonical protocol headers and bodies; the domain-separated claim-receipt
+proof; malformed semantic fields; and owned token, proof, message, and frame
+wiping.
 
-The current result is 24/24. This is offline Windows model, codec, and primitive
+The current result is 28/28. This is offline Windows model, codec, and primitive
 evidence only.
 
 Still unvalidated: a broker state machine and publication store; dedicated

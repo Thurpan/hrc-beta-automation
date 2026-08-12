@@ -59,6 +59,10 @@ internal static class Program
             new("protected pipe rejects a mismatched identity", TestMismatchedPipeIdentity),
             new("protected pipe client rejects a mismatched server", TestMismatchedServerIdentity),
             new("protected pipe accept timeout poisons the channel", TestAcceptTimeout),
+            new("protected pipe client connect is bounded and cancellable", TestClientConnectBounds),
+            new("protected pipe authentication stays within its operation bound", TestAuthenticationBounds),
+            new("protected pipe disposal drains accept and releases its name", TestDisposeDuringAccept),
+            new("protected pipe disposal drains receive on both endpoints", TestDisposeDuringReceive),
             new("protected pipe operations time out and poison the channel", TestPipeTimeout),
             new("protected pipe rejects malformed receive frames", TestMalformedReceiveFrames),
             new("protected pipe applies an exact protected DACL", TestAppliedPipeDacl),
@@ -173,6 +177,23 @@ internal static class Program
             checked((uint)Environment.ProcessId));
         BootstrapBinding binding = identity.Snapshot();
         Assert(binding.Matches(identity), "captured binding must match its lease");
+        string alternateImageCase = binding.ImagePath.ToUpperInvariant();
+        if (string.Equals(
+                alternateImageCase,
+                binding.ImagePath,
+                StringComparison.Ordinal))
+        {
+            alternateImageCase = binding.ImagePath.ToLowerInvariant();
+        }
+
+        Assert(binding.SemanticallyEquals(BindingWith(
+                binding,
+                imagePath: alternateImageCase)),
+            "binding semantics must ignore only image-path case");
+        Assert(!binding.SemanticallyEquals(BindingWith(
+                binding,
+                creation: binding.CreationTimeFileTime + 1)),
+            "binding semantics must require the exact creation identity");
         AssertThrows<ArgumentOutOfRangeException>(
             () => _ = new BootstrapBinding(
                 0,
@@ -221,17 +242,37 @@ internal static class Program
         BootstrapBinding valid = identity.Snapshot();
         Assert(!BindingWith(valid, processId: valid.ProcessId + 1).Matches(identity),
             "process ID mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                processId: valid.ProcessId + 1)),
+            "semantic process ID mismatch must reject");
         Assert(!BindingWith(
                 valid,
                 creation: valid.CreationTimeFileTime + 1).Matches(identity),
             "creation mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                creation: valid.CreationTimeFileTime + 1)),
+            "semantic creation mismatch must reject");
         Assert(!BindingWith(valid, imagePath: valid.ImagePath + ".other")
                 .Matches(identity),
             "image mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                imagePath: valid.ImagePath + ".other")),
+            "semantic image mismatch must reject");
         Assert(!BindingWith(valid, userSid: "S-1-5-18").Matches(identity),
             "user SID mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                userSid: "S-1-5-18")),
+            "semantic user SID mismatch must reject");
         Assert(!BindingWith(valid, logonSid: "S-1-5-19").Matches(identity),
             "logon SID mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                logonSid: "S-1-5-19")),
+            "semantic logon SID mismatch must reject");
         AssertThrows<ArgumentException>(() => _ = BindingWith(
             valid,
             tokenSession: valid.TokenSessionId + 1));
@@ -240,6 +281,11 @@ internal static class Program
                 tokenSession: valid.TokenSessionId + 1,
                 processSession: valid.ProcessSessionId + 1).Matches(identity),
             "session mismatch must reject");
+        Assert(!valid.SemanticallyEquals(BindingWith(
+                valid,
+                tokenSession: valid.TokenSessionId + 1,
+                processSession: valid.ProcessSessionId + 1)),
+            "semantic session mismatch must reject");
         return Task.CompletedTask;
     }
 
@@ -253,7 +299,10 @@ internal static class Program
         Task client = Task.Run(() =>
         {
             using ProtectedNamedPipeClient connection =
-                ProtectedNamedPipeClient.Connect(server.Name, identity.Snapshot());
+                ProtectedNamedPipeClient.Connect(
+                    server.Name,
+                    identity.Snapshot(),
+                    TestTimeout);
             connection.SendFrameAsync(request, TestTimeout).GetAwaiter().GetResult();
             AssertThrows<InvalidOperationException>(() =>
                 connection.SendFrameAsync(request, TestTimeout));
@@ -335,7 +384,10 @@ internal static class Program
             try
             {
                 using ProtectedNamedPipeClient _ =
-                    ProtectedNamedPipeClient.Connect(server.Name, identity.Snapshot());
+                    ProtectedNamedPipeClient.Connect(
+                        server.Name,
+                        identity.Snapshot(),
+                        TestTimeout);
                 if (!releaseClient.Wait(TestTimeout))
                 {
                     throw new TimeoutException("Mismatched client was not released.");
@@ -377,7 +429,10 @@ internal static class Program
         AssertThrows<SecurityException>(() =>
         {
             using ProtectedNamedPipeClient _ =
-                ProtectedNamedPipeClient.Connect(server.Name, wrong);
+                ProtectedNamedPipeClient.Connect(
+                    server.Name,
+                    wrong,
+                    TestTimeout);
         });
         await accept.ConfigureAwait(false);
     }
@@ -395,6 +450,259 @@ internal static class Program
             ProtectedNamedPipe.ValidateTimeout(TimeSpan.Zero));
         AssertThrows<ArgumentOutOfRangeException>(() =>
             ProtectedNamedPipe.ValidateTimeout(TimeSpan.FromSeconds(31)));
+        AssertEqual(
+            TimeSpan.FromSeconds(30),
+            ProtectedNamedPipe.MaximumOperationTime,
+            "maximum pipe-operation duration");
+    }
+
+    private static async Task TestClientConnectBounds()
+    {
+        using ProcessIdentityLease identity = ProcessIdentityLease.Capture(
+            checked((uint)Environment.ProcessId));
+        BootstrapBinding binding = identity.Snapshot();
+
+        string timeoutName = TestPipeName("connect-timeout");
+        await AssertThrowsAsync<TimeoutException>(() =>
+            ProtectedNamedPipeClient.ConnectAsync(
+                timeoutName,
+                binding,
+                TimeSpan.FromMilliseconds(20)));
+        using (ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            timeoutName,
+            binding))
+        {
+            AssertEqual(timeoutName, replacement.Name,
+                "name after timed-out connect");
+            await AssertThrowsAsync<OperationCanceledException>(() =>
+                replacement.AcceptAndAuthenticateAsync(
+                    TimeSpan.FromMilliseconds(20)));
+        }
+
+        string cancellationName = TestPipeName("connect-cancel");
+        using CancellationTokenSource cancellation = new();
+        Task<ProtectedNamedPipeClient> cancelledConnect =
+            ProtectedNamedPipeClient.ConnectAsync(
+                cancellationName,
+                binding,
+                ProtectedNamedPipe.MaximumOperationTime,
+                cancellation.Token);
+        Assert(!cancelledConnect.IsCompleted,
+            "client connect must be pending before caller cancellation");
+        cancellation.Cancel();
+        await AssertThrowsAsync<OperationCanceledException>(() =>
+            cancelledConnect.WaitAsync(TestTimeout));
+        using ProtectedNamedPipe cancellationReplacement =
+            ProtectedNamedPipe.Create(cancellationName, binding);
+        AssertEqual(cancellationName, cancellationReplacement.Name,
+            "name after cancelled connect");
+        await AssertThrowsAsync<OperationCanceledException>(() =>
+            cancellationReplacement.AcceptAndAuthenticateAsync(
+                TimeSpan.FromMilliseconds(20)));
+    }
+
+    private static async Task TestAuthenticationBounds()
+    {
+        using ProcessIdentityLease identity = ProcessIdentityLease.Capture(
+            checked((uint)Environment.ProcessId));
+        BootstrapBinding binding = identity.Snapshot();
+
+        string acceptName = TestPipeName("accept-auth-timeout");
+        using (ProtectedNamedPipe server = ProtectedNamedPipe.Create(
+            acceptName,
+            binding))
+        using (ManualResetEventSlim authenticationEntered = new(false))
+        {
+            Task accept = server.AcceptAndAuthenticateAsync(
+                TimeSpan.FromSeconds(1),
+                CancellationToken.None,
+                operationToken =>
+                {
+                    authenticationEntered.Set();
+                    if (!operationToken.WaitHandle.WaitOne(TestTimeout))
+                    {
+                        throw new TimeoutException(
+                            "The accept authentication bound did not expire.");
+                    }
+                });
+            using ProtectedNamedPipeClient client =
+                await ProtectedNamedPipeClient.ConnectAsync(
+                        acceptName,
+                        binding,
+                        TestTimeout)
+                    .ConfigureAwait(false);
+            await AssertThrowsAsync<OperationCanceledException>(() =>
+                accept.WaitAsync(TestTimeout));
+            Assert(authenticationEntered.IsSet,
+                "accept must reach the delayed authentication seam");
+            await AssertThrowsAsync<ObjectDisposedException>(() =>
+                server.AcceptAndAuthenticateAsync(TestTimeout));
+        }
+
+        string connectTimeoutName = TestPipeName("connect-auth-timeout");
+        using (ProtectedNamedPipe server = ProtectedNamedPipe.Create(
+            connectTimeoutName,
+            binding))
+        using (ManualResetEventSlim authenticationEntered = new(false))
+        {
+            Task accept = server.AcceptAndAuthenticateAsync(TestTimeout);
+            Task<ProtectedNamedPipeClient> connect =
+                ProtectedNamedPipeClient.ConnectAsync(
+                    connectTimeoutName,
+                    binding,
+                    TimeSpan.FromSeconds(1),
+                    CancellationToken.None,
+                    operationToken =>
+                    {
+                        authenticationEntered.Set();
+                        if (!operationToken.WaitHandle.WaitOne(TestTimeout))
+                        {
+                            throw new TimeoutException(
+                                "The client authentication bound did not expire.");
+                        }
+                    });
+            await accept.ConfigureAwait(false);
+            await AssertThrowsAsync<TimeoutException>(() =>
+                connect.WaitAsync(TestTimeout));
+            Assert(authenticationEntered.IsSet,
+                "connect must reach the delayed authentication seam");
+        }
+
+        string connectCancellationName = TestPipeName("connect-auth-cancel");
+        using (ProtectedNamedPipe server = ProtectedNamedPipe.Create(
+            connectCancellationName,
+            binding))
+        using (ManualResetEventSlim authenticationEntered = new(false))
+        using (CancellationTokenSource cancellation = new())
+        {
+            Task accept = server.AcceptAndAuthenticateAsync(TestTimeout);
+            Task<ProtectedNamedPipeClient> connect =
+                ProtectedNamedPipeClient.ConnectAsync(
+                    connectCancellationName,
+                    binding,
+                    TestTimeout,
+                    cancellation.Token,
+                    operationToken =>
+                    {
+                        authenticationEntered.Set();
+                        if (!operationToken.WaitHandle.WaitOne(TestTimeout))
+                        {
+                            throw new TimeoutException(
+                                "The client authentication was not cancelled.");
+                        }
+                    });
+            await accept.ConfigureAwait(false);
+            Assert(authenticationEntered.Wait(TestTimeout),
+                "connect must enter authentication before cancellation");
+            cancellation.Cancel();
+            await AssertThrowsAsync<OperationCanceledException>(() =>
+                connect.WaitAsync(TestTimeout));
+        }
+    }
+
+    private static async Task TestDisposeDuringAccept()
+    {
+        using ProcessIdentityLease identity = ProcessIdentityLease.Capture(
+            checked((uint)Environment.ProcessId));
+        BootstrapBinding binding = identity.Snapshot();
+        string name = TestPipeName("dispose-accept");
+        using ProtectedNamedPipe server = ProtectedNamedPipe.Create(name, binding);
+
+        Task accept = server.AcceptAndAuthenticateAsync(
+            ProtectedNamedPipe.MaximumOperationTime);
+        Assert(!accept.IsCompleted,
+            "accept must be pending before the owning pipe is disposed");
+        server.Dispose();
+        await AssertThrowsAnyAsync(
+            () => accept.WaitAsync(TestTimeout),
+            typeof(OperationCanceledException),
+            typeof(ObjectDisposedException),
+            typeof(IOException));
+        await AssertThrowsAsync<ObjectDisposedException>(() =>
+            server.AcceptAndAuthenticateAsync(TestTimeout));
+
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            name,
+            binding);
+        AssertEqual(name, replacement.Name,
+            "name after dispose-during-accept drain");
+    }
+
+    private static async Task TestDisposeDuringReceive()
+    {
+        using ProcessIdentityLease identity = ProcessIdentityLease.Capture(
+            checked((uint)Environment.ProcessId));
+        BootstrapBinding binding = identity.Snapshot();
+
+        string serverName = TestPipeName("dispose-server-receive");
+        using (ProtectedNamedPipe server = ProtectedNamedPipe.Create(
+            serverName,
+            binding))
+        {
+            Task accept = server.AcceptAndAuthenticateAsync(TestTimeout);
+            using ProtectedNamedPipeClient client =
+                await ProtectedNamedPipeClient.ConnectAsync(
+                        serverName,
+                        binding,
+                        TestTimeout)
+                    .ConfigureAwait(false);
+            await accept.ConfigureAwait(false);
+
+            Task<byte[]> receive = server.ReceiveFrameAsync(
+                ProtectedNamedPipe.MaximumOperationTime);
+            Assert(!receive.IsCompleted,
+                "server receive must be pending before disposal");
+            server.Dispose();
+            await AssertThrowsAnyAsync(
+                () => receive.WaitAsync(TestTimeout),
+                typeof(OperationCanceledException),
+                typeof(ObjectDisposedException),
+                typeof(IOException));
+            await AssertThrowsAsync<InvalidOperationException>(() =>
+                server.ReceiveFrameAsync(TestTimeout));
+        }
+
+        using (ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            serverName,
+            binding))
+        {
+            AssertEqual(serverName, replacement.Name,
+                "name after server receive drain");
+        }
+
+        string clientName = TestPipeName("dispose-client-receive");
+        using (ProtectedNamedPipe server = ProtectedNamedPipe.Create(
+            clientName,
+            binding))
+        {
+            Task accept = server.AcceptAndAuthenticateAsync(TestTimeout);
+            using ProtectedNamedPipeClient client =
+                await ProtectedNamedPipeClient.ConnectAsync(
+                        clientName,
+                        binding,
+                        TestTimeout)
+                    .ConfigureAwait(false);
+            await accept.ConfigureAwait(false);
+
+            Task<byte[]> receive = client.ReceiveFrameAsync(
+                ProtectedNamedPipe.MaximumOperationTime);
+            Assert(!receive.IsCompleted,
+                "client receive must be pending before disposal");
+            client.Dispose();
+            await AssertThrowsAnyAsync(
+                () => receive.WaitAsync(TestTimeout),
+                typeof(OperationCanceledException),
+                typeof(ObjectDisposedException),
+                typeof(IOException));
+            await AssertThrowsAsync<InvalidOperationException>(() =>
+                client.ReceiveFrameAsync(TestTimeout));
+        }
+
+        using ProtectedNamedPipe clientReplacement = ProtectedNamedPipe.Create(
+            clientName,
+            binding);
+        AssertEqual(clientName, clientReplacement.Name,
+            "name after client receive drain");
     }
 
     private static async Task TestPipeTimeout()
@@ -406,7 +714,10 @@ internal static class Program
         Task client = Task.Run(() =>
         {
             using ProtectedNamedPipeClient connection =
-                ProtectedNamedPipeClient.Connect(server.Name, identity.Snapshot());
+                ProtectedNamedPipeClient.Connect(
+                    server.Name,
+                    identity.Snapshot(),
+                    TestTimeout);
             if (!releaseClient.Wait(TestTimeout))
             {
                 throw new TimeoutException("The timeout client was not released.");
@@ -2078,6 +2389,12 @@ internal static class Program
             processSession ?? source.ProcessSessionId);
     }
 
+    private static string TestPipeName(string purpose)
+    {
+        return "hrc-job-observer-bootstrap-test-" + purpose + "-" +
+            Guid.NewGuid().ToString("N");
+    }
+
     private static async Task TestInvalidFrames()
     {
         using ProcessIdentityLease identity = ProcessIdentityLease.Capture(
@@ -2087,7 +2404,10 @@ internal static class Program
         Task client = Task.Run(() =>
         {
             using ProtectedNamedPipeClient connection =
-                ProtectedNamedPipeClient.Connect(server.Name, identity.Snapshot());
+                ProtectedNamedPipeClient.Connect(
+                    server.Name,
+                    identity.Snapshot(),
+                    TestTimeout);
             if (!releaseClient.Wait(TestTimeout))
             {
                 throw new TimeoutException("Invalid-frame client was not released.");
@@ -2287,7 +2607,8 @@ internal static class Program
                     using ProtectedNamedPipeClient client =
                         ProtectedNamedPipeClient.Connect(
                             name,
-                            parent.Snapshot());
+                            parent.Snapshot(),
+                            TestTimeout);
                     if (operation == ChildExpectServerRejection)
                     {
                         byte[] probe = { 0x7F };
@@ -2365,6 +2686,25 @@ internal static class Program
 
         throw new InvalidOperationException(
             $"Expected {typeof(TException).Name} was not thrown.");
+    }
+
+    private static async Task AssertThrowsAnyAsync(
+        Func<Task> action,
+        params Type[] expectedTypes)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (Exception exception) when (expectedTypes.Any(
+            type => type.IsAssignableFrom(exception.GetType())))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Expected one of [{string.Join(", ", expectedTypes.Select(
+                type => type.Name))}] was not thrown.");
     }
 
     private static bool AllZero(ReadOnlySpan<byte> bytes)

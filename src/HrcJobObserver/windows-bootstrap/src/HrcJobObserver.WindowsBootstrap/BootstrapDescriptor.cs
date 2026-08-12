@@ -341,8 +341,8 @@ internal sealed class BootstrapDescriptor
             return tagMatches &&
                 lifetimeAccepted &&
                 current &&
-                BindingEquals(ObserverBinding, expectedObserverBinding) &&
-                BindingEquals(BrokerBinding, expectedBrokerBinding);
+                ObserverBinding.SemanticallyEquals(expectedObserverBinding) &&
+                BrokerBinding.SemanticallyEquals(expectedBrokerBinding);
         }
         finally
         {
@@ -571,22 +571,6 @@ internal sealed class BootstrapDescriptor
                 "The claim pipe name must use canonical Unicode.",
                 nameof(claimPipeName));
         }
-    }
-
-    private static bool BindingEquals(
-        BootstrapBinding left,
-        BootstrapBinding right)
-    {
-        return left.ProcessId == right.ProcessId &&
-            left.CreationTimeFileTime == right.CreationTimeFileTime &&
-            left.TokenSessionId == right.TokenSessionId &&
-            left.ProcessSessionId == right.ProcessSessionId &&
-            string.Equals(
-                left.ImagePath,
-                right.ImagePath,
-                StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(left.UserSid, right.UserSid, StringComparison.Ordinal) &&
-            string.Equals(left.LogonSid, right.LogonSid, StringComparison.Ordinal);
     }
 
     private static void ValidateSharedSecurityContext(

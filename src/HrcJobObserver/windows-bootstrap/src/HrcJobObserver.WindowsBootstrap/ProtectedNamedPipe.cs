@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security;
+using System.Security.Principal;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,11 +20,16 @@ namespace HrcJobObserver.WindowsBootstrap;
 internal sealed partial class ProtectedNamedPipe : IDisposable
 {
     internal const int MaximumFrameBytes = 8_192;
+    internal static readonly TimeSpan MaximumOperationTime =
+        TimeSpan.FromSeconds(30);
     private const int PipeBufferBytes = MaximumFrameBytes + sizeof(int);
     private const string PipePrefix = "hrc-job-observer-bootstrap-";
-    private static readonly TimeSpan MaximumOperationTime = TimeSpan.FromSeconds(30);
+    private readonly object lifecycleGate = new();
+    private CancellationTokenSource? lifetimeCancellation = new();
     private NamedPipeServerStream? pipe;
     private ProcessIdentityLease? peer;
+    private bool disposed;
+    private int acceptStarted;
     private int sendStarted;
     private int receiveStarted;
 
@@ -129,51 +135,76 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         return ReadAppliedDescriptor(GetPipe().SafePipeHandle);
     }
 
-    internal async Task AcceptAndAuthenticateAsync(TimeSpan timeout)
+    internal Task AcceptAndAuthenticateAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        NamedPipeServerStream stream = GetPipe();
-        if (stream.IsConnected || peer is not null)
+        return AcceptAndAuthenticateAsync(
+            timeout,
+            cancellationToken,
+            authenticationTestHook: null);
+    }
+
+    internal async Task AcceptAndAuthenticateAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        Action<CancellationToken>? authenticationTestHook)
+    {
+        ValidateTimeout(timeout);
+        (NamedPipeServerStream stream, CancellationToken lifetimeToken) =
+            GetAcceptState();
+        if (Interlocked.Exchange(ref acceptStarted, 1) != 0)
         {
-            throw new InvalidOperationException("The pipe already accepted a peer.");
+            throw new InvalidOperationException(
+                "The one-shot accept operation was already started.");
         }
 
-        using CancellationTokenSource cancellation = CreateTimeout(timeout);
-        try
-        {
-            await stream.WaitForConnectionAsync(cancellation.Token)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            Dispose();
-            throw;
-        }
-
+        using CancellationTokenSource operation = CreateTimeout(
+            timeout,
+            cancellationToken,
+            lifetimeToken);
         ProcessIdentityLease? candidate = null;
         try
         {
-            if (NativeMethods.GetNamedPipeClientProcessId(
-                    stream.SafePipeHandle.DangerousGetHandle(),
-                    out uint clientProcessId) == 0)
-            {
-                throw NativeMethods.Win32Failure(
-                    "GetNamedPipeClientProcessId failed");
-            }
+            await stream.WaitForConnectionAsync(operation.Token)
+                .ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+
+            uint clientProcessId = GetClientProcessId(stream.SafePipeHandle);
+            operation.Token.ThrowIfCancellationRequested();
 
             candidate = ProcessIdentityLease.Capture(clientProcessId);
+            operation.Token.ThrowIfCancellationRequested();
             if (!candidate.Matches(ExpectedPeer))
             {
                 throw new SecurityException(
                     "The named-pipe peer identity does not match the binding.");
             }
 
-            peer = candidate;
-            candidate = null;
+            operation.Token.ThrowIfCancellationRequested();
+            authenticationTestHook?.Invoke(operation.Token);
+            operation.Token.ThrowIfCancellationRequested();
+            lock (lifecycleGate)
+            {
+                if (disposed || !ReferenceEquals(pipe, stream))
+                {
+                    throw new ObjectDisposedException(nameof(ProtectedNamedPipe));
+                }
+
+                if (peer is not null)
+                {
+                    throw new InvalidOperationException(
+                        "The pipe already accepted a peer.");
+                }
+
+                operation.Token.ThrowIfCancellationRequested();
+                peer = candidate;
+                candidate = null;
+            }
         }
         catch
         {
-            stream.Dispose();
-            pipe = null;
+            Dispose();
             throw;
         }
         finally
@@ -182,41 +213,80 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         }
     }
 
-    internal Task<byte[]> ReceiveFrameAsync(TimeSpan timeout)
+    internal Task<byte[]> ReceiveFrameAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        EnsureAuthenticatedPeer();
         ValidateTimeout(timeout);
+        (NamedPipeServerStream stream, CancellationToken lifetimeToken) =
+            GetAuthenticatedState();
         if (Interlocked.Exchange(ref receiveStarted, 1) != 0)
         {
             throw new InvalidOperationException(
                 "The one-shot receive operation was already started.");
         }
 
-        return ReceiveOnceAsync(timeout);
+        return ReceiveOnceAsync(
+            stream,
+            timeout,
+            cancellationToken,
+            lifetimeToken);
     }
 
-    internal Task SendFrameAsync(ReadOnlyMemory<byte> frame, TimeSpan timeout)
+    internal Task SendFrameAsync(
+        ReadOnlyMemory<byte> frame,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        EnsureAuthenticatedPeer();
         PipeFrames.ValidateFrame(frame);
         ValidateTimeout(timeout);
+        (NamedPipeServerStream stream, CancellationToken lifetimeToken) =
+            GetAuthenticatedState();
         if (Interlocked.Exchange(ref sendStarted, 1) != 0)
         {
             throw new InvalidOperationException(
                 "The one-shot send operation was already started.");
         }
 
-        return SendOnceAsync(frame, timeout);
+        return SendOnceAsync(
+            stream,
+            frame,
+            timeout,
+            cancellationToken,
+            lifetimeToken);
     }
 
     public void Dispose()
     {
-        ProcessIdentityLease? peerLease = peer;
-        peer = null;
-        peerLease?.Dispose();
-        NamedPipeServerStream? stream = pipe;
-        pipe = null;
-        stream?.Dispose();
+        CancellationTokenSource? cancellation;
+        ProcessIdentityLease? peerLease;
+        NamedPipeServerStream? stream;
+        lock (lifecycleGate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            cancellation = lifetimeCancellation;
+            lifetimeCancellation = null;
+            peerLease = peer;
+            peer = null;
+            stream = pipe;
+            pipe = null;
+        }
+
+        try
+        {
+            cancellation?.Cancel();
+        }
+        finally
+        {
+            stream?.Dispose();
+            peerLease?.Dispose();
+            cancellation?.Dispose();
+        }
     }
 
     internal static void ValidateName(string name)
@@ -228,10 +298,16 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         }
     }
 
-    internal static CancellationTokenSource CreateTimeout(TimeSpan timeout)
+    internal static CancellationTokenSource CreateTimeout(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default,
+        CancellationToken lifetimeToken = default)
     {
         ValidateTimeout(timeout);
-        return new CancellationTokenSource(timeout);
+        CancellationTokenSource result = CancellationTokenSource
+            .CreateLinkedTokenSource(cancellationToken, lifetimeToken);
+        result.CancelAfter(timeout);
+        return result;
     }
 
     internal static void ValidateTimeout(TimeSpan timeout)
@@ -242,11 +318,71 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         }
     }
 
-    private async Task<byte[]> ReceiveOnceAsync(TimeSpan timeout)
+    internal static uint GetClientProcessId(SafePipeHandle pipeHandle)
+    {
+        ArgumentNullException.ThrowIfNull(pipeHandle);
+        bool handleAdded = false;
+        try
+        {
+            pipeHandle.DangerousAddRef(ref handleAdded);
+            if (NativeMethods.GetNamedPipeClientProcessId(
+                    pipeHandle.DangerousGetHandle(),
+                    out uint clientProcessId) == 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "GetNamedPipeClientProcessId failed");
+            }
+
+            return clientProcessId;
+        }
+        finally
+        {
+            if (handleAdded)
+            {
+                pipeHandle.DangerousRelease();
+            }
+        }
+    }
+
+    internal static uint GetServerProcessId(SafePipeHandle pipeHandle)
+    {
+        ArgumentNullException.ThrowIfNull(pipeHandle);
+        bool handleAdded = false;
+        try
+        {
+            pipeHandle.DangerousAddRef(ref handleAdded);
+            if (NativeMethods.GetNamedPipeServerProcessId(
+                    pipeHandle.DangerousGetHandle(),
+                    out uint serverProcessId) == 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "GetNamedPipeServerProcessId failed");
+            }
+
+            return serverProcessId;
+        }
+        finally
+        {
+            if (handleAdded)
+            {
+                pipeHandle.DangerousRelease();
+            }
+        }
+    }
+
+    private async Task<byte[]> ReceiveOnceAsync(
+        NamedPipeServerStream stream,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         try
         {
-            return await PipeFrames.ReceiveAsync(GetPipe(), timeout)
+            return await PipeFrames.ReceiveAsync(
+                    stream,
+                    timeout,
+                    cancellationToken,
+                    lifetimeToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -256,11 +392,21 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         }
     }
 
-    private async Task SendOnceAsync(ReadOnlyMemory<byte> frame, TimeSpan timeout)
+    private async Task SendOnceAsync(
+        NamedPipeServerStream stream,
+        ReadOnlyMemory<byte> frame,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         try
         {
-            await PipeFrames.SendAsync(GetPipe(), frame, timeout)
+            await PipeFrames.SendAsync(
+                    stream,
+                    frame,
+                    timeout,
+                    cancellationToken,
+                    lifetimeToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -270,18 +416,51 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
         }
     }
 
-    private void EnsureAuthenticatedPeer()
+    private (NamedPipeServerStream Stream, CancellationToken LifetimeToken)
+        GetAcceptState()
     {
-        if (peer is null || pipe is null || !pipe.IsConnected)
+        lock (lifecycleGate)
         {
-            throw new InvalidOperationException(
-                "The named-pipe peer is not authenticated.");
-        }
+            if (disposed || pipe is null || lifetimeCancellation is null)
+            {
+                throw new ObjectDisposedException(nameof(ProtectedNamedPipe));
+            }
 
-        peer.EnsureStillAlive();
-        if (!peer.Matches(ExpectedPeer))
+            if (pipe.IsConnected || peer is not null)
+            {
+                throw new InvalidOperationException(
+                    "The pipe already accepted a peer.");
+            }
+
+            return (pipe, lifetimeCancellation.Token);
+        }
+    }
+
+    private (NamedPipeServerStream Stream, CancellationToken LifetimeToken)
+        GetAuthenticatedState()
+    {
+        lock (lifecycleGate)
         {
-            throw new SecurityException("The named-pipe peer identity changed.");
+            if (disposed || pipe is null || lifetimeCancellation is null)
+            {
+                throw new InvalidOperationException(
+                    "The named-pipe peer is not authenticated.");
+            }
+
+            if (peer is null || !pipe.IsConnected)
+            {
+                throw new InvalidOperationException(
+                    "The named-pipe peer is not authenticated.");
+            }
+
+            peer.EnsureStillAlive();
+            if (!peer.Matches(ExpectedPeer))
+            {
+                throw new SecurityException(
+                    "The named-pipe peer identity changed.");
+            }
+
+            return (pipe, lifetimeCancellation.Token);
         }
     }
 
@@ -309,15 +488,35 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
 
     private static string ReadAppliedDescriptor(SafePipeHandle pipeHandle)
     {
-        uint result = NativeMethods.GetSecurityInfo(
-            pipeHandle.DangerousGetHandle(),
-            NativeMethods.SeKernelObject,
-            NativeMethods.DaclSecurityInformation,
-            out nint owner,
-            out nint group,
-            out nint dacl,
-            out nint sacl,
-            out nint securityDescriptor);
+        ArgumentNullException.ThrowIfNull(pipeHandle);
+        uint result;
+        nint owner;
+        nint group;
+        nint dacl;
+        nint sacl;
+        nint securityDescriptor;
+        bool handleAdded = false;
+        try
+        {
+            pipeHandle.DangerousAddRef(ref handleAdded);
+            result = NativeMethods.GetSecurityInfo(
+                pipeHandle.DangerousGetHandle(),
+                NativeMethods.SeKernelObject,
+                NativeMethods.DaclSecurityInformation,
+                out owner,
+                out group,
+                out dacl,
+                out sacl,
+                out securityDescriptor);
+        }
+        finally
+        {
+            if (handleAdded)
+            {
+                pipeHandle.DangerousRelease();
+            }
+        }
+
         _ = owner;
         _ = group;
         _ = dacl;
@@ -392,9 +591,12 @@ internal sealed partial class ProtectedNamedPipe : IDisposable
 
 internal sealed class ProtectedNamedPipeClient : IDisposable
 {
+    private readonly object lifecycleGate = new();
+    private CancellationTokenSource? lifetimeCancellation = new();
     private NamedPipeClientStream? pipe;
     private ProcessIdentityLease? peer;
     private readonly BootstrapBinding expectedPeer;
+    private bool disposed;
     private int sendStarted;
     private int receiveStarted;
 
@@ -410,52 +612,77 @@ internal sealed class ProtectedNamedPipeClient : IDisposable
 
     internal static ProtectedNamedPipeClient Connect(
         string pipeName,
-        BootstrapBinding expectedServer)
+        BootstrapBinding expectedServer,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        return ConnectAsync(
+                pipeName,
+                expectedServer,
+                timeout,
+                cancellationToken)
+            .GetAwaiter()
+            .GetResult();
+    }
+
+    internal static async Task<ProtectedNamedPipeClient> ConnectAsync(
+        string pipeName,
+        BootstrapBinding expectedServer,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        return await ConnectAsync(
+                pipeName,
+                expectedServer,
+                timeout,
+                cancellationToken,
+                authenticationTestHook: null)
+            .ConfigureAwait(false);
+    }
+
+    internal static async Task<ProtectedNamedPipeClient> ConnectAsync(
+        string pipeName,
+        BootstrapBinding expectedServer,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        Action<CancellationToken>? authenticationTestHook)
     {
         ProtectedNamedPipe.ValidateName(pipeName);
         ArgumentNullException.ThrowIfNull(expectedServer);
-        nint rawHandle = NativeMethods.CreateFile(
-            "\\\\.\\pipe\\" + pipeName,
-            NativeMethods.GenericRead | NativeMethods.GenericWrite,
-            0,
-            0,
-            NativeMethods.OpenExisting,
-            NativeMethods.FileFlagOverlapped |
-                NativeMethods.SecuritySqosPresent |
-                NativeMethods.SecurityIdentification,
-            0);
-        SafePipeHandle? safeHandle = new(rawHandle, true);
-        if (safeHandle.IsInvalid)
-        {
-            safeHandle.Dispose();
-            throw NativeMethods.Win32Failure("Opening the named pipe failed");
-        }
+        ProtectedNamedPipe.ValidateTimeout(timeout);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        NamedPipeClientStream? stream = null;
+        NamedPipeClientStream? stream = new(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous,
+            TokenImpersonationLevel.Identification,
+            HandleInheritability.None);
         ProcessIdentityLease? server = null;
+        using CancellationTokenSource operation = ProtectedNamedPipe.CreateTimeout(
+            timeout,
+            cancellationToken);
         try
         {
-            stream = new NamedPipeClientStream(
-                PipeDirection.InOut,
-                true,
-                true,
-                safeHandle);
-            safeHandle = null;
-            if (NativeMethods.GetNamedPipeServerProcessId(
-                    stream.SafePipeHandle.DangerousGetHandle(),
-                    out uint serverProcessId) == 0)
-            {
-                throw NativeMethods.Win32Failure(
-                    "GetNamedPipeServerProcessId failed");
-            }
+            await stream.ConnectAsync(Timeout.Infinite, operation.Token)
+                .ConfigureAwait(false);
+            operation.Token.ThrowIfCancellationRequested();
+            uint serverProcessId = ProtectedNamedPipe.GetServerProcessId(
+                stream.SafePipeHandle);
+            operation.Token.ThrowIfCancellationRequested();
 
             server = ProcessIdentityLease.Capture(serverProcessId);
+            operation.Token.ThrowIfCancellationRequested();
             if (!server.Matches(expectedServer))
             {
                 throw new SecurityException(
                     "The named-pipe server identity does not match the binding.");
             }
 
+            operation.Token.ThrowIfCancellationRequested();
+            authenticationTestHook?.Invoke(operation.Token);
+            operation.Token.ThrowIfCancellationRequested();
             ProtectedNamedPipeClient result = new(
                 stream,
                 server,
@@ -464,63 +691,117 @@ internal sealed class ProtectedNamedPipeClient : IDisposable
             server = null;
             return result;
         }
+        catch (OperationCanceledException exception)
+            when (!cancellationToken.IsCancellationRequested &&
+                operation.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "Connecting and authenticating the named pipe timed out.",
+                exception);
+        }
         finally
         {
             server?.Dispose();
             stream?.Dispose();
-            safeHandle?.Dispose();
         }
     }
 
-    internal Task<byte[]> ReceiveFrameAsync(TimeSpan timeout)
+    internal Task<byte[]> ReceiveFrameAsync(
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        EnsureAuthenticatedPeer();
         ProtectedNamedPipe.ValidateTimeout(timeout);
+        (NamedPipeClientStream stream, CancellationToken lifetimeToken) =
+            GetAuthenticatedState();
         if (Interlocked.Exchange(ref receiveStarted, 1) != 0)
         {
             throw new InvalidOperationException(
                 "The one-shot receive operation was already started.");
         }
 
-        return ReceiveOnceAsync(timeout);
+        return ReceiveOnceAsync(
+            stream,
+            timeout,
+            cancellationToken,
+            lifetimeToken);
     }
 
-    internal Task SendFrameAsync(ReadOnlyMemory<byte> frame, TimeSpan timeout)
+    internal Task SendFrameAsync(
+        ReadOnlyMemory<byte> frame,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
     {
-        EnsureAuthenticatedPeer();
         PipeFrames.ValidateFrame(frame);
         ProtectedNamedPipe.ValidateTimeout(timeout);
+        (NamedPipeClientStream stream, CancellationToken lifetimeToken) =
+            GetAuthenticatedState();
         if (Interlocked.Exchange(ref sendStarted, 1) != 0)
         {
             throw new InvalidOperationException(
                 "The one-shot send operation was already started.");
         }
 
-        return SendOnceAsync(frame, timeout);
+        return SendOnceAsync(
+            stream,
+            frame,
+            timeout,
+            cancellationToken,
+            lifetimeToken);
     }
 
     public void Dispose()
     {
-        ProcessIdentityLease? peerLease = peer;
-        peer = null;
-        peerLease?.Dispose();
-        NamedPipeClientStream? stream = pipe;
-        pipe = null;
-        stream?.Dispose();
-    }
-
-    private void EnsureAuthenticatedPeer()
-    {
-        if (peer is null || pipe is null || !pipe.IsConnected)
+        CancellationTokenSource? cancellation;
+        ProcessIdentityLease? peerLease;
+        NamedPipeClientStream? stream;
+        lock (lifecycleGate)
         {
-            throw new InvalidOperationException(
-                "The named-pipe peer is not authenticated.");
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            cancellation = lifetimeCancellation;
+            lifetimeCancellation = null;
+            peerLease = peer;
+            peer = null;
+            stream = pipe;
+            pipe = null;
         }
 
-        peer.EnsureStillAlive();
-        if (!peer.Matches(expectedPeer))
+        try
         {
-            throw new SecurityException("The named-pipe peer identity changed.");
+            cancellation?.Cancel();
+        }
+        finally
+        {
+            stream?.Dispose();
+            peerLease?.Dispose();
+            cancellation?.Dispose();
+        }
+    }
+
+    private (NamedPipeClientStream Stream, CancellationToken LifetimeToken)
+        GetAuthenticatedState()
+    {
+        lock (lifecycleGate)
+        {
+            if (disposed || peer is null || pipe is null ||
+                lifetimeCancellation is null || !pipe.IsConnected)
+            {
+                throw new InvalidOperationException(
+                    "The named-pipe peer is not authenticated.");
+            }
+
+            peer.EnsureStillAlive();
+            if (!peer.Matches(expectedPeer))
+            {
+                throw new SecurityException(
+                    "The named-pipe peer identity changed.");
+            }
+
+            return (pipe, lifetimeCancellation.Token);
         }
     }
 
@@ -530,11 +811,19 @@ internal sealed class ProtectedNamedPipeClient : IDisposable
             nameof(ProtectedNamedPipeClient));
     }
 
-    private async Task<byte[]> ReceiveOnceAsync(TimeSpan timeout)
+    private async Task<byte[]> ReceiveOnceAsync(
+        NamedPipeClientStream stream,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         try
         {
-            return await PipeFrames.ReceiveAsync(GetPipe(), timeout)
+            return await PipeFrames.ReceiveAsync(
+                    stream,
+                    timeout,
+                    cancellationToken,
+                    lifetimeToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -544,11 +833,21 @@ internal sealed class ProtectedNamedPipeClient : IDisposable
         }
     }
 
-    private async Task SendOnceAsync(ReadOnlyMemory<byte> frame, TimeSpan timeout)
+    private async Task SendOnceAsync(
+        NamedPipeClientStream stream,
+        ReadOnlyMemory<byte> frame,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         try
         {
-            await PipeFrames.SendAsync(GetPipe(), frame, timeout)
+            await PipeFrames.SendAsync(
+                    stream,
+                    frame,
+                    timeout,
+                    cancellationToken,
+                    lifetimeToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -564,7 +863,9 @@ internal static class PipeFrames
     internal static async Task SendAsync(
         Stream pipe,
         ReadOnlyMemory<byte> frame,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         ValidateFrame(frame);
 
@@ -574,7 +875,10 @@ internal static class PipeFrames
             BinaryPrimitives.WriteInt32LittleEndian(output, frame.Length);
             frame.Span.CopyTo(output.AsSpan(sizeof(int)));
             using CancellationTokenSource cancellation =
-                ProtectedNamedPipe.CreateTimeout(timeout);
+                ProtectedNamedPipe.CreateTimeout(
+                    timeout,
+                    cancellationToken,
+                    lifetimeToken);
             await pipe.WriteAsync(output, cancellation.Token).ConfigureAwait(false);
         }
         finally
@@ -593,10 +897,15 @@ internal static class PipeFrames
 
     internal static async Task<byte[]> ReceiveAsync(
         Stream pipe,
-        TimeSpan timeout)
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
     {
         using CancellationTokenSource cancellation =
-            ProtectedNamedPipe.CreateTimeout(timeout);
+            ProtectedNamedPipe.CreateTimeout(
+                timeout,
+                cancellationToken,
+                lifetimeToken);
         byte[] prefix = new byte[sizeof(int)];
         try
         {
