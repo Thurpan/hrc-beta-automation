@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,9 +14,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 
+[assembly: System.Runtime.CompilerServices.DisableRuntimeMarshalling]
+
 namespace HrcJobObserver.WindowsBootstrap;
 
-internal static class Program
+internal static partial class Program
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan HarnessTimeout = TimeSpan.FromSeconds(20);
@@ -100,6 +103,17 @@ internal static class Program
             new("publication store owns snapshots and prevents ABA removal", TestPublicationStore),
             new("async publication leases stay store-affine and ABA-safe", TestAsyncPublicationStore),
             new("publication lease removal coalesces success and synchronous failure", TestPublicationLeaseCoalescing),
+            new("file publication round trips exact public bytes and removal", TestFilePublicationRoundTrip),
+            new("file publication preserves capacity and collision sentinels", TestFilePublicationCollisions),
+            new("file publication rejects malformed and wrongly secured state", TestFilePublicationInvalidState),
+            new("file publication leases remain ABA-safe across readers", TestFilePublicationAbaAndReaderRace),
+            new("file publication cleans deadline and cancellation failures", TestFilePublicationFailureCleanup),
+            new("file publication bounds occupied and collision paths", TestFilePublicationCollisionBounds),
+            new("file publication pins its exact directory namespace", TestFilePublicationDirectoryPinning),
+            new("file publication bounds multi-page directory enumeration", TestFilePublicationMultiPageEnumeration),
+            new("file publication rejects file-identity replacement", TestFilePublicationIdentityReplacement),
+            new("file publication rejects a real directory junction", TestFilePublicationReparsePoint),
+            new("file publication rename honours its retained root", TestFilePublicationRetainedRootRename),
             new("broker enforces role identity and security context", TestBrokerRoleBindings),
             new("broker disposal before run is coalesced and releases its name", TestBrokerDisposeBeforeRun),
             new("broker completes a cross-process claim and receipt", TestBrokerClaim),
@@ -2789,6 +2803,1139 @@ internal static class Program
             "a synchronous removal throw must be invoked once");
     }
 
+    private static async Task TestFilePublicationRoundTrip()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        byte[] expected = descriptor.ToArray();
+        byte[] sibling = { 0x73, 0x69, 0x62, 0x6c, 0x69, 0x6e, 0x67 };
+        string siblingPath = Path.Combine(directory.Path, "unrelated.keep");
+        File.WriteAllBytes(siblingPath, sibling);
+        try
+        {
+            using FileBootstrapPublicationStore publisher = new(
+                directory.Path,
+                directory.OwnerSid);
+            using FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid);
+            Assert(!reader.TryRead(out _),
+                "an empty protected directory must report no publication");
+
+            BootstrapPublishResult published = await publisher.TryPublishAsync(
+                    descriptor,
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            AssertEqual(BootstrapPublishStatus.Published, published.Status,
+                "file publication status");
+            BootstrapPublicationLease lease = published.Lease ??
+                throw new InvalidOperationException(
+                    "The file publication lease is missing.");
+
+            CryptographicOperations.ZeroMemory(descriptor);
+            string finalPath = directory.FinalPath;
+            byte[] persisted;
+            Assert(reader.TryRead(out BootstrapPublicationSnapshot? persistedSnapshot) &&
+                persistedSnapshot is not null,
+                "the fixed descriptor must be readable through the guarded reader");
+            using BootstrapPublicationSnapshot persistedOwned =
+                persistedSnapshot ?? throw new InvalidOperationException(
+                    "The guarded persisted snapshot is missing.");
+            {
+                persisted = persistedOwned.Descriptor.ToArray();
+            }
+            try
+            {
+                Assert(persisted.AsSpan().SequenceEqual(expected),
+                    "the fixed file must contain exactly the canonical descriptor");
+                Assert(!ContainsSequence(persisted, fixture.Token),
+                    "the public descriptor file must not contain the bearer token");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(persisted);
+            }
+
+            Assert(reader.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null,
+                "the independent reader must observe the publication");
+            BootstrapPublicationSnapshot owned = snapshot ??
+                throw new InvalidOperationException(
+                    "The file publication snapshot is missing.");
+            byte[] borrowed = GetPrivateField(owned, "descriptor") as byte[] ??
+                throw new InvalidOperationException(
+                    "The file snapshot backing is unavailable.");
+            Assert(borrowed.AsSpan().SequenceEqual(expected),
+                "the reader snapshot must equal the canonical descriptor");
+            owned.Dispose();
+            Assert(AllZero(borrowed),
+                "disposing a file reader snapshot must wipe its backing buffer");
+
+            BootstrapPublicationRemovalStatus removed =
+                await lease.RemoveExactAsync(
+                        MonotonicDeadline.Start(
+                            TimeProvider.System,
+                            TestTimeout))
+                    .ConfigureAwait(false);
+            AssertEqual(BootstrapPublicationRemovalStatus.Removed, removed,
+                "file publication removal status");
+            Assert(!File.Exists(finalPath),
+                "exact removal must make the fixed name absent");
+            Assert(!reader.TryRead(out _),
+                "the independent reader must report absence after removal");
+            Assert(File.ReadAllBytes(siblingPath).AsSpan().SequenceEqual(sibling),
+                "exact removal must preserve unrelated sibling files");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+            CryptographicOperations.ZeroMemory(expected);
+            CryptographicOperations.ZeroMemory(sibling);
+        }
+    }
+
+    private static async Task TestFilePublicationCollisions()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            using FileBootstrapPublicationStore owner = new(
+                directory.Path,
+                directory.OwnerSid);
+            BootstrapPublishResult first = await owner.TryPublishAsync(
+                    descriptor,
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationLease ownerLease = first.Lease ??
+                throw new InvalidOperationException(
+                    "The capacity owner lease is missing.");
+
+            int occupiedFactoryCalls = 0;
+            using (FileBootstrapPublicationStore contender = new(
+                directory.Path,
+                directory.OwnerSid,
+                () =>
+                {
+                    occupiedFactoryCalls++;
+                    return "must-not-be-created.tmp";
+                },
+                testHook: null))
+            {
+                BootstrapPublishResult occupied =
+                    await contender.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                AssertEqual(BootstrapPublishStatus.Occupied, occupied.Status,
+                    "occupied fixed-file publication status");
+                Assert(occupied.Lease is null,
+                    "an occupied fixed file must not return a lease");
+                AssertEqual(0, occupiedFactoryCalls,
+                    "occupied detection must not allocate a temporary name");
+            }
+
+            _ = await ownerLease.RemoveExactAsync(
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout))
+                .ConfigureAwait(false);
+
+            const string TempCollision = "endpoint-v1-collision.tmp";
+            string tempPath = Path.Combine(directory.Path, TempCollision);
+            byte[] tempSentinel = { 0x54, 0x45, 0x4d, 0x50 };
+            File.WriteAllBytes(tempPath, tempSentinel);
+            using (FileBootstrapPublicationStore collidingTemps = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => TempCollision,
+                testHook: null))
+            {
+                await AssertThrowsAsync<IOException>(async () =>
+                {
+                    _ = await collidingTemps.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            Assert(File.ReadAllBytes(tempPath).AsSpan().SequenceEqual(tempSentinel),
+                "temporary-name exhaustion must not overwrite its sentinel");
+            Assert(!File.Exists(directory.FinalPath),
+                "temporary-name exhaustion must not publish a final file");
+            File.Delete(tempPath);
+
+            bool injectedFinal = false;
+            const string RaceTemp = "endpoint-v1-race.tmp";
+            using (FileBootstrapPublicationStore renameCollision = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => RaceTemp,
+                stage =>
+                {
+                    if (stage == FilePublicationStage.BeforeRename &&
+                        !injectedFinal)
+                    {
+                        injectedFinal = true;
+                        CreateProtectedTestFile(
+                            directory.FinalPath,
+                            directory.OwnerSid,
+                            descriptor,
+                            includeSystem: true);
+                    }
+                }))
+            {
+                BootstrapPublishResult collision =
+                    await renameCollision.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                AssertEqual(BootstrapPublishStatus.Occupied, collision.Status,
+                    "atomic final-name collision status");
+                Assert(collision.Lease is null,
+                    "an atomic final-name collision must not return a lease");
+            }
+
+            Assert(injectedFinal,
+                "the final-name collision hook must run");
+            Assert(!File.Exists(Path.Combine(directory.Path, RaceTemp)),
+                "a final-name collision must clean only its owned temp file");
+            byte[] finalSentinel = File.ReadAllBytes(directory.FinalPath);
+            try
+            {
+                Assert(finalSentinel.AsSpan().SequenceEqual(descriptor),
+                    "a final-name collision must preserve the winning file");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(finalSentinel);
+            }
+
+            File.Delete(directory.FinalPath);
+            CryptographicOperations.ZeroMemory(tempSentinel);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestFilePublicationInvalidState()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] canonical = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            AssertThrows<SecurityException>(() =>
+            {
+                using FileBootstrapPublicationReader ignored = new(
+                    directory.Path,
+                    "S-1-1-0");
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using FileBootstrapPublicationStore ignored = new(
+                    directory.Path,
+                    "S-1-1-0");
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using FileBootstrapPublicationReader ignored = new(
+                    @"\\server\share\hrc-bootstrap-test",
+                    directory.OwnerSid);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using FileBootstrapPublicationReader ignored = new(
+                    @"\\?\C:\hrc-bootstrap-test",
+                    directory.OwnerSid);
+            });
+
+            using (FilePublicationTestDirectory wrongDirectory = new(
+                includeSystem: false))
+            {
+                AssertThrows<SecurityException>(() =>
+                {
+                    using FileBootstrapPublicationReader ignored = new(
+                        wrongDirectory.Path,
+                        wrongDirectory.OwnerSid);
+                });
+            }
+
+            byte[][] invalidBodies =
+            {
+                new byte[] { 0x01, 0x02, 0x03 },
+                canonical.Concat(new byte[] { 0x00 }).ToArray(),
+                Enumerable.Repeat(
+                        (byte)0x41,
+                        BootstrapDescriptor.MaximumEncodedLength + 1)
+                    .ToArray(),
+            };
+            foreach (byte[] invalid in invalidBodies)
+            {
+                CreateProtectedTestFile(
+                    directory.FinalPath,
+                    directory.OwnerSid,
+                    invalid,
+                    includeSystem: true);
+                using FileBootstrapPublicationReader reader = new(
+                    directory.Path,
+                    directory.OwnerSid);
+                using FileBootstrapPublicationStore publisher = new(
+                    directory.Path,
+                    directory.OwnerSid);
+                AssertThrowsAny(
+                    () => reader.TryRead(out _),
+                    typeof(FormatException),
+                    typeof(InvalidDataException));
+                await AssertThrowsAnyAsync(async () =>
+                {
+                    _ = await publisher.TryPublishAsync(
+                            canonical,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }, typeof(FormatException), typeof(InvalidDataException))
+                    .ConfigureAwait(false);
+                Assert(File.ReadAllBytes(directory.FinalPath)
+                        .AsSpan()
+                        .SequenceEqual(invalid),
+                    "invalid occupied state must remain unchanged");
+                File.Delete(directory.FinalPath);
+                CryptographicOperations.ZeroMemory(invalid);
+            }
+
+            CreateProtectedTestFile(
+                directory.FinalPath,
+                directory.OwnerSid,
+                canonical,
+                includeSystem: false);
+            using (FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid))
+            {
+                AssertThrows<SecurityException>(() => reader.TryRead(out _));
+            }
+
+            Assert(File.ReadAllBytes(directory.FinalPath)
+                    .AsSpan()
+                    .SequenceEqual(canonical),
+                "wrongly secured final state must not be adopted or deleted");
+            File.Delete(directory.FinalPath);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(canonical);
+        }
+    }
+
+    private static async Task TestFilePublicationAbaAndReaderRace()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        BootstrapPublicationSnapshot? preRemoval = null;
+        string removalMovedPath = directory.Path + "-after-removal-aba";
+        try
+        {
+            using FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid);
+            using (FileBootstrapPublicationStore firstStore = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-first.tmp",
+                stage =>
+                {
+                    if (stage == FilePublicationStage.BeforeDisposition)
+                    {
+                        Assert(reader.TryRead(out preRemoval) &&
+                            preRemoval is not null,
+                            "a reader admitted before disposition must get a snapshot");
+                    }
+                }))
+            {
+                BootstrapPublishResult first = await firstStore.TryPublishAsync(
+                        descriptor,
+                        MonotonicDeadline.Start(
+                            TimeProvider.System,
+                            TestTimeout),
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+                BootstrapPublicationLease stale = first.Lease ??
+                    throw new InvalidOperationException(
+                        "The first file lease is missing.");
+                _ = await stale.RemoveExactAsync(
+                        MonotonicDeadline.Start(
+                            TimeProvider.System,
+                            TestTimeout))
+                    .ConfigureAwait(false);
+                Assert(preRemoval is not null &&
+                    preRemoval.Descriptor.SequenceEqual(descriptor),
+                    "an admitted reader snapshot must survive exact removal");
+
+                using FileBootstrapPublicationStore replacementStore = new(
+                    directory.Path,
+                    directory.OwnerSid);
+                BootstrapPublishResult replacement =
+                    await replacementStore.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                BootstrapPublicationLease replacementLease = replacement.Lease ??
+                    throw new InvalidOperationException(
+                        "The replacement file lease is missing.");
+
+                BootstrapPublicationRemovalStatus cached =
+                    await stale.RemoveExactAsync(
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout))
+                        .ConfigureAwait(false);
+                AssertEqual(BootstrapPublicationRemovalStatus.Removed, cached,
+                    "stale file lease cached status");
+                Assert(reader.TryRead(out BootstrapPublicationSnapshot? survivor) &&
+                    survivor is not null,
+                    "a stale lease must not remove an equal replacement");
+                (survivor ?? throw new InvalidOperationException(
+                    "The ABA survivor snapshot is missing.")).Dispose();
+                _ = await replacementLease.RemoveExactAsync(
+                        MonotonicDeadline.Start(
+                            TimeProvider.System,
+                            TestTimeout))
+                    .ConfigureAwait(false);
+            }
+
+            bool removalReplacementCreated = false;
+            FileBootstrapPublicationStore faultedStore = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-removal-aba.tmp",
+                stage =>
+                {
+                    if (stage == FilePublicationStage.RemovalHandleClosed &&
+                        !removalReplacementCreated)
+                    {
+                        removalReplacementCreated = true;
+                        CreateProtectedTestFile(
+                            directory.FinalPath,
+                            directory.OwnerSid,
+                            descriptor,
+                            includeSystem: true);
+                    }
+                });
+            try
+            {
+                BootstrapPublishResult published =
+                    await faultedStore.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                BootstrapPublicationLease removalLease = published.Lease ??
+                    throw new InvalidOperationException(
+                        "The removal-ABA lease is missing.");
+                Task<BootstrapPublicationRemovalStatus> firstRemoval =
+                    removalLease.RemoveExactAsync(
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout))
+                        .AsTask();
+                Task<BootstrapPublicationRemovalStatus> repeatedRemoval =
+                    removalLease.RemoveExactAsync(
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout))
+                        .AsTask();
+                Assert(ReferenceEquals(firstRemoval, repeatedRemoval),
+                    "a removal ABA failure must publish one cached task");
+                Exception firstFailure = await CaptureExceptionAsync(
+                        firstRemoval)
+                    .ConfigureAwait(false);
+                Exception repeatedFailure = await CaptureExceptionAsync(
+                        repeatedRemoval)
+                    .ConfigureAwait(false);
+                Assert(ContainsException<SecurityException>(firstFailure) &&
+                    ContainsException<SecurityException>(repeatedFailure),
+                    "every cached removal ABA failure must remain observable");
+                Assert(removalReplacementCreated,
+                    "the post-handle-close replacement hook must run");
+                Assert(File.ReadAllBytes(directory.FinalPath)
+                        .AsSpan()
+                        .SequenceEqual(descriptor),
+                    "failed exact removal must preserve the replacement bytes");
+                await AssertThrowsAsync<InvalidOperationException>(async () =>
+                {
+                    _ = await faultedStore.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+            finally
+            {
+                faultedStore.Dispose();
+            }
+
+            reader.Dispose();
+            Directory.Move(directory.Path, removalMovedPath);
+            Assert(Directory.Exists(removalMovedPath) &&
+                !Directory.Exists(directory.Path),
+                "faulted publisher disposal must release the directory namespace");
+            Directory.Move(removalMovedPath, directory.Path);
+            File.Delete(directory.FinalPath);
+            Directory.Delete(directory.Path);
+            Assert(!Directory.Exists(directory.Path),
+                "faulted publisher disposal must permit directory deletion");
+
+            byte[] borrowed = GetPrivateField(preRemoval ??
+                throw new InvalidOperationException(
+                    "The pre-removal snapshot is missing."),
+                    "descriptor") as byte[] ??
+                throw new InvalidOperationException(
+                    "The pre-removal snapshot backing is unavailable.");
+            preRemoval.Dispose();
+            Assert(AllZero(borrowed),
+                "the independent pre-removal snapshot must remain wipeable");
+        }
+        finally
+        {
+            preRemoval?.Dispose();
+            CryptographicOperations.ZeroMemory(descriptor);
+            if (Directory.Exists(removalMovedPath))
+            {
+                DeleteTestDirectoryTree(removalMovedPath);
+            }
+        }
+    }
+
+    private static async Task TestFilePublicationFailureCleanup()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            ManualTimeProvider clock = new(CanonicalTestUtcNow());
+            const string DeadlineTemp = "endpoint-v1-deadline.tmp";
+            using (FileBootstrapPublicationStore deadlineStore = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => DeadlineTemp,
+                stage =>
+                {
+                    if (stage == FilePublicationStage.AfterRename)
+                    {
+                        clock.Advance(TestTimeout);
+                    }
+                }))
+            {
+                await AssertThrowsAsync<TimeoutException>(async () =>
+                {
+                    _ = await deadlineStore.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(clock, TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            Assert(!File.Exists(directory.FinalPath) &&
+                !File.Exists(Path.Combine(directory.Path, DeadlineTemp)),
+                "a post-rename deadline failure must remove its exact owned file");
+
+            using CancellationTokenSource cancellation = new();
+            const string CancellationTemp = "endpoint-v1-cancel.tmp";
+            using (FileBootstrapPublicationStore cancellationStore = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => CancellationTemp,
+                stage =>
+                {
+                    if (stage == FilePublicationStage.TempCreated)
+                    {
+                        cancellation.Cancel();
+                    }
+                }))
+            {
+                await AssertThrowsAsync<OperationCanceledException>(async () =>
+                {
+                    _ = await cancellationStore.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            cancellation.Token)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            Assert(!File.Exists(directory.FinalPath) &&
+                !File.Exists(Path.Combine(directory.Path, CancellationTemp)),
+                "a cancelled publish must remove its exact owned temp file");
+
+            ManualTimeProvider removalClock = new(CanonicalTestUtcNow());
+            bool removalAdvanced = false;
+            using FileBootstrapPublicationStore removalStore = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-removal-deadline.tmp",
+                stage =>
+                {
+                    if (stage == FilePublicationStage.BeforeDisposition &&
+                        !removalAdvanced)
+                    {
+                        removalAdvanced = true;
+                        removalClock.Advance(TestTimeout);
+                    }
+                });
+            BootstrapPublishResult published =
+                await removalStore.TryPublishAsync(
+                        descriptor,
+                        MonotonicDeadline.Start(
+                            TimeProvider.System,
+                            TestTimeout),
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+            BootstrapPublicationLease lease = published.Lease ??
+                throw new InvalidOperationException(
+                    "The removal-deadline lease is missing.");
+            BootstrapPublicationRemovalStatus lateRemoval =
+                await lease.RemoveExactAsync(
+                        MonotonicDeadline.Start(removalClock, TestTimeout))
+                    .ConfigureAwait(false);
+            Assert(removalAdvanced,
+                "the removal deadline hook must run");
+            AssertEqual(
+                BootstrapPublicationRemovalStatus.RemovedAfterDeadline,
+                lateRemoval,
+                "verified late file removal status");
+            Assert(!File.Exists(directory.FinalPath),
+                "late removal must still verify fixed-name absence");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestFilePublicationCollisionBounds()
+    {
+        const int StatusObjectNameCollision = unchecked((int)0xC0000035);
+        const int StatusPending = 0x00000103;
+        const int StatusUnsuccessful = unchecked((int)0xC0000001);
+        Assert(GuardedDescriptorDirectory.ClassifyRenameResult(0),
+            "successful rename status classification");
+        Assert(!GuardedDescriptorDirectory.ClassifyRenameResult(
+                StatusObjectNameCollision),
+            "immediate name collision classification");
+        AssertThrows<IOException>(() =>
+            GuardedDescriptorDirectory.ClassifyRenameResult(StatusPending));
+        AssertThrows<IOException>(() =>
+            GuardedDescriptorDirectory.ClassifyRenameResult(
+                StatusUnsuccessful));
+
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            using FileBootstrapPublicationStore owner = new(
+                directory.Path,
+                directory.OwnerSid);
+            BootstrapPublishResult first = await owner.TryPublishAsync(
+                    descriptor,
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationLease ownerLease = first.Lease ??
+                throw new InvalidOperationException(
+                    "The occupied-bound owner lease is missing.");
+
+            using CancellationTokenSource occupiedCancellation = new();
+            occupiedCancellation.Cancel();
+            using (FileBootstrapPublicationStore cancelledContender = new(
+                directory.Path,
+                directory.OwnerSid))
+            {
+                await AssertThrowsAsync<OperationCanceledException>(async () =>
+                {
+                    _ = await cancelledContender.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            occupiedCancellation.Token)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            ManualTimeProvider occupiedClock = new(CanonicalTestUtcNow());
+            MonotonicDeadline occupiedDeadline = MonotonicDeadline.Start(
+                occupiedClock,
+                TestTimeout);
+            occupiedClock.Advance(TestTimeout);
+            using (FileBootstrapPublicationStore expiredContender = new(
+                directory.Path,
+                directory.OwnerSid))
+            {
+                await AssertThrowsAsync<TimeoutException>(async () =>
+                {
+                    _ = await expiredContender.TryPublishAsync(
+                            descriptor,
+                            occupiedDeadline,
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            _ = await ownerLease.RemoveExactAsync(
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout))
+                .ConfigureAwait(false);
+
+            const string TempCollision = "endpoint-v1-bounded-collision.tmp";
+            byte[] sentinel = { 0x62, 0x6f, 0x75, 0x6e, 0x64 };
+            string tempPath = Path.Combine(directory.Path, TempCollision);
+            File.WriteAllBytes(tempPath, sentinel);
+            ManualTimeProvider tempClock = new(CanonicalTestUtcNow());
+            int attempts = 0;
+            using (FileBootstrapPublicationStore tempDeadline = new(
+                directory.Path,
+                directory.OwnerSid,
+                () =>
+                {
+                    attempts++;
+                    if (attempts == 1)
+                    {
+                        tempClock.Advance(TestTimeout);
+                    }
+
+                    return TempCollision;
+                },
+                testHook: null))
+            {
+                await AssertThrowsAsync<TimeoutException>(async () =>
+                {
+                    _ = await tempDeadline.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(tempClock, TestTimeout),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            AssertEqual(1, attempts,
+                "temp-collision deadline check attempt count");
+            Assert(File.ReadAllBytes(tempPath).AsSpan().SequenceEqual(sentinel),
+                "temp-collision deadline must preserve its sentinel");
+            File.Delete(tempPath);
+
+            bool cancellationInjected = false;
+            using CancellationTokenSource renameCancellation = new();
+            using (FileBootstrapPublicationStore renameCollision = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-bounded-rename.tmp",
+                stage =>
+                {
+                    if (stage == FilePublicationStage.BeforeRename &&
+                        !cancellationInjected)
+                    {
+                        cancellationInjected = true;
+                        CreateProtectedTestFile(
+                            directory.FinalPath,
+                            directory.OwnerSid,
+                            descriptor,
+                            includeSystem: true);
+                        renameCancellation.Cancel();
+                    }
+                }))
+            {
+                await AssertThrowsAsync<OperationCanceledException>(async () =>
+                {
+                    _ = await renameCollision.TryPublishAsync(
+                            descriptor,
+                            MonotonicDeadline.Start(
+                                TimeProvider.System,
+                                TestTimeout),
+                            renameCancellation.Token)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(false);
+            }
+
+            Assert(cancellationInjected,
+                "rename-collision cancellation hook must run");
+            Assert(File.Exists(directory.FinalPath),
+                "rename-collision cancellation must preserve the winning final");
+            Assert(!File.Exists(Path.Combine(
+                directory.Path,
+                "endpoint-v1-bounded-rename.tmp")),
+                "rename-collision cancellation must remove its owned temp");
+            File.Delete(directory.FinalPath);
+            CryptographicOperations.ZeroMemory(sentinel);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestFilePublicationDirectoryPinning()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        string movedPath = directory.Path + "-moved";
+        bool moveAttempted = false;
+        bool moveRejected = false;
+        try
+        {
+            using FileBootstrapPublicationStore publisher = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-directory-pin.tmp",
+                stage =>
+                {
+                    if (stage == FilePublicationStage.TempCreated &&
+                        !moveAttempted)
+                    {
+                        moveAttempted = true;
+                        try
+                        {
+                            Directory.Move(directory.Path, movedPath);
+                        }
+                        catch (IOException exception) when (
+                            (exception.HResult & 0xffff) == 32)
+                        {
+                            moveRejected = true;
+                        }
+                    }
+                });
+            BootstrapPublishResult result = await publisher.TryPublishAsync(
+                    descriptor,
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            Assert(moveAttempted,
+                "the guarded-directory rename hook must run");
+            Assert(moveRejected,
+                "the retained guarded-directory handle must reject namespace rename");
+            Assert(Directory.Exists(directory.Path) &&
+                !Directory.Exists(movedPath),
+                "the guarded directory path must remain pinned");
+            BootstrapPublicationLease lease = result.Lease ??
+                throw new InvalidOperationException(
+                    "The directory-pinning publication lease is missing.");
+            _ = await lease.RemoveExactAsync(
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+            if (Directory.Exists(directory.Path))
+            {
+                DeleteTestDirectoryTree(directory.Path);
+            }
+
+            if (Directory.Exists(movedPath))
+            {
+                DeleteTestDirectoryTree(movedPath);
+            }
+        }
+    }
+
+    private static async Task TestFilePublicationMultiPageEnumeration()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        const int MultiPageCount = 400;
+        const int OverBudgetCount = 2_300;
+        string longSuffix = new('x', 180);
+        try
+        {
+            for (int index = 0; index < MultiPageCount; index++)
+            {
+                File.WriteAllBytes(
+                    Path.Combine(
+                        directory.Path,
+                        "a-sentinel-" + index.ToString("D4") +
+                            "-" + longSuffix + ".bin"),
+                    new byte[] { checked((byte)(index & 0xff)) });
+            }
+
+            using FileBootstrapPublicationStore publisher = new(
+                directory.Path,
+                directory.OwnerSid);
+            using FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid);
+            BootstrapPublishResult published = await publisher.TryPublishAsync(
+                    descriptor,
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationLease lease = published.Lease ??
+                throw new InvalidOperationException(
+                    "The multi-page enumeration lease is missing.");
+            Assert(reader.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null,
+                "the reader must find the fixed name beyond one enumeration page");
+            (snapshot ?? throw new InvalidOperationException(
+                "The multi-page snapshot is missing.")).Dispose();
+            _ = await lease.RemoveExactAsync(
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout))
+                .ConfigureAwait(false);
+            AssertEqual(
+                MultiPageCount,
+                Directory.EnumerateFiles(directory.Path, "a-sentinel-*.bin").Count(),
+                "multi-page sentinel preservation count");
+
+            for (int index = MultiPageCount;
+                index < OverBudgetCount;
+                index++)
+            {
+                File.WriteAllBytes(
+                    Path.Combine(
+                        directory.Path,
+                        "a-sentinel-" + index.ToString("D4") +
+                            "-" + longSuffix + ".bin"),
+                    new byte[] { checked((byte)(index & 0xff)) });
+            }
+
+            AssertThrows<SecurityException>(() => reader.TryRead(out _));
+            AssertEqual(
+                OverBudgetCount,
+                Directory.EnumerateFiles(directory.Path, "a-sentinel-*.bin").Count(),
+                "enumeration-budget sentinel preservation count");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestFilePublicationIdentityReplacement()
+    {
+        using FilePublicationTestDirectory directory = new();
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] original = fixture.CreateDescriptor().EncodeCanonical();
+        bool replacementAttempted = false;
+        bool replacementRejected = false;
+        try
+        {
+            using FileBootstrapPublicationStore publisher = new(
+                directory.Path,
+                directory.OwnerSid,
+                () => "endpoint-v1-identity.tmp",
+                stage =>
+                {
+                    if (stage != FilePublicationStage.FinalValidated ||
+                        replacementAttempted)
+                    {
+                        return;
+                    }
+
+                    replacementAttempted = true;
+                    try
+                    {
+                        PosixUnlinkTestFile(directory.FinalPath);
+                    }
+                    catch (Win32Exception exception) when (
+                        exception.NativeErrorCode == 32)
+                    {
+                        replacementRejected = true;
+                    }
+                    catch (IOException exception) when (
+                        (exception.HResult & 0xffff) == 32)
+                    {
+                        replacementRejected = true;
+                    }
+                });
+            BootstrapPublishResult published = await publisher.TryPublishAsync(
+                    original,
+                    MonotonicDeadline.Start(
+                        TimeProvider.System,
+                        TestTimeout),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            Assert(replacementAttempted,
+                "the final-validation replacement hook must run");
+            Assert(replacementRejected,
+                "the retained publication handle must reject name replacement");
+            BootstrapPublicationLease lease = published.Lease ??
+                throw new InvalidOperationException(
+                    "The replacement-defence lease is missing.");
+            using FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid);
+            Assert(reader.TryRead(out BootstrapPublicationSnapshot? snapshot) &&
+                snapshot is not null,
+                "the guarded name must still resolve to the published descriptor");
+            using BootstrapPublicationSnapshot owned = snapshot ??
+                throw new InvalidOperationException(
+                    "The replacement-defence snapshot is missing.");
+            Assert(owned.Descriptor.SequenceEqual(original),
+                "the guarded publication bytes must remain unchanged");
+            _ = await lease.RemoveExactAsync(
+                    MonotonicDeadline.Start(
+                        TimeProvider.System,
+                        TestTimeout))
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(original);
+        }
+    }
+
+    private static Task TestFilePublicationReparsePoint()
+    {
+        using FilePublicationTestDirectory directory = new();
+        string target = Path.Combine(directory.Path, "reparse-target");
+        string leafJunction = directory.FinalPath;
+        string rootJunction = Path.Combine(
+            directory.Path,
+            "reparse-root-junction");
+        CreateProtectedTestDirectory(
+            target,
+            directory.OwnerSid,
+            includeSystem: true);
+        CreateProtectedTestDirectory(
+            leafJunction,
+            directory.OwnerSid,
+            includeSystem: true);
+        CreateProtectedTestDirectory(
+            rootJunction,
+            directory.OwnerSid,
+            includeSystem: true);
+        byte[] sentinel = { 0x6a, 0x75, 0x6e, 0x63, 0x74, 0x69, 0x6f, 0x6e };
+        string targetSentinel = Path.Combine(target, "unchanged.bin");
+        File.WriteAllBytes(targetSentinel, sentinel);
+        try
+        {
+            CreateDirectoryJunction(leafJunction, target);
+            CreateDirectoryJunction(rootJunction, target);
+            Assert((File.GetAttributes(leafJunction) &
+                    FileAttributes.ReparsePoint) != 0,
+                "the fixed-leaf junction must expose the reparse attribute");
+            Assert((File.GetAttributes(rootJunction) &
+                    FileAttributes.ReparsePoint) != 0,
+                "the root junction must expose the reparse attribute");
+            Assert(File.ReadAllBytes(Path.Combine(
+                        leafJunction,
+                        "unchanged.bin"))
+                    .AsSpan()
+                    .SequenceEqual(sentinel),
+                "the fixed-leaf junction must resolve before rejection");
+            using (FileBootstrapPublicationReader reader = new(
+                directory.Path,
+                directory.OwnerSid))
+            {
+                AssertThrowsAny(
+                    () => reader.TryRead(out _),
+                    typeof(SecurityException),
+                    typeof(Win32Exception),
+                    typeof(IOException));
+            }
+
+            AssertThrows<SecurityException>(() =>
+            {
+                using FileBootstrapPublicationReader ignored = new(
+                    rootJunction,
+                    directory.OwnerSid);
+            });
+            Assert(File.ReadAllBytes(targetSentinel)
+                    .AsSpan()
+                    .SequenceEqual(sentinel),
+                "reparse rejection must not alter its target");
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(sentinel);
+        }
+    }
+
+    private static Task TestFilePublicationRetainedRootRename()
+    {
+        using FilePublicationTestDirectory source = new();
+        using FilePublicationTestDirectory destination = new();
+        const string SourceName = "endpoint-v1-native-source.tmp";
+        const string TargetName = "endpoint-v1-native-target.bin";
+        byte[] firstBytes = { 0x72, 0x6f, 0x6f, 0x74, 0x2d, 0x31 };
+        byte[] secondBytes = { 0x72, 0x6f, 0x6f, 0x74, 0x2d, 0x32 };
+        string firstSource = Path.Combine(source.Path, SourceName);
+        string secondSource = Path.Combine(source.Path, SourceName + ".second");
+        string target = Path.Combine(destination.Path, TargetName);
+        try
+        {
+            CreateProtectedTestFile(
+                firstSource,
+                source.OwnerSid,
+                firstBytes,
+                includeSystem: true);
+            using GuardedDescriptorDirectory retainedRoot =
+                GuardedDescriptorDirectory.Open(
+                    destination.Path,
+                    destination.OwnerSid,
+                    testHook: null);
+            using SafeFileHandle first = OpenRenameSourceForTest(firstSource);
+            Assert(retainedRoot.TryRenameNoReplace(first, TargetName),
+                "the retained root rename must succeed");
+            first.Dispose();
+            Assert(!File.Exists(firstSource) && File.Exists(target),
+                "the native rename must move the source only into the retained root");
+            Assert(File.ReadAllBytes(target).AsSpan().SequenceEqual(firstBytes),
+                "the retained-root target bytes must match the exact source");
+
+            CreateProtectedTestFile(
+                secondSource,
+                source.OwnerSid,
+                secondBytes,
+                includeSystem: true);
+            using SafeFileHandle second = OpenRenameSourceForTest(secondSource);
+            Assert(!retainedRoot.TryRenameNoReplace(second, TargetName),
+                "the retained-root collision must fail without replacement");
+            second.Dispose();
+            Assert(File.Exists(secondSource) && File.Exists(target),
+                "a retained-root collision must preserve source and target names");
+            Assert(File.ReadAllBytes(target).AsSpan().SequenceEqual(firstBytes) &&
+                File.ReadAllBytes(secondSource).AsSpan().SequenceEqual(secondBytes),
+                "a retained-root collision must preserve both exact byte sequences");
+            return Task.CompletedTask;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(firstBytes);
+            CryptographicOperations.ZeroMemory(secondBytes);
+        }
+    }
+
     private static async Task TestBrokerClaim()
     {
         using BrokerFixture fixture = BrokerFixture.Start();
@@ -4811,6 +5958,339 @@ internal static class Program
             ObjectDisposedException;
     }
 
+    private static bool ContainsSequence(
+        ReadOnlySpan<byte> source,
+        ReadOnlySpan<byte> candidate)
+    {
+        if (candidate.IsEmpty || candidate.Length > source.Length)
+        {
+            return false;
+        }
+
+        for (int offset = 0;
+            offset <= source.Length - candidate.Length;
+            offset++)
+        {
+            if (source.Slice(offset, candidate.Length).SequenceEqual(candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CreateProtectedTestDirectory(
+        string path,
+        string ownerSid,
+        bool includeSystem)
+    {
+        nint descriptor = CreateTestSecurityDescriptor(
+            ownerSid,
+            includeSystem);
+        try
+        {
+            NativeMethods.SecurityAttributes attributes = new()
+            {
+                Length = checked((uint)Marshal.SizeOf<
+                    NativeMethods.SecurityAttributes>()),
+                SecurityDescriptor = descriptor,
+                InheritHandle = 0,
+            };
+            if (CreateDirectoryForTest(path, ref attributes) == 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Creating the protected test directory failed");
+            }
+        }
+        finally
+        {
+            _ = NativeMethods.LocalFree(descriptor);
+        }
+    }
+
+    private static void CreateProtectedTestFile(
+        string path,
+        string ownerSid,
+        ReadOnlySpan<byte> bytes,
+        bool includeSystem)
+    {
+        nint descriptor = CreateTestSecurityDescriptor(
+            ownerSid,
+            includeSystem);
+        SafeFileHandle? file = null;
+        nint attributesPointer = 0;
+        try
+        {
+            NativeMethods.SecurityAttributes attributes = new()
+            {
+                Length = checked((uint)Marshal.SizeOf<
+                    NativeMethods.SecurityAttributes>()),
+                SecurityDescriptor = descriptor,
+                InheritHandle = 0,
+            };
+            attributesPointer = Marshal.AllocHGlobal(
+                Marshal.SizeOf<NativeMethods.SecurityAttributes>());
+            Marshal.StructureToPtr(
+                attributes,
+                attributesPointer,
+                fDeleteOld: false);
+            nint raw = NativeMethods.CreateFile(
+                path,
+                NativeMethods.GenericRead |
+                    NativeMethods.GenericWrite |
+                    NativeMethods.ReadControl |
+                    NativeMethods.DeleteAccess,
+                NativeMethods.FileShareRead | NativeMethods.FileShareDelete,
+                attributesPointer,
+                NativeMethods.CreateNew,
+                NativeMethods.FileAttributeNormal |
+                    NativeMethods.FileFlagOpenReparsePoint,
+                0);
+            file = new SafeFileHandle(raw, true);
+            if (file.IsInvalid)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Creating the protected test file failed");
+            }
+
+            GuardedDescriptorDirectory.WriteExact(file, bytes);
+            GuardedDescriptorDirectory.Flush(file);
+        }
+        finally
+        {
+            file?.Dispose();
+            if (attributesPointer != 0)
+            {
+                Marshal.FreeHGlobal(attributesPointer);
+            }
+            _ = NativeMethods.LocalFree(descriptor);
+        }
+    }
+
+    private static nint CreateTestSecurityDescriptor(
+        string ownerSid,
+        bool includeSystem)
+    {
+        string dacl = includeSystem
+            ? "D:P(A;;FA;;;SY)(A;;FA;;;" + ownerSid + ")"
+            : "D:P(A;;FA;;;" + ownerSid + ")";
+        if (NativeMethods.ConvertStringSecurityDescriptor(
+                "O:" + ownerSid + dacl,
+                NativeMethods.SddlRevision1,
+                out nint descriptor,
+                out uint size) == 0 ||
+            descriptor == 0 || size == 0)
+        {
+            throw NativeMethods.Win32Failure(
+                "Creating the protected test security descriptor failed");
+        }
+
+        return descriptor;
+    }
+
+    private static void PosixUnlinkTestFile(string path)
+    {
+        nint raw = NativeMethods.CreateFile(
+            path,
+            NativeMethods.DeleteAccess | NativeMethods.ReadControl,
+            NativeMethods.FileShareRead |
+                NativeMethods.FileShareWrite |
+                NativeMethods.FileShareDelete,
+            0,
+            NativeMethods.OpenExisting,
+            NativeMethods.FileFlagOpenReparsePoint,
+            0);
+        using SafeFileHandle file = new(raw, true);
+        if (file.IsInvalid)
+        {
+            throw NativeMethods.Win32Failure(
+                "Opening the exact test file for POSIX unlink failed");
+        }
+
+        GuardedDescriptorDirectory.MarkPosixDelete(file);
+        file.Dispose();
+        if (File.Exists(path))
+        {
+            throw new IOException(
+                "The exact test file name remained after POSIX unlink.");
+        }
+    }
+
+    private static SafeFileHandle OpenRenameSourceForTest(string path)
+    {
+        nint raw = NativeMethods.CreateFile(
+            path,
+            NativeMethods.DeleteAccess | NativeMethods.ReadControl,
+            NativeMethods.FileShareRead |
+                NativeMethods.FileShareWrite |
+                NativeMethods.FileShareDelete,
+            0,
+            NativeMethods.OpenExisting,
+            NativeMethods.FileFlagOpenReparsePoint,
+            0);
+        SafeFileHandle file = new(raw, true);
+        if (file.IsInvalid)
+        {
+            file.Dispose();
+            throw NativeMethods.Win32Failure(
+                "Opening the retained-root rename source failed");
+        }
+
+        return file;
+    }
+
+    private static void CreateDirectoryJunction(
+        string junctionPath,
+        string targetPath)
+    {
+        const uint FsctlSetReparsePoint = 0x000900A4;
+        const uint IoReparseTagMountPoint = 0xA0000003;
+        string target = Path.GetFullPath(targetPath);
+        byte[] substitute = Encoding.Unicode.GetBytes(@"\??\" + target);
+        byte[] print = Encoding.Unicode.GetBytes(target);
+        int printOffset = checked(substitute.Length + sizeof(ushort));
+        int pathBytes = checked(
+            printOffset + print.Length + sizeof(ushort));
+        int reparseDataLength = checked(8 + pathBytes);
+        byte[] buffer = new byte[checked(8 + reparseDataLength)];
+        nint native = 0;
+        try
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(
+                buffer.AsSpan(0, sizeof(uint)),
+                IoReparseTagMountPoint);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                buffer.AsSpan(4, sizeof(ushort)),
+                checked((ushort)reparseDataLength));
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                buffer.AsSpan(8, sizeof(ushort)),
+                0);
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                buffer.AsSpan(10, sizeof(ushort)),
+                checked((ushort)substitute.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                buffer.AsSpan(12, sizeof(ushort)),
+                checked((ushort)printOffset));
+            BinaryPrimitives.WriteUInt16LittleEndian(
+                buffer.AsSpan(14, sizeof(ushort)),
+                checked((ushort)print.Length));
+            substitute.CopyTo(buffer, 16);
+            print.CopyTo(buffer, checked(16 + printOffset));
+
+            nint raw = NativeMethods.CreateFile(
+                junctionPath,
+                NativeMethods.GenericWrite | NativeMethods.ReadControl,
+                NativeMethods.FileShareRead |
+                    NativeMethods.FileShareWrite |
+                    NativeMethods.FileShareDelete,
+                0,
+                NativeMethods.OpenExisting,
+                NativeMethods.FileFlagBackupSemantics |
+                    NativeMethods.FileFlagOpenReparsePoint,
+                0);
+            using SafeFileHandle junction = new(raw, true);
+            if (junction.IsInvalid)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Opening the directory junction fixture failed");
+            }
+
+            native = Marshal.AllocHGlobal(buffer.Length);
+            Marshal.Copy(buffer, 0, native, buffer.Length);
+            if (DeviceIoControlForTest(
+                    junction,
+                    FsctlSetReparsePoint,
+                    native,
+                    checked((uint)buffer.Length),
+                    0,
+                    0,
+                    out uint returned,
+                    0) == 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Creating the directory junction fixture failed");
+            }
+
+            AssertEqual(0U, returned,
+                "directory junction control output length");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(substitute);
+            CryptographicOperations.ZeroMemory(print);
+            CryptographicOperations.ZeroMemory(buffer);
+            if (native != 0)
+            {
+                Marshal.FreeHGlobal(native);
+            }
+        }
+    }
+
+    private static void DeleteTestDirectoryTree(string path)
+    {
+        DirectoryInfo root = new(path);
+        if (!root.Exists)
+        {
+            return;
+        }
+
+        if (root.FullName.Length < 4 ||
+            !root.Name.StartsWith(
+                "hrc-bootstrap-file-test-",
+                StringComparison.Ordinal) ||
+            !char.IsAsciiLetter(root.FullName[0]))
+        {
+            throw new InvalidOperationException(
+                "Refusing to clean an unexpected test directory.");
+        }
+
+        foreach (FileSystemInfo entry in root.EnumerateFileSystemInfos())
+        {
+            bool directory =
+                (entry.Attributes & FileAttributes.Directory) != 0;
+            bool reparse =
+                (entry.Attributes & FileAttributes.ReparsePoint) != 0;
+            if (directory)
+            {
+                Directory.Delete(entry.FullName, recursive: !reparse);
+            }
+            else
+            {
+                if (!reparse)
+                {
+                    File.SetAttributes(entry.FullName, FileAttributes.Normal);
+                }
+                File.Delete(entry.FullName);
+            }
+        }
+
+        root.Delete();
+    }
+
+    [LibraryImport(
+        "kernel32.dll",
+        EntryPoint = "CreateDirectoryW",
+        SetLastError = true,
+        StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int CreateDirectoryForTest(
+        string path,
+        ref NativeMethods.SecurityAttributes securityAttributes);
+
+    [LibraryImport(
+        "kernel32.dll",
+        EntryPoint = "DeviceIoControl",
+        SetLastError = true)]
+    private static partial int DeviceIoControlForTest(
+        SafeFileHandle device,
+        uint controlCode,
+        nint inputBuffer,
+        uint inputBufferSize,
+        nint outputBuffer,
+        uint outputBufferSize,
+        out uint bytesReturned,
+        nint overlapped);
+
     private static byte[] RandomTestValue32()
     {
         using SecretBuffer value = SecretBuffer.CreateRandom32();
@@ -4882,6 +6362,23 @@ internal static class Program
             "Expected an observable failure, but the task completed successfully.");
     }
 
+    private static async Task<Exception> CaptureExceptionAsync(
+        Func<Task> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+
+        throw new InvalidOperationException(
+            "Expected an observable failure, but the operation completed successfully.");
+    }
+
     private static bool ContainsException<TException>(Exception exception)
         where TException : Exception
     {
@@ -4890,8 +6387,13 @@ internal static class Program
             return true;
         }
 
-        return exception is AggregateException aggregate &&
-            aggregate.InnerExceptions.Any(ContainsException<TException>);
+        if (exception is AggregateException aggregate)
+        {
+            return aggregate.InnerExceptions.Any(ContainsException<TException>);
+        }
+
+        return exception.InnerException is not null &&
+            ContainsException<TException>(exception.InnerException);
     }
 
     private static byte[] GetStoredDescriptorBacking(
@@ -5013,6 +6515,57 @@ internal static class Program
         throw new InvalidOperationException(
             $"Expected one of [{string.Join(", ", expectedTypes.Select(type => type.Name))}] " +
             "was not thrown.");
+    }
+
+    private sealed class FilePublicationTestDirectory : IDisposable
+    {
+        private bool disposed;
+
+        internal FilePublicationTestDirectory(bool includeSystem = true)
+        {
+            using ProcessIdentityLease current = ProcessIdentityLease.Capture(
+                checked((uint)Environment.ProcessId));
+            OwnerSid = current.UserSid;
+            string tempRoot = System.IO.Path.TrimEndingDirectorySeparator(
+                System.IO.Path.GetFullPath(System.IO.Path.GetTempPath()));
+            if (tempRoot.Length < 3 ||
+                !char.IsAsciiLetter(tempRoot[0]) ||
+                tempRoot[1] != ':' ||
+                tempRoot[2] != System.IO.Path.DirectorySeparatorChar)
+            {
+                throw new PlatformNotSupportedException(
+                    "File publication tests require a local drive temp root.");
+            }
+
+            Path = System.IO.Path.Combine(
+                tempRoot,
+                "hrc-bootstrap-file-test-" + Guid.NewGuid().ToString("N"));
+            CreateProtectedTestDirectory(Path, OwnerSid, includeSystem);
+        }
+
+        internal string Path { get; }
+
+        internal string OwnerSid { get; }
+
+        internal string FinalPath => System.IO.Path.Combine(
+            Path,
+            FileBootstrapPublicationStore.FinalFileName);
+
+        public void Dispose()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            if (!Directory.Exists(Path))
+            {
+                return;
+            }
+
+            DeleteTestDirectoryTree(Path);
+        }
     }
 
     private sealed class DescriptorFixture : IDisposable
