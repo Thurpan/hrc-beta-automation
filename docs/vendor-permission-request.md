@@ -1,9 +1,24 @@
-# Draft HRC automation permission request
+# Superseded HRC automation permission request
 
 ## Status
 
-This is an unsent draft for Euan to review and send. It contains no licence key,
-account identifier, private HRC configuration, or strategy data.
+This draft was not sent. On 12 August 2026, Euan instead attested in the project
+conversation that HRC Beta's owner personally authorised him to do anything
+with HRC for this project if the use is not commercial. Euan confirmed that the
+project is personal and wholly non-commercial.
+
+The project treats that direct owner-granted oral permission as authority for
+the local accessibility runner, read-only component identity checks, startup
+status observer, and required validation on the licensed host. This record does
+not claim that HRC provides or supports an automation API. It does not extend to
+commercial use, licence sharing, HRC redistribution, or unnecessary strategy
+data access. Keep the unsent draft below as the exact mechanism description and
+as a fallback if written confirmation is required later.
+
+## Archived draft
+
+Everything from this heading through `Message` is retained as unsent historical
+text. It is not an active permission gate or current instruction.
 
 ## Recipient
 
@@ -81,20 +96,23 @@ of another.
 
 Thank you.
 
-## Required response record
+## Conditional fallback response record
 
-Before resuming automation work, require a dated written response through an
-authenticated official vendor channel and request a ticket or correspondence
-reference where available. Keep the full correspondence outside Git. Record
-only the allowed technical scope, restrictions, date, and a non-sensitive
-reference in this repository. Community opinion is not vendor permission. If
-the response is ambiguous, ask a narrower follow-up and keep the project
-blocked.
+Apply this section only if Euan later chooses to seek written confirmation or
+if the project scope changes beyond the attested oral permission. Require a
+dated written response through an authenticated official vendor channel and
+request a ticket or correspondence reference where available. Keep the full
+correspondence outside Git. Record only the allowed technical scope,
+restrictions, date, and a non-sensitive reference in this repository. Community
+opinion is not vendor permission. If the response is ambiguous, ask a narrower
+follow-up and do not use it to expand the project scope.
 
-## Response decision matrix
+## Conditional fallback decision matrix
 
-Do not interpret a general approval as permission for a mechanism that the
-vendor did not explicitly address. Apply the narrowest matching row below.
+If written confirmation is sought, do not interpret a general approval as
+permission for a mechanism that the vendor did not explicitly address. Apply
+the narrowest matching row below. This table does not pause work already covered
+by the recorded oral permission.
 
 | Vendor response | Project status | Next allowed action |
 | --- | --- | --- |
@@ -109,10 +127,11 @@ vendor did not explicitly address. Apply the narrowest matching row below.
 | The answer is conditional, partial, or ambiguous | Blocked pending clarification | Reply with a narrow question naming the unresolved mechanism, HRC version, and required status fields. |
 | No answer is received | Paused | Send at most a polite follow-up through an official support channel when Euan chooses; do not treat silence as consent. |
 
-## Resume gate
+## Conditional written-response gate
 
-Before any HRC automation work resumes, the written response must establish all
-of the following that apply to the selected design:
+Apply this gate only if a later scope decision requires written confirmation.
+That response must establish all of the following that apply to the selected
+design:
 
 - permission for the exact workflow-control mechanism;
 - approved identity-matched lifecycle evidence that distinguishes acceptance or

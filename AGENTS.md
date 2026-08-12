@@ -14,21 +14,23 @@ Run HRC Beta only on the licensed host `EM-3960X`. The host reports an AMD Ryzen
 
 Do not copy HRC Beta, its licence material, or its private configuration to another computer. Do not expose licence data in files, logs, screenshots, commits, or completion reports.
 
-## Vendor-authorisation gate
+## Owner authorisation scope
 
-The HRC v4+ EULA licenses the Product in unmodified binary form, limits usage
-to the provided launcher, and permits use of components only through the user
-interface accessible via that launcher. It expressly prohibits automated
-scraping of the product's user interface or memory, as well as decompilation,
-reverse engineering, or modification without the licensor's consent, subject
-to applicable law. Do not perform further HRC
-UI automation, memory inspection, private implementation inspection, agent or
-bundle injection, runtime attachment, or runner smoke testing unless
-HoldemResources gives written permission that covers the intended local
-single-user automation and exact status-observer design. Static and live
-findings already recorded remain evidence, not ongoing authority. Public
-documentation research, repository documentation, offline candidate tests, and
-preparation of a permission request may continue without touching HRC.
+On 12 August 2026, Euan attested in the project conversation that HRC Beta's
+owner personally authorised him to do anything with HRC for this project if the
+use is not commercial. Euan confirmed that this project is personal and wholly
+non-commercial. Treat this owner-granted oral permission as authority for the
+local accessibility runner, read-only component inspection and hashing, the
+project-owned startup status observer, and the HRC interaction needed to
+validate them on the licensed host.
+
+This attestation does not establish a vendor-supported API, warranty, or
+technical result. It does not permit commercial use, licence sharing,
+redistribution of HRC components, unnecessary strategy-data access, or copying
+HRC to another computer. Stop and obtain a new scope decision if the project
+becomes commercial or the proposed mechanism materially exceeds the recorded
+personal automation and exact-status design. Preserve every technical and data
+safety gate below.
 
 ## Discovery-first rules
 
@@ -40,6 +42,10 @@ preparation of a permission request may continue without touching HRC.
 - Record only observed evidence in `docs/feasibility.md`.
 - Do not add application-automation source code, dependencies, or build
   commands before feasibility is proven.
+- A minimal exact-status observer may be implemented and tested offline as a
+  feasibility instrument before the verdict. Keep it separate from the runner.
+  Do not install or activate it in HRC until its scope, build, rollback, event
+  schema, and protected-resource prerequisites are validated.
 - An explicitly requested HRC tree-building candidate can be developed offline
   under `scripts/hrc/`. Keep it labelled unvalidated until HRC verifies it on
   the licensed host.
@@ -161,5 +167,7 @@ Validate changed Markdown before each commit. Review the exact diff. Keep scaffo
 - Store verbatim external HRC script snapshots under `reference/hrc/`.
 - Do not apply project changes to an external snapshot.
 - Store project-owned HRC tree-building candidates under `scripts/hrc/`.
+- Store the project-owned exact-status feasibility observer under
+  `src/HrcJobObserver/`. Do not treat it as the standalone runner.
 - Keep licence material, HRC private configuration, and sensitive poker data outside Git.
 - Keep future implementation claims out of the repository until evidence supports them.

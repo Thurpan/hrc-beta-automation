@@ -25,9 +25,23 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 | HRC window state on 11 August | HRC was restored and sized close to the full work area. It was not maximised. No resize, maximise, or activation action was issued during the control-map run. | Euan supplied a full-screen screenshot that showed the restored title-bar state. The control log contained no window-state action. | CONFIRMED for that run. Do not infer current or maximised state from capture dimensions. |
 | Coordinate-target failure | An unverified coordinate intended for the hand-tab close control selected the tree root row instead. No setting or output changed. The later close used a point that first showed the exact `Close` tooltip. | Compared the expected target with the captured cursor position and the resulting HRC state during the `HU-2` run. | CONFIRMED for discovery; raw coordinates are not a safe automation path. |
 
-## Vendor-authorisation boundary identified on 12 August 2026
+## Owner authorisation and vendor-documentation boundary
 
-This is current official vendor-documentation evidence, not legal advice.
+On 12 August 2026, Euan attested in the project conversation that HRC Beta's
+owner personally authorised him to do anything with HRC for this project if the
+use is not commercial. Euan confirmed that the project is personal and wholly
+non-commercial. This is user-attested oral permission, not a written vendor
+response or evidence of a supported public interface.
+
+The project treats the attested owner permission as covering the local
+accessibility runner, read-only component identity checks, the project-owned
+startup status observer, and the HRC validation needed for this personal
+workflow. Commercial use, licence sharing, redistribution of HRC components,
+and unnecessary strategy-data access remain outside scope. All technical,
+protected-resource, no-overwrite, and data-safety gates remain in force.
+
+The following is current official vendor-documentation evidence, not legal
+advice.
 
 - The [HRC v4+ EULA](https://www.holdemresources.net/legal/eula/hrc_v4)
   licenses the Product in unmodified binary form, limits usage to the provided
@@ -64,14 +78,11 @@ This is current official vendor-documentation evidence, not legal advice.
 - The official [contact page](https://www.holdemresources.net/contact) lists
   `support@holdemresources.net` and the HRC Discord community.
 
-Further HRC UI automation, memory inspection, private implementation
-inspection, injection, attachment, restart for an observer, or smoke execution
-is therefore stopped pending written HoldemResources permission covering the
-intended local single-user accessibility runner and exact terminal-status
-observer. This vendor gate is independent of the technical feasibility gaps
-below. A draft request is stored at
-[`vendor-permission-request.md`](vendor-permission-request.md); it has not been
-sent.
+The earlier written-permission pause is superseded by Euan's attestation. The
+unsent mechanism-specific request remains at
+[`vendor-permission-request.md`](vendor-permission-request.md) as a scope record
+and fallback. Permission removes the authorisation blocker only. It does not
+prove feasibility or permit the protected dirty tabs to be discarded.
 
 ## Installed component identity gate
 
@@ -199,8 +210,9 @@ Standalone foreground, native-focus, and delivery assertions remain TO CONFIRM.
   distinguish success from cancellation. The only exact contract found is the
   in-process Eclipse Jobs API and its `IJobChangeListener` events; no supported
   external event, IPC, structured Nash log, or Progress-history hook was found.
-  An in-process bridge would be a separate architecture and authorisation
-  decision.
+  An in-process bridge is a separate architecture and implementation decision.
+  The recorded owner authorisation covers the minimal exact-status observer
+  design, but it does not prove that design works.
 - Achieved CI remains job-local and is never stored on the hand. Success,
   cancellation, and error all preserve accumulated strategy/sample state, store
   the same root-derived data, update the timestamp and dirty state, and invoke
@@ -1031,8 +1043,9 @@ revalidates the current candidate at equal `2 bb`.
   `.hrcz` absent. The runner must repeat the exact absence preflight immediately
   before any write and stop on any existing target or overwrite prompt. The
   smoke is reserved for post-gate project-owned runner validation; it must not be
-  consumed during feasibility discovery. Any further pre-runner Nash submission
-  requires separate authorisation.
+  consumed during feasibility discovery. Owner authorisation covers the
+  required live validation, but no further Nash submission may occur before the
+  exact-status observer and all pre-submit safety gates are ready.
 - Expected cost and duration: The small demonstration calculations transitioned
   quickly. Euan reports that production calculations can take a long time.
   Exact production durations remain TO CONFIRM.
@@ -1289,7 +1302,7 @@ completion, or failure states.
 ## Verdict
 
 - Feasibility: TO CONFIRM
-- Execution status: PAUSED PENDING WRITTEN VENDOR AUTHORISATION
+- Execution status: ACTIVE WITH OWNER AUTHORISATION; EXACT-STATUS OBSERVER PENDING
 - Confidence: TO CONFIRM
 - Basis: The selected HU tree was configured and created without a visible
   error. Rename, both Nash submissions, running targets, Viewer Save, and
@@ -1350,37 +1363,25 @@ completion, or failure states.
 
 ## Next action
 
-Obtain written HoldemResources permission before any further HRC automation,
-private implementation inspection, memory observation, injection, attachment,
-observer installation, restart for automation, or runner smoke. Ask whether HRC
-offers a supported API, CLI, callback, or structured log that reports each
-sampling, save, and export Job's identity and terminal success, cancellation,
-or error. If not, ask whether a local single-user accessibility runner and a
-minimal companion status observer are permitted. Do not infer permission from
-the public tree-building scripting API.
+Implement and test the minimal exact-status observer offline. It must subscribe
+to the Eclipse Jobs lifecycle, preserve Java Job object correlation, and emit
+only the required identity, lifecycle, and terminal `IStatus` fields to a local
+single-user channel. It must not read strategy or licence data.
 
-Until written permission arrives, preserve both current unsaved tabs, do not
-send additional HRC input, and do not consume the reserved smoke. Offline
-candidate tests, repository validation, and public-documentation research may
-continue without HRC interaction.
+Preserve both current unsaved tabs. Do not install the observer, restart HRC, or
+consume the reserved smoke until Euan explicitly resolves the protected tabs.
 
-If the authorised design relies on the version-specific findings in this
-document, first require permission for the narrow component-identity check or a
-vendor-supported build identifier that replaces it. Only when that file check
-is explicitly permitted, resolve the active HRC installation and rehash the
-exact eight-component identity set above from its `plugins` directory. Stop on
-any process, path, filename, or hash mismatch. A fully vendor-supported design
-that does not rely on these private/static findings must use the vendor's own
-documented compatibility contract instead and must not trigger component
-inspection merely because it is recorded here.
+The authorised design relies on the version-specific findings in this
+document. Resolve the active HRC installation and rehash the exact
+eight-component identity set above from its `plugins` directory before using
+them. Stop on any process, path, filename, or hash mismatch.
 
-Then resume only the actions covered by the written permission. If that scope
-includes the existing accessibility design, begin the remaining non-writing
-probes with the statically defined exact-tab-focus, selection-round-trip,
-one-shot `Ctrl+F4`, and `Save Resource` Cancel path on active `*From Hand 7` only
-after native focus and active-editor identity can be proved. Require both dirty
-tabs, selected tab, Progress, HRC bounds, and files to remain unchanged, and
-stop without retry on any mismatch or unknown outcome.
+Begin the remaining non-writing probes with the statically defined exact-tab-
+focus, selection-round-trip, one-shot `Ctrl+F4`, and `Save Resource` Cancel path
+on active `*From Hand 7` only after native focus and active-editor identity can
+be proved. Require both dirty tabs, selected tab, Progress, HRC bounds, and
+files to remain unchanged. Stop without retry on any mismatch or unknown
+outcome.
 
 Integrate the confirmed per-cell Nash route with exact native-focus,
 clipboard-transition, and CI `10.0` post-edit read-back assertions. Before any
@@ -1388,12 +1389,12 @@ further pre-runner OK action, use static, non-submitting, and prior demonstratio
 evidence to define machine-readable candidate detectors and stop rules for
 accepted, rejected, queued, running, cancelled, completed, and failed states.
 Treat any focus, transition, value, hash, reset-pair, or post-state mismatch as a
-stop. A separate pre-runner live submission requires separate authorisation.
+stop. Owner authorisation covers the required live submission, but the observer
+and all pre-submit safety gates must be ready first.
 
 Do not spend the authorised Nash submission merely watching Progress; that UI
-cannot make terminal success durable. After vendor permission, resolve the
-technical architecture through a vendor-supported status facility or an
-explicitly permitted in-process event bridge. No read-only external
+cannot make terminal success durable. Resolve the technical architecture
+through the owner-authorised in-process event observer. No read-only external
 postcondition found so far distinguishes `OK` from `CANCEL` and `ERROR` for each
 exact submission.
 
@@ -1435,5 +1436,7 @@ states not encountered during the smoke remain
 Viewer type, filename, and extension on every save.
 
 Complete the representative HU lifecycle before any further multiway discovery.
-Do not add automation source, application dependencies, or build commands until
-feasibility has a supported verdict.
+Do not add standalone runner source, application dependencies, or build
+commands until feasibility has a supported verdict. The minimal, uninstalled
+exact-status observer described above is the sole offline feasibility-instrument
+exception.
