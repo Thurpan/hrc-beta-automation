@@ -1,5 +1,7 @@
 using System;
 using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace HrcJobObserver.WindowsBootstrap;
 
@@ -7,8 +9,27 @@ namespace HrcJobObserver.WindowsBootstrap;
 /// Identifies one exact store insertion. The type intentionally exposes no
 /// value identity because removal must use the object returned by insertion.
 /// </summary>
-internal sealed class BootstrapPublicationRegistration
+internal sealed class BootstrapPublicationRegistration :
+    BootstrapPublicationLease
 {
+    private readonly InMemoryBootstrapPublicationStore owner;
+    private readonly object entryIdentity;
+
+    internal BootstrapPublicationRegistration(
+        InMemoryBootstrapPublicationStore owner,
+        object entryIdentity)
+    {
+        this.owner = owner;
+        this.entryIdentity = entryIdentity;
+    }
+
+    internal InMemoryBootstrapPublicationStore Owner => owner;
+
+    protected internal override ValueTask<BootstrapPublicationRemovalStatus>
+        RemoveExactCoreAsync(MonotonicDeadline deadline)
+    {
+        return owner.RemoveExactAsync(entryIdentity, deadline);
+    }
 }
 
 /// <summary>
@@ -43,36 +64,80 @@ internal sealed class BootstrapPublicationSnapshot : IDisposable
 /// Stores at most one canonical descriptor. Each publication receives an
 /// opaque registration so an old owner cannot remove a later equal value.
 /// </summary>
-internal sealed class InMemoryBootstrapPublicationStore : IDisposable
+internal sealed class InMemoryBootstrapPublicationStore :
+    IBootstrapPublicationPublisher,
+    IDisposable
 {
     private readonly object gate = new();
     private Entry? current;
     private bool disposed;
 
+    public ValueTask<BootstrapPublishResult> TryPublishAsync(
+        ReadOnlyMemory<byte> canonicalDescriptor,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = deadline.GetRemaining();
+        byte[]? canonical = CanonicalClone(canonicalDescriptor.Span);
+        try
+        {
+            lock (gate)
+            {
+                if (disposed)
+                {
+                    throw new ObjectDisposedException(
+                        nameof(InMemoryBootstrapPublicationStore));
+                }
+
+                if (current is not null)
+                {
+                    return ValueTask.FromResult(
+                        BootstrapPublishResult.Occupied());
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                _ = deadline.GetRemaining();
+                object identity = new();
+                BootstrapPublicationRegistration registration = new(
+                    this,
+                    identity);
+                current = new Entry(identity, registration, canonical);
+                canonical = null;
+                return ValueTask.FromResult(
+                    BootstrapPublishResult.Published(registration));
+            }
+        }
+        finally
+        {
+            if (canonical is not null)
+            {
+                CryptographicOperations.ZeroMemory(canonical);
+            }
+        }
+    }
+
     internal bool TryPublish(
         ReadOnlySpan<byte> descriptor,
         out BootstrapPublicationRegistration? registration)
     {
-        byte[] canonical = CanonicalClone(descriptor);
-        lock (gate)
+        byte[] copy = descriptor.ToArray();
+        try
         {
-            if (disposed)
-            {
-                CryptographicOperations.ZeroMemory(canonical);
-                throw new ObjectDisposedException(
-                    nameof(InMemoryBootstrapPublicationStore));
-            }
-
-            if (current is not null)
-            {
-                CryptographicOperations.ZeroMemory(canonical);
-                registration = null;
-                return false;
-            }
-
-            registration = new BootstrapPublicationRegistration();
-            current = new Entry(registration, canonical);
-            return true;
+            BootstrapPublishResult result = TryPublishAsync(
+                    copy,
+                    MonotonicDeadline.Start(
+                        TimeProvider.System,
+                        TimeSpan.FromMinutes(1)),
+                    CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+            registration = result.Lease as BootstrapPublicationRegistration;
+            return result.Status == BootstrapPublishStatus.Published;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(copy);
         }
     }
 
@@ -96,25 +161,40 @@ internal sealed class InMemoryBootstrapPublicationStore : IDisposable
     internal bool TryRemove(BootstrapPublicationRegistration registration)
     {
         ArgumentNullException.ThrowIfNull(registration);
+        if (!ReferenceEquals(registration.Owner, this) ||
+            !Owns(registration))
+        {
+            return false;
+        }
+        try
+        {
+            _ = registration.RemoveExactAsync(
+                    MonotonicDeadline.Start(
+                        TimeProvider.System,
+                        TimeSpan.FromMinutes(1)))
+                .GetAwaiter()
+                .GetResult();
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    internal bool Owns(BootstrapPublicationRegistration registration)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
         lock (gate)
         {
             ThrowIfDisposed();
-            if (current is null ||
-                !ReferenceEquals(current.Registration, registration))
-            {
-                return false;
-            }
-
-            Entry removed = current;
-            current = null;
-            removed.Dispose();
-            return true;
+            return current is not null &&
+                ReferenceEquals(current.Registration, registration);
         }
     }
 
     public void Dispose()
     {
-        Entry? removed;
         lock (gate)
         {
             if (disposed)
@@ -122,12 +202,42 @@ internal sealed class InMemoryBootstrapPublicationStore : IDisposable
                 return;
             }
 
+            if (current is not null)
+            {
+                throw new InvalidOperationException(
+                    "The publication store cannot be disposed while a lease is active.");
+            }
+
             disposed = true;
+        }
+    }
+
+    internal ValueTask<BootstrapPublicationRemovalStatus> RemoveExactAsync(
+        object entryIdentity,
+        MonotonicDeadline deadline)
+    {
+        bool expiredBefore = deadline.IsExpired();
+        Entry removed;
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            if (current is null ||
+                !ReferenceEquals(current.Identity, entryIdentity))
+            {
+                throw new InvalidOperationException(
+                    "The publication lease no longer owns the exact store entry.");
+            }
+
             removed = current;
             current = null;
         }
 
-        removed?.Dispose();
+        removed.Dispose();
+        bool expiredAfter = deadline.IsExpired();
+        return ValueTask.FromResult(
+            expiredBefore || expiredAfter
+                ? BootstrapPublicationRemovalStatus.RemovedAfterDeadline
+                : BootstrapPublicationRemovalStatus.Removed);
     }
 
     private static byte[] CanonicalClone(ReadOnlySpan<byte> descriptor)
@@ -167,12 +277,16 @@ internal sealed class InMemoryBootstrapPublicationStore : IDisposable
         private byte[]? descriptor;
 
         internal Entry(
+            object identity,
             BootstrapPublicationRegistration registration,
             byte[] descriptor)
         {
+            Identity = identity;
             Registration = registration;
             this.descriptor = descriptor;
         }
+
+        internal object Identity { get; }
 
         internal BootstrapPublicationRegistration Registration { get; }
 

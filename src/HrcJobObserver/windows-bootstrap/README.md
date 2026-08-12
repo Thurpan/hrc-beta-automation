@@ -90,20 +90,23 @@ possession to the publication identifier, descriptor digest, controller nonce,
 and receipt nonce. The final acknowledgement is a distinct message; receipt
 generation alone does not confirm that the broker accepted it.
 
-`InMemoryBootstrapPublicationStore` accepts at most one canonical descriptor.
-It clones the encoding on insertion and again for each read. Each read returns
-an independently owned, wipeable snapshot. Insertion returns an opaque
-registration object. Removal requires the exact registration reference. An old
-owner therefore cannot remove a later equal publication.
+`InMemoryBootstrapPublicationStore` is the asynchronous reference publisher.
+It accepts at most one canonical descriptor, clones the encoding on insertion
+and again for each read, and returns independently owned, wipeable snapshots.
+Successful publication returns a store-affine opaque lease. The lease
+coalesces concurrent exact-removal calls and caches their terminal result, so
+an old owner cannot remove a later equal publication.
 
 `BootstrapBrokerSession` binds one observer process, one controller process,
 and the current broker process. The roles must be distinct processes in one
 user, logon, token session, and process session. The session accepts one
 publish request and creates one descriptor. It sends the publish
-acknowledgement only after the descriptor is visible in the injected store.
+acknowledgement only after the descriptor is visible through the injected
+publisher. Its process-local monotonic publication budget is capped by the
+remaining session budget rather than restarting time for the store.
 
 The broker starts one claim worker and one revoke worker. A single lock selects
-the first valid transcript. The winner must remove the exact store registration
+the first valid transcript. The winner must remove the exact publication lease
 before the broker sends a grant or revocation acknowledgement. The broker
 explicitly cancels the losing worker and drains it within the unchanged
 deadlines. It then disposes the losing one-shot pipe. A cancelled in-flight
@@ -121,7 +124,12 @@ terminal. The session does not retry or republish.
 The broker derives fixed absolute deadlines from an injected `TimeProvider`.
 Later phases receive only the remaining duration, subject to the pipe's
 30-second operation limit. A phase cannot reset the session or publication
-deadline.
+deadline. `DisposeAsync` cancels and awaits a running session. The caller of
+`RunAsync` remains the authoritative protocol-failure channel; disposal
+independently surfaces cancellation-request or cleanup failures. Terminal
+cleanup starts non-abandonable exact removal, then wipes the token and attempts
+every pipe close before awaiting the removal result. Primary and cleanup
+failures remain independently observable.
 
 ## Security and integration boundary
 
@@ -201,7 +209,7 @@ canonical protocol headers and bodies; the domain-separated claim-receipt
 proof; malformed semantic fields; and owned token, proof, message, and frame
 wiping.
 
-Twelve broker and store tests cover canonical clone ownership and wiping;
+The remaining 27 broker and store tests cover canonical clone ownership and wiping;
 capacity-one admission; exact-reference removal and ABA defence; distinct role
 and common-security-context enforcement; cross-process publish, claim, separate
 receipt, final acknowledgement, and revocation; claim and revoke races in both
@@ -212,8 +220,29 @@ cleanup; and one-shot pipe-name release. Every persistent synthetic child has
 an explicit exit status. Its standard output and standard error must remain
 empty.
 
-The current result is 40/40. This is offline Windows model, codec, primitive,
-in-memory-store, and synthetic broker evidence only.
+The asynchronous tests cover explicit publish status, store-affine leases,
+cross-store isolation, coalesced exact removal, and cached synchronous removal
+failure. They cover cancellation before commit, disposal before `RunAsync`,
+disposal during a blocked publish, and rollback when a commit returns after
+disposal. Ordinary cancellation publishes a cancelled task after successful
+cleanup. An unknown removal result retains the publication and prevents a
+terminal grant or revocation acknowledgement. A post-commit removal fault
+remains visible through coalesced disposal and does not claim absence. A
+start-bound deadline capture failure enters cleanup, faults `RunAsync`, and
+releases the publish pipe name. The publication deadline is capped by the
+remaining session budget. Its probe expires that combined budget while a fresh
+publication budget would remain valid. Cancellation cleanup releases both
+protocol pipe names before a blocked exact removal resolves. A publisher can
+synchronously re-enter `DisposeAsync` after commit without deadlock. The run
+and disposal tasks are published first, and exact removal runs once. Legacy
+cross-store removal is rejected in both directions without removing either
+store's publication. A synchronous exception from a lifetime-cancellation
+callback faults coalesced disposal without stopping run cancellation, exact
+removal, token wiping, or protocol-pipe cleanup. Publisher, protocol, and
+removal failures remain observable together.
+
+The current result is 55/55. This is offline Windows model, codec, primitive,
+asynchronous in-memory-store, and synthetic broker evidence only.
 
 Still unvalidated: production observer, broker, and controller executables;
 secure pipe-name delivery; descriptor persistence; executable-hash policy;

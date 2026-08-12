@@ -98,7 +98,10 @@ internal static class Program
             new("protocol rejects malformed semantic fields", TestProtocolMalformedFields),
             new("protocol wipes owned token frames and messages", TestProtocolSecretOwnership),
             new("publication store owns snapshots and prevents ABA removal", TestPublicationStore),
+            new("async publication leases stay store-affine and ABA-safe", TestAsyncPublicationStore),
+            new("publication lease removal coalesces success and synchronous failure", TestPublicationLeaseCoalescing),
             new("broker enforces role identity and security context", TestBrokerRoleBindings),
+            new("broker disposal before run is coalesced and releases its name", TestBrokerDisposeBeforeRun),
             new("broker completes a cross-process claim and receipt", TestBrokerClaim),
             new("broker completes a cross-process revocation", TestBrokerRevoke),
             new("broker serialises claim and revoke races", TestBrokerRaces),
@@ -106,7 +109,19 @@ internal static class Program
             new("broker fails closed on a mismatched transcript", TestBrokerTranscriptMismatch),
             new("broker fails closed on a bad receipt proof", TestBrokerBadProof),
             new("broker does not reset its absolute deadline", TestBrokerDeadline),
+            new("broker caps publication by the remaining session deadline", TestBrokerCombinedDeadlineCap),
+            new("broker cleans a start-bound deadline setup failure", TestBrokerDeadlineSetupFailure),
             new("broker cancellation cleans publication and pipes", TestBrokerCancellation),
+            new("broker cancellation awaits one exact coalesced removal", TestBrokerCancellationAwaitsRemoval),
+            new("broker disposal cancels a blocked publication", TestBrokerDisposeDuringPublish),
+            new("broker disposal preserves a throwing cancellation callback", TestBrokerDisposalCancellationCallbackFailure),
+            new("broker publisher can synchronously reenter disposal", TestBrokerPublisherReentrantDisposal),
+            new("broker rolls back a commit returned after disposal", TestBrokerCommitBeforeReturnRollback),
+            new("broker exposes an asynchronous publisher fault", TestBrokerPublisherFault),
+            new("broker removal fault suppresses terminal success", TestBrokerRemovalFault),
+            new("broker rejects an unknown removal result before terminal acknowledgement", TestBrokerUnknownRemovalStatus),
+            new("broker disposal exposes a post-commit removal fault", TestBrokerDisposeCommitRemovalFault),
+            new("broker preserves protocol and removal failures", TestBrokerPrimaryAndRemovalFailure),
             new("broker rejects an occupied store and cleans its publication", TestBrokerOccupiedStore),
             new("broker releases every one-shot pipe name", TestBrokerNameRelease),
         };
@@ -2574,7 +2589,7 @@ internal static class Program
                 BootstrapPublicationRegistration secondOwner = second ??
                     throw new InvalidOperationException(
                         "The replacement owner is missing.");
-                Assert(!store.TryRemove(firstOwner),
+                Assert(!store.Owns(firstOwner),
                     "an old registration must not remove a replacement");
                 Assert(store.TryRead(out BootstrapPublicationSnapshot? current) &&
                     current is not null, "the replacement must remain visible");
@@ -2595,6 +2610,183 @@ internal static class Program
         {
             CryptographicOperations.ZeroMemory(descriptor);
         }
+    }
+
+    private static async Task TestAsyncPublicationStore()
+    {
+        using DescriptorFixture fixture = CreateDescriptorFixture();
+        byte[] descriptor = fixture.CreateDescriptor().EncodeCanonical();
+        try
+        {
+            using InMemoryBootstrapPublicationStore firstStore = new();
+            using InMemoryBootstrapPublicationStore secondStore = new();
+            MonotonicDeadline deadline = MonotonicDeadline.Start(
+                TimeProvider.System,
+                TestTimeout);
+            BootstrapPublishResult first = await firstStore.TryPublishAsync(
+                    descriptor,
+                    deadline,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationRegistration firstLease =
+                first.Lease as BootstrapPublicationRegistration ??
+                throw new InvalidOperationException(
+                    "The first asynchronous publication lease is missing.");
+            AssertEqual(BootstrapPublishStatus.Published, first.Status,
+                "first asynchronous publication status");
+
+            BootstrapPublishResult occupied = await firstStore.TryPublishAsync(
+                    descriptor,
+                    deadline,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            AssertEqual(BootstrapPublishStatus.Occupied, occupied.Status,
+                "occupied asynchronous publication status");
+            Assert(occupied.Lease is null,
+                "an occupied asynchronous publication must not return a lease");
+
+            BootstrapPublishResult second = await secondStore.TryPublishAsync(
+                    descriptor,
+                    deadline,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationRegistration secondLease =
+                second.Lease as BootstrapPublicationRegistration ??
+                throw new InvalidOperationException(
+                    "The second store publication lease is missing.");
+            Assert(!secondStore.TryRemove(firstLease),
+                "the second store must reject the first store's registration");
+            Assert(firstStore.TryRead(
+                    out BootstrapPublicationSnapshot? firstSurvivor) &&
+                firstSurvivor is not null,
+                "a cross-store legacy removal must retain the first publication");
+            (firstSurvivor ?? throw new InvalidOperationException(
+                "The first cross-store survivor snapshot is missing.")).Dispose();
+            _ = await firstLease.RemoveExactAsync(deadline)
+                .ConfigureAwait(false);
+            Assert(secondStore.TryRead(out BootstrapPublicationSnapshot? crossStore) &&
+                crossStore is not null,
+                "removing one store-affine lease must not affect another store");
+            (crossStore ?? throw new InvalidOperationException(
+                "The cross-store snapshot is missing.")).Dispose();
+
+            BootstrapPublishResult replacement = await firstStore.TryPublishAsync(
+                    descriptor,
+                    deadline,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            BootstrapPublicationLease replacementLease = replacement.Lease ??
+                throw new InvalidOperationException(
+                    "The ABA replacement lease is missing.");
+            Assert(!firstStore.TryRemove(secondLease),
+                "a legacy registration from another store must be rejected");
+            Assert(firstStore.TryRead(out BootstrapPublicationSnapshot? ownEntry) &&
+                ownEntry is not null,
+                "a foreign legacy registration must not remove the local entry");
+            (ownEntry ?? throw new InvalidOperationException(
+                "The local cross-store-affinity snapshot is missing.")).Dispose();
+            Assert(secondStore.TryRead(out BootstrapPublicationSnapshot? foreignEntry) &&
+                foreignEntry is not null,
+                "a rejected foreign registration must retain its own entry");
+            (foreignEntry ?? throw new InvalidOperationException(
+                "The foreign cross-store-affinity snapshot is missing.")).Dispose();
+            BootstrapPublicationRemovalStatus repeated =
+                await firstLease.RemoveExactAsync(deadline)
+                    .ConfigureAwait(false);
+            AssertEqual(BootstrapPublicationRemovalStatus.Removed, repeated,
+                "coalesced stale-lease removal status");
+            Assert(firstStore.TryRead(out BootstrapPublicationSnapshot? afterAba) &&
+                afterAba is not null,
+                "a stale lease must not remove an equal replacement");
+            (afterAba ?? throw new InvalidOperationException(
+                "The ABA replacement snapshot is missing.")).Dispose();
+
+            _ = await secondLease.RemoveExactAsync(deadline)
+                .ConfigureAwait(false);
+            _ = await replacementLease.RemoveExactAsync(deadline)
+                .ConfigureAwait(false);
+            Assert(!firstStore.TryRead(out _) && !secondStore.TryRead(out _),
+                "exact lease removal must leave both stores empty");
+
+            using CancellationTokenSource cancelled = new();
+            cancelled.Cancel();
+            await AssertThrowsAsync<OperationCanceledException>(async () =>
+            {
+                _ = await firstStore.TryPublishAsync(
+                        descriptor,
+                        MonotonicDeadline.Start(TimeProvider.System, TestTimeout),
+                        cancelled.Token)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(false);
+            Assert(!firstStore.TryRead(out _),
+                "a cancelled asynchronous publish must not mutate the store");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(descriptor);
+        }
+    }
+
+    private static async Task TestPublicationLeaseCoalescing()
+    {
+        MonotonicDeadline deadline = MonotonicDeadline.Start(
+            TimeProvider.System,
+            TestTimeout);
+        LatchPublicationLease successful = new();
+        TaskCompletionSource<bool> firstCalled = NewSignal();
+        TaskCompletionSource<bool> secondCalled = NewSignal();
+        Task<BootstrapPublicationRemovalStatus> first = Task.Run(async () =>
+        {
+            ValueTask<BootstrapPublicationRemovalStatus> pending =
+                successful.RemoveExactAsync(deadline);
+            firstCalled.TrySetResult(true);
+            return await pending.ConfigureAwait(false);
+        });
+        Task<BootstrapPublicationRemovalStatus> second = Task.Run(async () =>
+        {
+            ValueTask<BootstrapPublicationRemovalStatus> pending =
+                successful.RemoveExactAsync(deadline);
+            secondCalled.TrySetResult(true);
+            return await pending.ConfigureAwait(false);
+        });
+        await Task.WhenAll(firstCalled.Task, secondCalled.Task)
+            .WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        await successful.RemovalStarted.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        AssertEqual(1, successful.RemovalCalls,
+            "concurrent direct lease removal call count while blocked");
+        Assert(!first.IsCompleted && !second.IsCompleted,
+            "concurrent direct lease callers must await the same core removal");
+        successful.ReleaseRemoval();
+        BootstrapPublicationRemovalStatus[] results = await Task.WhenAll(
+                first,
+                second)
+            .ConfigureAwait(false);
+        Assert(results.All(
+                result => result == BootstrapPublicationRemovalStatus.Removed),
+            "coalesced direct lease callers must observe verified removal");
+        AssertEqual(1, successful.RemovalCalls,
+            "completed direct lease removal call count");
+
+        SynchronouslyThrowingPublicationLease faulting = new();
+        Task<BootstrapPublicationRemovalStatus> firstFault = faulting
+            .RemoveExactAsync(deadline)
+            .AsTask();
+        Task<BootstrapPublicationRemovalStatus> secondFault = faulting
+            .RemoveExactAsync(deadline)
+            .AsTask();
+        Assert(ReferenceEquals(firstFault, secondFault),
+            "a synchronous core throw must publish one cached fault task");
+        Exception observedFirst = await CaptureExceptionAsync(firstFault)
+            .ConfigureAwait(false);
+        Exception observedSecond = await CaptureExceptionAsync(secondFault)
+            .ConfigureAwait(false);
+        Assert(ContainsException<TestRemovalException>(observedFirst) &&
+            ContainsException<TestRemovalException>(observedSecond),
+            "every cached synchronous removal fault must remain observable");
+        AssertEqual(1, faulting.RemovalCalls,
+            "a synchronous removal throw must be invoked once");
     }
 
     private static async Task TestBrokerClaim()
@@ -2686,6 +2878,31 @@ internal static class Program
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(2));
         });
+        await fixture.RequireCleanExitAsync(
+                observerUnused: true,
+                controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerDisposeBeforeRun()
+    {
+        using BrokerFixture fixture = BrokerFixture.Start();
+        string publishName = fixture.Session.PublishPipeName;
+        Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+        Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+        Assert(ReferenceEquals(firstDisposal, secondDisposal),
+            "concurrent asynchronous disposal must publish one completion task");
+        await Task.WhenAll(firstDisposal, secondDisposal)
+            .ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerSessionState.Disposed, fixture.Session.State,
+            "pre-run disposal state");
+        await AssertThrowsAsync<ObjectDisposedException>(async () =>
+        {
+            _ = await fixture.Session.RunAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
         await fixture.RequireCleanExitAsync(
                 observerUnused: true,
                 controllerUnused: true)
@@ -2897,34 +3114,134 @@ internal static class Program
     {
         ManualTimeProvider clock = new(
             CanonicalTestUtcNow());
-        using BrokerFixture fixture = BrokerFixture.Start(
+        BrokerFixture fixture = BrokerFixture.Start(
             publicationLifetime: TimeSpan.FromSeconds(4),
             sessionLifetime: TimeSpan.FromSeconds(5),
             timeProvider: clock);
+        try
+        {
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: false,
+                malformedRevoke: false,
+                allowExpectedClose: false,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+            await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
+            clock.Advance(fixture.PublicationLifetime);
+            await fixture.SendBrokerClaimAsync(
+                malformedTranscript: false,
+                badProof: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0).ConfigureAwait(false);
+            await AssertThrowsAnyAsync(async () =>
+            {
+                _ = await run.ConfigureAwait(false);
+            },
+                typeof(TimeoutException),
+                typeof(OperationCanceledException),
+                typeof(AggregateException))
+                .ConfigureAwait(false);
+            Assert(!fixture.Store.TryRead(out _),
+                "deadline failure must remove the publication");
+            await fixture.RequireCleanExitAsync()
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            fixture.DisposeAfterObservedSessionFailure();
+        }
+    }
+
+    private static async Task TestBrokerCombinedDeadlineCap()
+    {
+        TimeSpan sessionLifetime = TimeSpan.FromSeconds(5);
+        TimeSpan publicationLifetime = TimeSpan.FromSeconds(4);
+        TimeSpan elapsedBeforePublish = TimeSpan.FromSeconds(3);
+        TimeSpan advanceInsidePublisher = TimeSpan.FromSeconds(3);
+        ManualTimeProvider clock = new(
+            CanonicalTestUtcNow(),
+            elapsedBeforePublish);
+        DeadlineProbePublisher? configuredPublisher = null;
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publicationLifetime,
+            sessionLifetime,
+            clock,
+            publisherFactory: _ =>
+            {
+                configuredPublisher = new DeadlineProbePublisher(
+                    clock,
+                    advanceInsidePublisher);
+                return configuredPublisher;
+            });
+        DeadlineProbePublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The combined-deadline probe publisher is missing.");
         await fixture.Observer.SendBrokerPublishAsync(
             fixture.BrokerProcessId,
             fixture.Session.PublishPipeName,
             revokeAfterPublish: false,
             malformedRevoke: false,
-            allowExpectedClose: false,
+            allowExpectedClose: true,
             delayMilliseconds: 0,
             fixture.PublicationLifetime).ConfigureAwait(false);
-        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
-        await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
-        clock.Advance(fixture.PublicationLifetime);
-        await fixture.SendBrokerClaimAsync(
-            malformedTranscript: false,
-            badProof: false,
-            allowExpectedClose: true,
-            delayMilliseconds: 0).ConfigureAwait(false);
-        await AssertThrowsAnyAsync(async () =>
-        {
-            _ = await run.ConfigureAwait(false);
-        }, typeof(TimeoutException), typeof(OperationCanceledException))
+
+        Exception failure = await CaptureExceptionAsync(
+                fixture.Session.RunAsync())
             .ConfigureAwait(false);
+        TimeSpan expectedRemaining = sessionLifetime - elapsedBeforePublish;
+        AssertEqual(expectedRemaining, publisher.RecordedRemaining,
+            "combined publisher deadline remaining time");
+        Assert(publisher.RecordedRemaining < publicationLifetime,
+            "the publication deadline must be capped by the remaining session");
+        Assert(advanceInsidePublisher < publicationLifetime &&
+            advanceInsidePublisher > publisher.RecordedRemaining,
+            "the probe advance must expire only the combined deadline");
+        Assert(failure is TestDeadlineProbeException probeFailure &&
+            probeFailure.InnerException is TimeoutException,
+            "combined deadline expiry must retain its nested TimeoutException");
+        AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+            "combined-deadline broker state");
         Assert(!fixture.Store.TryRead(out _),
-            "deadline failure must remove the publication");
-        await fixture.RequireCleanExitAsync()
+            "combined deadline failure must not retain a publication");
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerDeadlineSetupFailure()
+    {
+        ThrowingFirstTimestampTimeProvider clock = new();
+        using BrokerFixture fixture = BrokerFixture.Start(timeProvider: clock);
+        string publishName = fixture.Session.PublishPipeName;
+
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        Exception failure = await CaptureExceptionAsync(run)
+            .ConfigureAwait(false);
+        Assert(ContainsException<TestTimeProviderException>(failure),
+            "a start-bound deadline capture failure must fault RunAsync");
+        Assert(run.IsFaulted,
+            "a start-bound deadline capture failure must publish a faulted task");
+        AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+            "deadline-setup-failure broker state");
+        Assert(!fixture.Store.TryRead(out _),
+            "deadline setup failure must not retain a publication");
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+
+        Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+        Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+        Assert(ReferenceEquals(firstDisposal, secondDisposal),
+            "deadline setup failure disposal must remain coalesced");
+        await Task.WhenAll(firstDisposal, secondDisposal)
+            .ConfigureAwait(false);
+        Assert(firstDisposal.IsCompletedSuccessfully,
+            "deadline setup failure disposal must complete cleanly");
+        await fixture.RequireCleanExitAsync(
+                observerUnused: true,
+                controllerUnused: true)
             .ConfigureAwait(false);
     }
 
@@ -2932,9 +3249,10 @@ internal static class Program
     {
         using BrokerFixture fixture = BrokerFixture.Start();
         using CancellationTokenSource cancellation = new();
+        string publishName = fixture.Session.PublishPipeName;
         await fixture.Observer.SendBrokerPublishAsync(
             fixture.BrokerProcessId,
-            fixture.Session.PublishPipeName,
+            publishName,
             revokeAfterPublish: false,
             malformedRevoke: false,
             allowExpectedClose: false,
@@ -2942,7 +3260,6 @@ internal static class Program
             fixture.PublicationLifetime).ConfigureAwait(false);
         Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync(
             cancellation.Token);
-        string publishName = fixture.Session.PublishPipeName;
         await WaitForPublicationAsync(fixture.Store, run).ConfigureAwait(false);
         byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
         cancellation.Cancel();
@@ -2950,6 +3267,8 @@ internal static class Program
         {
             _ = await run.ConfigureAwait(false);
         }).ConfigureAwait(false);
+        Assert(run.IsCanceled,
+            "ordinary cancellation must publish a cancelled RunAsync task after cleanup");
         Assert(!fixture.Store.TryRead(out _),
             "cancellation must leave the store empty");
         Assert(AllZero(brokerTokenBorrow),
@@ -2960,6 +3279,686 @@ internal static class Program
         await fixture.RequireCleanExitAsync(
                 controllerUnused: true)
             .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerCancellationAwaitsRemoval()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        TaskCompletionSource<bool> arbitrationEntered = NewSignal();
+        BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    blockRemoval: true);
+                return configuredPublisher;
+            },
+            beforeArbitrationTestHook: async (
+                _,
+                _,
+                _,
+                cancellationToken) =>
+            {
+                arbitrationEntered.TrySetResult(true);
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                    .ConfigureAwait(false);
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The controlled publication publisher is missing.");
+        using CancellationTokenSource cancellation = new();
+        string publishName = fixture.Session.PublishPipeName;
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            publishName,
+            revokeAfterPublish: true,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync(
+            cancellation.Token);
+        await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        string claimName = GetPublishedDescriptor(fixture.Store).ClaimPipeName;
+        string revokeName = GetBrokerPipeName(fixture.Session, "revokePipe");
+        byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
+        await arbitrationEntered.Task.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+
+        cancellation.Cancel();
+        await publisher.RemovalStarted.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+        Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+        Assert(ReferenceEquals(firstDisposal, secondDisposal),
+            "concurrent disposal must await one published task");
+        Assert(!run.IsCompleted,
+            "run must await exact publication removal");
+        AssertEqual(1, publisher.RemovalCalls,
+            "coalesced removal call count while blocked");
+        await WaitUntilAsync(
+                () => AllZero(brokerTokenBorrow),
+                "token cleanup did not run before exact-removal completion")
+            .ConfigureAwait(false);
+        Assert(AllZero(brokerTokenBorrow),
+            "token cleanup must not wait for exact publication removal");
+
+        Task<ProtectedNamedPipe> claimRelease = RecreatePipeWhenReleasedAsync(
+            claimName,
+            fixture.ControllerBinding);
+        Task<ProtectedNamedPipe> revokeRelease = RecreatePipeWhenReleasedAsync(
+            revokeName,
+            fixture.ObserverBinding);
+        ProtectedNamedPipe[] releasedPipes = await Task.WhenAll(
+                claimRelease,
+                revokeRelease)
+            .WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        using ProtectedNamedPipe claimReplacement = releasedPipes[0];
+        using ProtectedNamedPipe revokeReplacement = releasedPipes[1];
+        Assert(!run.IsCompleted,
+            "claim and revoke pipes must be released before removal completes");
+        Assert(fixture.Store.TryRead(out BootstrapPublicationSnapshot? blocked) &&
+            blocked is not null,
+            "pipe release must not claim blocked publication removal");
+        (blocked ?? throw new InvalidOperationException(
+            "The blocked-removal snapshot is missing.")).Dispose();
+
+        publisher.ReleaseRemoval();
+        Task runCompletion = await Task.WhenAny(
+                run,
+                Task.Delay(TestTimeout))
+            .ConfigureAwait(false);
+        Assert(ReferenceEquals(runCompletion, run),
+            $"run remained blocked after removal release; removal calls: " +
+            $"{publisher.RemovalCalls}, store occupied: " +
+            $"{fixture.Store.TryRead(out _)}");
+        await AssertThrowsAsync<OperationCanceledException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        await Task.WhenAll(
+                firstDisposal.WaitAsync(TestTimeout),
+                secondDisposal.WaitAsync(TestTimeout))
+            .ConfigureAwait(false);
+        AssertEqual(1, publisher.RemovalCalls,
+            "terminal coalesced removal call count");
+        Assert(!fixture.Store.TryRead(out _),
+            "cancellation must await verified exact absence");
+        using ProtectedNamedPipe publishReplacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerDisposeDuringPublish()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    blockBeforeCommit: true);
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The blocked publication publisher is missing.");
+        string publishName = fixture.Session.PublishPipeName;
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            publishName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await publisher.PublishEntered.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+
+        Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+        Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+        Assert(ReferenceEquals(firstDisposal, secondDisposal),
+            "blocked-publish disposal must be coalesced");
+        await publisher.PublishCancelled.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        await AssertThrowsAsync<OperationCanceledException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        await Task.WhenAll(firstDisposal, secondDisposal)
+            .ConfigureAwait(false);
+        Assert(!publisher.PublicationCommitted.IsCompleted,
+            "a cancelled pre-commit publisher must not report a commit");
+        AssertEqual(0, publisher.RemovalCalls,
+            "a cancelled pre-commit publisher must not manufacture a lease");
+        Assert(!fixture.Store.TryRead(out _),
+            "a cancelled pre-commit publisher must leave no mutation");
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerDisposalCancellationCallbackFailure()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(store);
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The cancellation-callback publisher is missing.");
+        CancellationTokenRegistration callbackRegistration = default;
+        try
+        {
+            string publishName = fixture.Session.PublishPipeName;
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                publishName,
+                revokeAfterPublish: false,
+                malformedRevoke: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+            await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+                .ConfigureAwait(false);
+            await WaitUntilAsync(
+                    () => GetPrivateField(
+                            fixture.Session,
+                            "publicationLease") is BootstrapPublicationLease &&
+                        GetPrivateField(fixture.Session, "publishPipe") is null,
+                    "the broker did not enter its owned-publication wait state")
+                .ConfigureAwait(false);
+
+            string claimName = GetPublishedDescriptor(fixture.Store)
+                .ClaimPipeName;
+            string revokeName = GetBrokerPipeName(
+                fixture.Session,
+                "revokePipe");
+            byte[] brokerTokenBorrow = GetBrokerTokenBacking(fixture.Session);
+            CancellationTokenSource lifetime = GetPrivateField(
+                    fixture.Session,
+                    "lifetimeCancellation") as CancellationTokenSource ??
+                throw new InvalidOperationException(
+                    "The broker lifetime cancellation source is unavailable.");
+            callbackRegistration = lifetime.Token.Register(static () =>
+                throw new TestCancellationCallbackException());
+
+            Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+            Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+            Assert(ReferenceEquals(firstDisposal, secondDisposal),
+                "throwing-callback disposal must publish one coalesced task");
+            Exception firstFailure = await CaptureExceptionAsync(
+                    firstDisposal.WaitAsync(TestTimeout))
+                .ConfigureAwait(false);
+            Exception secondFailure = await CaptureExceptionAsync(
+                    secondDisposal)
+                .ConfigureAwait(false);
+            Assert(ContainsException<TestCancellationCallbackException>(
+                    firstFailure) &&
+                ContainsException<TestCancellationCallbackException>(
+                    secondFailure),
+                "coalesced disposal must report the cancellation callback failure");
+            Assert(firstDisposal.IsFaulted && secondDisposal.IsFaulted,
+                "throwing-callback disposal must remain faulted");
+
+            await AssertThrowsAsync<OperationCanceledException>(async () =>
+            {
+                _ = await run.ConfigureAwait(false);
+            }).ConfigureAwait(false);
+            Assert(run.IsCanceled,
+                "the broker run must still reach its cancellation outcome");
+            AssertEqual(1, publisher.RemovalCalls,
+                "throwing-callback exact-removal call count");
+            Assert(!fixture.Store.TryRead(out _),
+                "throwing-callback cleanup must leave the store empty");
+            Assert(AllZero(brokerTokenBorrow),
+                "throwing-callback cleanup must wipe the broker token");
+            using ProtectedNamedPipe publishReplacement =
+                ProtectedNamedPipe.Create(
+                    publishName,
+                    fixture.ObserverBinding);
+            using ProtectedNamedPipe claimReplacement =
+                ProtectedNamedPipe.Create(
+                    claimName,
+                    fixture.ControllerBinding);
+            using ProtectedNamedPipe revokeReplacement =
+                ProtectedNamedPipe.Create(
+                    revokeName,
+                    fixture.ObserverBinding);
+            await fixture.RequireCleanExitAsync(controllerUnused: true)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            callbackRegistration.Dispose();
+            fixture.DisposeAfterObservedSessionFailure();
+        }
+    }
+
+    private static async Task TestBrokerPublisherReentrantDisposal()
+    {
+        BrokerFixture? fixture = null;
+        ControlledPublicationPublisher? configuredPublisher = null;
+        Task? reentrantDisposal = null;
+        TaskCompletionSource<bool> disposalPublished = NewSignal();
+        fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    afterCommitBeforeReturn: () =>
+                    {
+                        BrokerFixture active = fixture ??
+                            throw new InvalidOperationException(
+                                "The reentrant broker fixture is missing.");
+                        reentrantDisposal = active.Session.DisposeAsync()
+                            .AsTask();
+                        disposalPublished.TrySetResult(true);
+                    });
+                return configuredPublisher;
+            });
+        using BrokerFixture activeFixture = fixture;
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The reentrant publication publisher is missing.");
+        await activeFixture.Observer.SendBrokerPublishAsync(
+            activeFixture.BrokerProcessId,
+            activeFixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0,
+            activeFixture.PublicationLifetime).ConfigureAwait(false);
+
+        Task<BootstrapBrokerSessionResult> run =
+            activeFixture.Session.RunAsync();
+        await disposalPublished.Task.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        Task disposal = reentrantDisposal ??
+            throw new InvalidOperationException(
+                "The reentrant disposal task was not published.");
+        Assert(ReferenceEquals(
+                run,
+                GetPrivateField(activeFixture.Session, "runTask")),
+            "RunAsync must publish its task before publisher re-entry");
+        Assert(ReferenceEquals(
+                disposal,
+                activeFixture.Session.DisposeAsync().AsTask()),
+            "publisher re-entry must publish one coalesced disposal task");
+
+        Task disposalCompletion = await Task.WhenAny(
+                disposal,
+                Task.Delay(TestTimeout))
+            .ConfigureAwait(false);
+        Assert(ReferenceEquals(disposalCompletion, disposal),
+            "synchronous publisher disposal re-entry must not deadlock");
+        await disposal.ConfigureAwait(false);
+        Exception runFailure = await CaptureExceptionAsync(run)
+            .ConfigureAwait(false);
+        Assert(ContainsException<ObjectDisposedException>(runFailure),
+            "publisher re-entry must reject the committed publication after disposal");
+        Assert(run.IsFaulted && disposal.IsCompletedSuccessfully,
+            "reentrant run and disposal tasks must publish terminal states");
+        AssertEqual(1, publisher.RemovalCalls,
+            "reentrant publisher exact-removal call count");
+        Assert(!activeFixture.Store.TryRead(out _),
+            "reentrant disposal must leave the publication store empty");
+        await activeFixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerCommitBeforeReturnRollback()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    blockAfterCommit: true);
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The commit-before-return publisher is missing.");
+        string publishName = fixture.Session.PublishPipeName;
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            publishName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+
+        Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+        Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+        Assert(ReferenceEquals(firstDisposal, secondDisposal),
+            "commit-before-return disposal must be coalesced");
+        Assert(!firstDisposal.IsCompleted,
+            "disposal must wait for a publisher that has committed but not returned");
+        publisher.ReleasePublish();
+        await publisher.RemovalStarted.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        await AssertThrowsAsync<ObjectDisposedException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        await Task.WhenAll(firstDisposal, secondDisposal)
+            .ConfigureAwait(false);
+        AssertEqual(1, publisher.RemovalCalls,
+            "a commit returned after disposal must be rolled back exactly once");
+        Assert(!fixture.Store.TryRead(out _),
+            "commit-before-return rollback must verify exact absence");
+        using ProtectedNamedPipe replacement = ProtectedNamedPipe.Create(
+            publishName,
+            fixture.ObserverBinding);
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerPublisherFault()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    publishFailure: new TestPublisherException());
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The faulting publication publisher is missing.");
+        await fixture.Observer.SendBrokerPublishAsync(
+            fixture.BrokerProcessId,
+            fixture.Session.PublishPipeName,
+            revokeAfterPublish: false,
+            malformedRevoke: false,
+            allowExpectedClose: true,
+            delayMilliseconds: 0,
+            fixture.PublicationLifetime).ConfigureAwait(false);
+        Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+        await publisher.PublishEntered.WaitAsync(TestTimeout)
+            .ConfigureAwait(false);
+        await AssertThrowsAsync<TestPublisherException>(async () =>
+        {
+            _ = await run.ConfigureAwait(false);
+        }).ConfigureAwait(false);
+        AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+            "publisher-fault broker state");
+        Assert(!fixture.Store.TryRead(out _),
+            "a faulting publisher must leave no retained publication");
+        AssertEqual(0, publisher.RemovalCalls,
+            "a pre-commit publisher fault must not create removal authority");
+        await fixture.RequireCleanExitAsync(controllerUnused: true)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task TestBrokerRemovalFault()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        using BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    removalFailure: new TestRemovalException());
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The removal-fault publisher is missing.");
+        try
+        {
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: true,
+                malformedRevoke: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            Exception failure = await CaptureExceptionAsync(
+                    fixture.Session.RunAsync())
+                .ConfigureAwait(false);
+            Assert(ContainsException<TestRemovalException>(failure),
+                "a terminal removal fault must be observable to the caller");
+            AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+                "removal-fault broker state");
+            AssertEqual(1, publisher.RemovalCalls,
+                "a faulting lease removal must remain coalesced");
+            Assert(fixture.Store.TryRead(
+                    out BootstrapPublicationSnapshot? retained) &&
+                retained is not null,
+                "indeterminate removal must not claim publication absence");
+            (retained ?? throw new InvalidOperationException(
+                "The indeterminate-removal snapshot is missing.")).Dispose();
+            await publisher.ForceRemoveAsync().ConfigureAwait(false);
+            Assert(!fixture.Store.TryRead(out _),
+                "test cleanup must remove the retained exact publication");
+            await fixture.RequireCleanExitAsync(controllerUnused: true)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            fixture.DisposeAfterObservedSessionFailure();
+        }
+    }
+
+    private static async Task TestBrokerUnknownRemovalStatus()
+    {
+        await RunBrokerUnknownRemovalStatusAsync(claim: true)
+            .ConfigureAwait(false);
+        await RunBrokerUnknownRemovalStatusAsync(claim: false)
+            .ConfigureAwait(false);
+    }
+
+    private static async Task RunBrokerUnknownRemovalStatusAsync(bool claim)
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    returnDefaultRemovalStatus: true);
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The unknown-removal publisher is missing.");
+        try
+        {
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: !claim,
+                malformedRevoke: false,
+                allowExpectedClose: !claim,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime,
+                expectTerminalRejection: !claim).ConfigureAwait(false);
+            Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+            await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+                .ConfigureAwait(false);
+            if (claim)
+            {
+                await fixture.SendBrokerClaimAsync(
+                    malformedTranscript: false,
+                    badProof: false,
+                    allowExpectedClose: true,
+                    delayMilliseconds: 0,
+                    expectTerminalRejection: true).ConfigureAwait(false);
+            }
+
+            Exception failure = await CaptureExceptionAsync(run)
+                .ConfigureAwait(false);
+            Assert(ContainsException<InvalidOperationException>(failure),
+                "an unknown removal result must fail the broker closed");
+            AssertEqual(BootstrapBrokerSessionState.Failed,
+                fixture.Session.State,
+                "unknown-removal broker state");
+            AssertEqual(1, publisher.RemovalCalls,
+                "unknown exact-removal call count");
+            Assert(fixture.Store.TryRead(
+                    out BootstrapPublicationSnapshot? retained) &&
+                retained is not null,
+                "an unknown removal result must not claim publication absence");
+            (retained ?? throw new InvalidOperationException(
+                "The unknown-removal snapshot is missing.")).Dispose();
+            await publisher.ForceRemoveAsync().ConfigureAwait(false);
+            Assert(!fixture.Store.TryRead(out _),
+                "unknown-removal test cleanup must remove the exact publication");
+            await fixture.RequireCleanExitAsync(controllerUnused: !claim)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            fixture.DisposeAfterObservedSessionFailure();
+        }
+    }
+
+    private static async Task TestBrokerDisposeCommitRemovalFault()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    blockAfterCommit: true,
+                    removalFailure: new TestRemovalException());
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The disposal removal-fault publisher is missing.");
+        try
+        {
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: false,
+                malformedRevoke: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+            await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+                .ConfigureAwait(false);
+
+            Task firstDisposal = fixture.Session.DisposeAsync().AsTask();
+            Task secondDisposal = fixture.Session.DisposeAsync().AsTask();
+            Assert(ReferenceEquals(firstDisposal, secondDisposal),
+                "post-commit faulting disposal must remain coalesced");
+            Assert(!firstDisposal.IsCompleted,
+                "disposal must await the committed publisher result");
+            publisher.ReleasePublish();
+            await publisher.RemovalStarted.WaitAsync(TestTimeout)
+                .ConfigureAwait(false);
+
+            Exception disposalFailure = await CaptureExceptionAsync(
+                    firstDisposal)
+                .ConfigureAwait(false);
+            Exception repeatedDisposalFailure = await CaptureExceptionAsync(
+                    secondDisposal)
+                .ConfigureAwait(false);
+            Exception runFailure = await CaptureExceptionAsync(run)
+                .ConfigureAwait(false);
+            Assert(ContainsException<TestRemovalException>(disposalFailure) &&
+                ContainsException<TestRemovalException>(
+                    repeatedDisposalFailure),
+                "every coalesced disposal caller must observe removal failure");
+            Assert(ContainsException<TestRemovalException>(runFailure),
+                "the run caller must observe post-commit removal failure");
+            AssertEqual(1, publisher.RemovalCalls,
+                "post-commit disposal removal call count");
+            Assert(fixture.Store.TryRead(
+                    out BootstrapPublicationSnapshot? retained) &&
+                retained is not null,
+                "faulting disposal must not claim publication absence");
+            (retained ?? throw new InvalidOperationException(
+                "The disposal-fault snapshot is missing.")).Dispose();
+            await publisher.ForceRemoveAsync().ConfigureAwait(false);
+            Assert(!fixture.Store.TryRead(out _),
+                "disposal-fault test cleanup must remove the exact publication");
+            await fixture.RequireCleanExitAsync(controllerUnused: true)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            publisher.ReleasePublish();
+            fixture.DisposeAfterObservedSessionFailure();
+        }
+    }
+
+    private static async Task TestBrokerPrimaryAndRemovalFailure()
+    {
+        ControlledPublicationPublisher? configuredPublisher = null;
+        BrokerFixture fixture = BrokerFixture.Start(
+            publisherFactory: store =>
+            {
+                configuredPublisher = new ControlledPublicationPublisher(
+                    store,
+                    removalFailure: new TestRemovalException());
+                return configuredPublisher;
+            });
+        ControlledPublicationPublisher publisher = configuredPublisher ??
+            throw new InvalidOperationException(
+                "The dual-fault publication publisher is missing.");
+        try
+        {
+            await fixture.Observer.SendBrokerPublishAsync(
+                fixture.BrokerProcessId,
+                fixture.Session.PublishPipeName,
+                revokeAfterPublish: false,
+                malformedRevoke: false,
+                allowExpectedClose: false,
+                delayMilliseconds: 0,
+                fixture.PublicationLifetime).ConfigureAwait(false);
+            Task<BootstrapBrokerSessionResult> run = fixture.Session.RunAsync();
+            await publisher.PublicationCommitted.WaitAsync(TestTimeout)
+                .ConfigureAwait(false);
+            await fixture.SendBrokerClaimAsync(
+                malformedTranscript: true,
+                badProof: false,
+                allowExpectedClose: true,
+                delayMilliseconds: 0).ConfigureAwait(false);
+            Exception failure = await CaptureExceptionAsync(run)
+                .ConfigureAwait(false);
+            Assert(ContainsException<SecurityException>(failure),
+                "the primary protocol failure must remain observable");
+            Assert(ContainsException<TestRemovalException>(failure),
+                "the terminal removal failure must remain observable");
+            AssertEqual(1, publisher.RemovalCalls,
+                "dual-fault cleanup must attempt exact removal once");
+            AssertEqual(BootstrapBrokerSessionState.Failed, fixture.Session.State,
+                "dual-fault broker state");
+            await publisher.ForceRemoveAsync().ConfigureAwait(false);
+            Assert(!fixture.Store.TryRead(out _),
+                "dual-fault test cleanup must remove the exact publication");
+            await fixture.RequireCleanExitAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            fixture.DisposeAfterObservedSessionFailure();
+        }
     }
 
     private static async Task TestBrokerOccupiedStore()
@@ -3057,6 +4056,48 @@ internal static class Program
         }
 
         throw new TimeoutException("The broker did not publish in time.");
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> predicate,
+        string failureMessage)
+    {
+        Stopwatch elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < TestTimeout)
+        {
+            if (predicate())
+            {
+                return;
+            }
+
+            await Task.Yield();
+        }
+
+        throw new TimeoutException(failureMessage);
+    }
+
+    private static async Task<ProtectedNamedPipe> RecreatePipeWhenReleasedAsync(
+        string name,
+        BootstrapBinding expectedPeer)
+    {
+        Stopwatch elapsed = Stopwatch.StartNew();
+        Win32Exception? collision = null;
+        while (elapsed.Elapsed < TestTimeout)
+        {
+            try
+            {
+                return ProtectedNamedPipe.Create(name, expectedPeer);
+            }
+            catch (Win32Exception exception)
+            {
+                collision = exception;
+                await Task.Yield();
+            }
+        }
+
+        throw new TimeoutException(
+            $"The protected pipe name was not released: {name}",
+            collision);
     }
 
     private static TestChild StartChild()
@@ -3236,6 +4277,7 @@ internal static class Program
         const byte RevokeFlag = 1;
         const byte AllowCloseFlag = 2;
         const byte MalformedRevokeFlag = 4;
+        const byte RequireTerminalRejectionFlag = 8;
         try
         {
             Stream input = System.Console.OpenStandardInput();
@@ -3266,7 +4308,8 @@ internal static class Program
                 if (brokerProcessId == 0 || delayMilliseconds < 0 ||
                     lifetimeMilliseconds <= 0 || nameLength is < 1 or > 120 ||
                     (flags & ~(RevokeFlag | AllowCloseFlag |
-                        MalformedRevokeFlag)) != 0)
+                        MalformedRevokeFlag |
+                        RequireTerminalRejectionFlag)) != 0)
                 {
                     return 20;
                 }
@@ -3381,6 +4424,14 @@ internal static class Program
                                         .ReceiveFrameAsync(
                                             TimeSpan.FromSeconds(2))
                                         .ConfigureAwait(false);
+                                    if ((flags &
+                                        RequireTerminalRejectionFlag) != 0)
+                                    {
+                                        CryptographicOperations.ZeroMemory(
+                                            revokeAckFrame);
+                                        return 26;
+                                    }
+
                                     RevokeAck revokeAck = (RevokeAck)
                                         BootstrapProtocol.DecodeOwned(
                                             revokeAckFrame,
@@ -3444,6 +4495,7 @@ internal static class Program
         const byte MalformedTranscriptFlag = 1;
         const byte BadProofFlag = 2;
         const byte AllowCloseFlag = 4;
+        const byte RequireTerminalRejectionFlag = 8;
         try
         {
             Stream input = System.Console.OpenStandardInput();
@@ -3472,7 +4524,7 @@ internal static class Program
                 if (brokerProcessId == 0 || delayMilliseconds < 0 ||
                     descriptorLength is < 1 or > BootstrapDescriptor.MaximumEncodedLength ||
                     (flags & ~(MalformedTranscriptFlag | BadProofFlag |
-                        AllowCloseFlag)) != 0)
+                        AllowCloseFlag | RequireTerminalRejectionFlag)) != 0)
                 {
                     return 30;
                 }
@@ -3524,6 +4576,12 @@ internal static class Program
                             byte[] grantFrame = await claim.ReceiveFrameAsync(
                                     TimeSpan.FromSeconds(2))
                                 .ConfigureAwait(false);
+                            if ((flags & RequireTerminalRejectionFlag) != 0)
+                            {
+                                CryptographicOperations.ZeroMemory(grantFrame);
+                                return 33;
+                            }
+
                             ProtectedNamedPipeClient? receipt = null;
                             byte[]? receiptNonce = null;
                             try
@@ -3803,6 +4861,39 @@ internal static class Program
                 type => type.Name))}] was not thrown.");
     }
 
+    private static TaskCompletionSource<bool> NewSignal()
+    {
+        return new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private static async Task<Exception> CaptureExceptionAsync(Task action)
+    {
+        try
+        {
+            await action.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
+
+        throw new InvalidOperationException(
+            "Expected an observable failure, but the task completed successfully.");
+    }
+
+    private static bool ContainsException<TException>(Exception exception)
+        where TException : Exception
+    {
+        if (exception is TException)
+        {
+            return true;
+        }
+
+        return exception is AggregateException aggregate &&
+            aggregate.InnerExceptions.Any(ContainsException<TException>);
+    }
+
     private static byte[] GetStoredDescriptorBacking(
         InMemoryBootstrapPublicationStore store)
     {
@@ -3991,17 +5082,33 @@ internal static class Program
     private sealed class ManualTimeProvider : TimeProvider
     {
         private readonly DateTimeOffset initialUtc;
+        private readonly TimeSpan advanceOnFirstUtcNow;
         private long timestamp;
+        private int utcNowReads;
 
-        internal ManualTimeProvider(DateTimeOffset initialUtc)
+        internal ManualTimeProvider(
+            DateTimeOffset initialUtc,
+            TimeSpan? advanceOnFirstUtcNow = null)
         {
             this.initialUtc = initialUtc;
+            this.advanceOnFirstUtcNow = advanceOnFirstUtcNow ?? TimeSpan.Zero;
+            if (this.advanceOnFirstUtcNow < TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(advanceOnFirstUtcNow));
+            }
         }
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override DateTimeOffset GetUtcNow()
         {
+            if (Interlocked.Increment(ref utcNowReads) == 1 &&
+                advanceOnFirstUtcNow > TimeSpan.Zero)
+            {
+                Advance(advanceOnFirstUtcNow);
+            }
+
             return initialUtc + TimeSpan.FromTicks(
                 Interlocked.Read(ref timestamp));
         }
@@ -4032,6 +5139,355 @@ internal static class Program
             }
 
             Interlocked.Add(ref timestamp, amount.Ticks);
+        }
+    }
+
+    private sealed class ThrowingFirstTimestampTimeProvider : TimeProvider
+    {
+        private int timestampCalls;
+
+        public override long TimestampFrequency =>
+            TimeProvider.System.TimestampFrequency;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            return TimeProvider.System.GetUtcNow();
+        }
+
+        public override long GetTimestamp()
+        {
+            if (Interlocked.Increment(ref timestampCalls) == 1)
+            {
+                throw new TestTimeProviderException();
+            }
+
+            return TimeProvider.System.GetTimestamp();
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+        {
+            return TimeProvider.System.CreateTimer(
+                callback,
+                state,
+                dueTime,
+                period);
+        }
+    }
+
+    private sealed class DeadlineProbePublisher :
+        IBootstrapPublicationPublisher
+    {
+        private readonly ManualTimeProvider clock;
+        private readonly TimeSpan advanceAfterRecord;
+        private TimeSpan? recordedRemaining;
+
+        internal DeadlineProbePublisher(
+            ManualTimeProvider clock,
+            TimeSpan advanceAfterRecord)
+        {
+            ArgumentNullException.ThrowIfNull(clock);
+            if (advanceAfterRecord <= TimeSpan.Zero)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(advanceAfterRecord));
+            }
+
+            this.clock = clock;
+            this.advanceAfterRecord = advanceAfterRecord;
+        }
+
+        internal TimeSpan RecordedRemaining => recordedRemaining ??
+            throw new InvalidOperationException(
+                "The combined deadline was not observed by the publisher.");
+
+        public ValueTask<BootstrapPublishResult> TryPublishAsync(
+            ReadOnlyMemory<byte> canonicalDescriptor,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            recordedRemaining = deadline.GetRemaining();
+            clock.Advance(advanceAfterRecord);
+            try
+            {
+                _ = deadline.GetRemaining();
+            }
+            catch (TimeoutException exception)
+            {
+                throw new TestDeadlineProbeException(exception);
+            }
+
+            throw new InvalidOperationException(
+                "The publisher deadline was reset instead of capped by the session.");
+        }
+    }
+
+    private sealed class ControlledPublicationPublisher :
+        IBootstrapPublicationPublisher
+    {
+        private readonly InMemoryBootstrapPublicationStore store;
+        private readonly bool blockBeforeCommit;
+        private readonly bool blockAfterCommit;
+        private readonly bool blockRemoval;
+        private readonly bool returnDefaultRemovalStatus;
+        private readonly Exception? publishFailure;
+        private readonly Exception? removalFailure;
+        private readonly Action? afterCommitBeforeReturn;
+        private readonly TaskCompletionSource<bool> publishEntered = NewSignal();
+        private readonly TaskCompletionSource<bool> publicationCommitted =
+            NewSignal();
+        private readonly TaskCompletionSource<bool> publishCancelled = NewSignal();
+        private readonly TaskCompletionSource<bool> allowPublishReturn = NewSignal();
+        private readonly TaskCompletionSource<bool> removalStarted = NewSignal();
+        private readonly TaskCompletionSource<bool> allowRemoval = NewSignal();
+        private BootstrapPublicationLease? exactStoreLease;
+        private int removalCalls;
+
+        internal ControlledPublicationPublisher(
+            InMemoryBootstrapPublicationStore store,
+            bool blockBeforeCommit = false,
+            bool blockAfterCommit = false,
+            bool blockRemoval = false,
+            bool returnDefaultRemovalStatus = false,
+            Exception? publishFailure = null,
+            Exception? removalFailure = null,
+            Action? afterCommitBeforeReturn = null)
+        {
+            ArgumentNullException.ThrowIfNull(store);
+            if (blockBeforeCommit && blockAfterCommit)
+            {
+                throw new ArgumentException(
+                    "A controlled publisher cannot block on both sides of commit.");
+            }
+
+            this.store = store;
+            this.blockBeforeCommit = blockBeforeCommit;
+            this.blockAfterCommit = blockAfterCommit;
+            this.blockRemoval = blockRemoval;
+            this.returnDefaultRemovalStatus = returnDefaultRemovalStatus;
+            this.publishFailure = publishFailure;
+            this.removalFailure = removalFailure;
+            this.afterCommitBeforeReturn = afterCommitBeforeReturn;
+        }
+
+        internal Task PublishEntered => publishEntered.Task;
+
+        internal Task PublicationCommitted => publicationCommitted.Task;
+
+        internal Task PublishCancelled => publishCancelled.Task;
+
+        internal Task RemovalStarted => removalStarted.Task;
+
+        internal int RemovalCalls => Volatile.Read(ref removalCalls);
+
+        public async ValueTask<BootstrapPublishResult> TryPublishAsync(
+            ReadOnlyMemory<byte> canonicalDescriptor,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _ = deadline.GetRemaining();
+            publishEntered.TrySetResult(true);
+            if (blockBeforeCommit)
+            {
+                try
+                {
+                    await allowPublishReturn.Task.WaitAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    publishCancelled.TrySetResult(true);
+                    throw;
+                }
+            }
+
+            Exception? configuredPublishFailure = publishFailure;
+            if (configuredPublishFailure is not null)
+            {
+                await Task.Yield();
+                throw configuredPublishFailure;
+            }
+
+            BootstrapPublishResult result = await store.TryPublishAsync(
+                    canonicalDescriptor,
+                    deadline,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (result.Status != BootstrapPublishStatus.Published ||
+                result.Lease is null)
+            {
+                return result;
+            }
+
+            BootstrapPublicationLease inner = result.Lease;
+            exactStoreLease = inner;
+            ControlledPublicationLease controlled = new(this, inner);
+            publicationCommitted.TrySetResult(true);
+            afterCommitBeforeReturn?.Invoke();
+            if (blockAfterCommit)
+            {
+                await allowPublishReturn.Task.ConfigureAwait(false);
+            }
+
+            return BootstrapPublishResult.Published(controlled);
+        }
+
+        internal void ReleasePublish()
+        {
+            allowPublishReturn.TrySetResult(true);
+        }
+
+        internal void ReleaseRemoval()
+        {
+            allowRemoval.TrySetResult(true);
+        }
+
+        internal async Task ForceRemoveAsync()
+        {
+            BootstrapPublicationLease lease = exactStoreLease ??
+                throw new InvalidOperationException(
+                    "The controlled publisher has no exact store lease.");
+            _ = await lease.RemoveExactAsync(
+                    MonotonicDeadline.Start(TimeProvider.System, TestTimeout))
+                .ConfigureAwait(false);
+        }
+
+        private async ValueTask<BootstrapPublicationRemovalStatus>
+            RemoveControlledAsync(
+                BootstrapPublicationLease inner,
+                MonotonicDeadline deadline)
+        {
+            Interlocked.Increment(ref removalCalls);
+            removalStarted.TrySetResult(true);
+            if (blockRemoval)
+            {
+                await allowRemoval.Task.ConfigureAwait(false);
+            }
+
+            Exception? configuredRemovalFailure = removalFailure;
+            if (configuredRemovalFailure is not null)
+            {
+                await Task.Yield();
+                throw configuredRemovalFailure;
+            }
+
+            if (returnDefaultRemovalStatus)
+            {
+                return default;
+            }
+
+            return await inner.RemoveExactAsync(deadline)
+                .ConfigureAwait(false);
+        }
+
+        private sealed class ControlledPublicationLease :
+            BootstrapPublicationLease
+        {
+            private readonly ControlledPublicationPublisher owner;
+            private readonly BootstrapPublicationLease inner;
+
+            internal ControlledPublicationLease(
+                ControlledPublicationPublisher owner,
+                BootstrapPublicationLease inner)
+            {
+                this.owner = owner;
+                this.inner = inner;
+            }
+
+            protected internal override
+                ValueTask<BootstrapPublicationRemovalStatus>
+                RemoveExactCoreAsync(MonotonicDeadline deadline)
+            {
+                return owner.RemoveControlledAsync(inner, deadline);
+            }
+        }
+    }
+
+    private sealed class LatchPublicationLease : BootstrapPublicationLease
+    {
+        private readonly TaskCompletionSource<bool> removalStarted = NewSignal();
+        private readonly TaskCompletionSource<bool> allowRemoval = NewSignal();
+        private int removalCalls;
+
+        internal Task RemovalStarted => removalStarted.Task;
+
+        internal int RemovalCalls => Volatile.Read(ref removalCalls);
+
+        internal void ReleaseRemoval()
+        {
+            allowRemoval.TrySetResult(true);
+        }
+
+        protected internal override async
+            ValueTask<BootstrapPublicationRemovalStatus>
+            RemoveExactCoreAsync(MonotonicDeadline deadline)
+        {
+            _ = deadline.GetRemaining();
+            Interlocked.Increment(ref removalCalls);
+            removalStarted.TrySetResult(true);
+            await allowRemoval.Task.ConfigureAwait(false);
+            return BootstrapPublicationRemovalStatus.Removed;
+        }
+    }
+
+    private sealed class SynchronouslyThrowingPublicationLease :
+        BootstrapPublicationLease
+    {
+        private int removalCalls;
+
+        internal int RemovalCalls => Volatile.Read(ref removalCalls);
+
+        protected internal override ValueTask<BootstrapPublicationRemovalStatus>
+            RemoveExactCoreAsync(MonotonicDeadline deadline)
+        {
+            _ = deadline.GetRemaining();
+            Interlocked.Increment(ref removalCalls);
+            throw new TestRemovalException();
+        }
+    }
+
+    private sealed class TestPublisherException : Exception
+    {
+        internal TestPublisherException()
+            : base("Synthetic asynchronous publication failure.")
+        {
+        }
+    }
+
+    private sealed class TestRemovalException : Exception
+    {
+        internal TestRemovalException()
+            : base("Synthetic exact-removal failure.")
+        {
+        }
+    }
+
+    private sealed class TestTimeProviderException : Exception
+    {
+        internal TestTimeProviderException()
+            : base("Synthetic first timestamp failure.")
+        {
+        }
+    }
+
+    private sealed class TestDeadlineProbeException : Exception
+    {
+        internal TestDeadlineProbeException(TimeoutException innerException)
+            : base("Synthetic combined deadline expiry.", innerException)
+        {
+        }
+    }
+
+    private sealed class TestCancellationCallbackException : Exception
+    {
+        internal TestCancellationCallbackException()
+            : base("Synthetic cancellation callback failure.")
+        {
         }
     }
 
@@ -4082,7 +5538,9 @@ internal static class Program
             TimeSpan? sessionLifetime = null,
             TimeProvider? timeProvider = null,
             Func<Task, Task, Task, CancellationToken, Task>?
-                beforeArbitrationTestHook = null)
+                beforeArbitrationTestHook = null,
+            Func<InMemoryBootstrapPublicationStore,
+                IBootstrapPublicationPublisher>? publisherFactory = null)
         {
             TimeSpan publication = publicationLifetime ??
                 TimeSpan.FromSeconds(4);
@@ -4106,11 +5564,13 @@ internal static class Program
                 BootstrapBinding controllerBinding = controllerIdentity.Snapshot();
                 BootstrapBinding brokerBinding = brokerIdentity.Snapshot();
                 store = new InMemoryBootstrapPublicationStore();
+                IBootstrapPublicationPublisher publisher =
+                    publisherFactory?.Invoke(store) ?? store;
                 brokerSession = new BootstrapBrokerSession(
                     observerBinding,
                     controllerBinding,
                     brokerBinding,
-                    store,
+                    publisher,
                     timeProvider ?? TimeProvider.System,
                     publication,
                     session,
@@ -4143,7 +5603,8 @@ internal static class Program
             bool malformedTranscript,
             bool badProof,
             bool allowExpectedClose,
-            int delayMilliseconds)
+            int delayMilliseconds,
+            bool expectTerminalRejection = false)
         {
             if (!Store.TryRead(out BootstrapPublicationSnapshot? snapshot) ||
                 snapshot is null)
@@ -4163,7 +5624,8 @@ internal static class Program
                             malformedTranscript,
                             badProof,
                             allowExpectedClose,
-                            delayMilliseconds)
+                            delayMilliseconds,
+                            expectTerminalRejection)
                         .ConfigureAwait(false);
                 }
                 finally
@@ -4207,6 +5669,45 @@ internal static class Program
             Store.Dispose();
             Controller.Dispose();
             Observer.Dispose();
+        }
+
+        internal void DisposeAfterObservedSessionFailure()
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            try
+            {
+                try
+                {
+                    Session.Dispose();
+                }
+                catch (Exception)
+                {
+                    // The test already asserted the shared disposal failure.
+                }
+            }
+            finally
+            {
+                try
+                {
+                    Store.Dispose();
+                }
+                finally
+                {
+                    try
+                    {
+                        Controller.Dispose();
+                    }
+                    finally
+                    {
+                        Observer.Dispose();
+                    }
+                }
+            }
         }
     }
 
@@ -4266,7 +5767,8 @@ internal static class Program
             bool malformedRevoke,
             bool allowExpectedClose,
             int delayMilliseconds,
-            TimeSpan publicationLifetime)
+            TimeSpan publicationLifetime,
+            bool expectTerminalRejection = false)
         {
             ProtectedNamedPipe.ValidateName(pipeName);
             if (brokerProcessId == 0 || delayMilliseconds < 0 ||
@@ -4290,6 +5792,11 @@ internal static class Program
             if (malformedRevoke)
             {
                 flags |= 4;
+            }
+
+            if (expectTerminalRejection)
+            {
+                flags |= 8;
             }
 
             byte[] name = Encoding.ASCII.GetBytes(pipeName);
@@ -4325,7 +5832,8 @@ internal static class Program
             bool malformedTranscript,
             bool badProof,
             bool allowExpectedClose,
-            int delayMilliseconds)
+            int delayMilliseconds,
+            bool expectTerminalRejection = false)
         {
             if (brokerProcessId == 0 || delayMilliseconds < 0 ||
                 descriptor.Length is < 1 or > BootstrapDescriptor.MaximumEncodedLength)
@@ -4347,6 +5855,11 @@ internal static class Program
             if (allowExpectedClose)
             {
                 flags |= 4;
+            }
+
+            if (expectTerminalRejection)
+            {
+                flags |= 8;
             }
 
             byte[] command = new byte[sizeof(uint) + sizeof(byte) +

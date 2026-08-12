@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Threading;
@@ -30,11 +32,11 @@ internal sealed record BootstrapBrokerSessionResult(
 /// Runs one publication and one terminal claim-or-revoke decision. The
 /// session never retries an exchange or republishes after uncertainty.
 /// </summary>
-internal sealed class BootstrapBrokerSession : IDisposable
+internal sealed class BootstrapBrokerSession : IDisposable, IAsyncDisposable
 {
     private readonly object lifecycleGate = new();
     private readonly object arbitrationGate = new();
-    private readonly InMemoryBootstrapPublicationStore store;
+    private readonly IBootstrapPublicationPublisher publisher;
     private readonly TimeProvider timeProvider;
     private readonly TimeSpan publicationLifetime;
     private readonly TimeSpan sessionLifetime;
@@ -49,7 +51,13 @@ internal sealed class BootstrapBrokerSession : IDisposable
     private ProtectedNamedPipe? claimPipe;
     private ProtectedNamedPipe? revokePipe;
     private ProtectedNamedPipe? receiptPipe;
-    private BootstrapPublicationRegistration? publicationRegistration;
+    private readonly object publicationGate = new();
+    private BootstrapPublicationLease? publicationLease;
+    private Task<BootstrapPublicationRemovalStatus>? publicationRemovalTask;
+    private MonotonicDeadline? publicationDeadline;
+    private Task<Exception?>? cleanupTask;
+    private Task<BootstrapBrokerSessionResult>? runTask;
+    private Task? disposalTask;
     private SecretBuffer? brokerToken;
     private BootstrapBrokerSessionState state;
     private ArbitrationWinner winner;
@@ -60,7 +68,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
         BootstrapBinding observerBinding,
         BootstrapBinding controllerBinding,
         BootstrapBinding brokerBinding,
-        InMemoryBootstrapPublicationStore store,
+        IBootstrapPublicationPublisher publisher,
         TimeProvider timeProvider,
         TimeSpan publicationLifetime,
         TimeSpan sessionLifetime,
@@ -70,7 +78,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
         ArgumentNullException.ThrowIfNull(observerBinding);
         ArgumentNullException.ThrowIfNull(controllerBinding);
         ArgumentNullException.ThrowIfNull(brokerBinding);
-        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(publisher);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ValidateLifetime(publicationLifetime, nameof(publicationLifetime));
         ValidateLifetime(sessionLifetime, nameof(sessionLifetime));
@@ -96,7 +104,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
         this.observerBinding = observerBinding;
         this.controllerBinding = controllerBinding;
         this.brokerBinding = brokerBinding;
-        this.store = store;
+        this.publisher = publisher;
         this.timeProvider = timeProvider;
         this.publicationLifetime = publicationLifetime;
         this.sessionLifetime = sessionLifetime;
@@ -129,7 +137,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
         }
     }
 
-    internal async Task<BootstrapBrokerSessionResult> RunAsync(
+    internal Task<BootstrapBrokerSessionResult> RunAsync(
         CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref runStarted, 1) != 0)
@@ -139,6 +147,10 @@ internal sealed class BootstrapBrokerSession : IDisposable
         }
 
         CancellationToken lifetimeToken;
+        TaskCompletionSource<object?> startGate = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<BootstrapBrokerSessionResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         lock (lifecycleGate)
         {
             if (disposed || lifetimeCancellation is null)
@@ -149,67 +161,258 @@ internal sealed class BootstrapBrokerSession : IDisposable
 
             state = BootstrapBrokerSessionState.Running;
             lifetimeToken = lifetimeCancellation.Token;
+            runTask = completion.Task;
         }
 
-        using CancellationTokenSource operation = CancellationTokenSource
-            .CreateLinkedTokenSource(cancellationToken, lifetimeToken);
-        MonotonicDeadline sessionDeadline = MonotonicDeadline.Start(
-            timeProvider,
-            sessionLifetime);
+        MonotonicDeadline sessionDeadline = default;
+        Exception? setupFailure = null;
         try
         {
-            BootstrapBrokerSessionResult result = await RunCoreAsync(
-                    sessionDeadline,
-                    operation.Token)
-                .ConfigureAwait(false);
-            SetTerminalState(result.Outcome == BootstrapBrokerOutcome.Claimed
-                ? BootstrapBrokerSessionState.Claimed
-                : BootstrapBrokerSessionState.Revoked);
-            return result;
+            sessionDeadline = MonotonicDeadline.Start(
+                timeProvider,
+                sessionLifetime);
         }
-        catch
+        catch (Exception exception)
+        {
+            setupFailure = exception;
+        }
+
+        _ = CompleteRunAsync(
+            completion,
+            startGate.Task,
+            sessionDeadline,
+            setupFailure,
+            cancellationToken,
+            lifetimeToken);
+        startGate.TrySetResult(null);
+        return completion.Task;
+    }
+
+    private async Task CompleteRunAsync(
+        TaskCompletionSource<BootstrapBrokerSessionResult> completion,
+        Task startGate,
+        MonotonicDeadline sessionDeadline,
+        Exception? setupFailure,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
+    {
+        try
+        {
+            await startGate.ConfigureAwait(false);
+            BootstrapBrokerSessionResult result = await RunManagedAsync(
+                    sessionDeadline,
+                    setupFailure,
+                    cancellationToken,
+                    lifetimeToken)
+                .ConfigureAwait(false);
+            completion.TrySetResult(result);
+        }
+        catch (OperationCanceledException exception)
+        {
+            completion.TrySetCanceled(exception.CancellationToken);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async Task<BootstrapBrokerSessionResult> RunManagedAsync(
+        MonotonicDeadline sessionDeadline,
+        Exception? setupFailure,
+        CancellationToken cancellationToken,
+        CancellationToken lifetimeToken)
+    {
+        BootstrapBrokerSessionResult? result = null;
+        Exception? primaryFailure = setupFailure;
+        if (primaryFailure is null)
+        {
+            try
+            {
+                using CancellationTokenSource operation = CancellationTokenSource
+                    .CreateLinkedTokenSource(cancellationToken, lifetimeToken);
+                result = await RunCoreAsync(
+                        sessionDeadline,
+                        operation.Token)
+                    .ConfigureAwait(false);
+                SetTerminalState(result.Outcome == BootstrapBrokerOutcome.Claimed
+                    ? BootstrapBrokerSessionState.Claimed
+                    : BootstrapBrokerSessionState.Revoked);
+            }
+            catch (Exception exception)
+            {
+                primaryFailure = exception;
+            }
+        }
+
+        if (primaryFailure is not null)
         {
             SetTerminalState(BootstrapBrokerSessionState.Failed);
-            throw;
         }
-        finally
+
+        Exception? cleanupFailure = await GetOrStartCleanupAsync()
+            .ConfigureAwait(false);
+        if (primaryFailure is not null)
         {
-            RemovePublicationIfOwned();
-            DisposeBrokerToken();
-            CloseProtocolPipes();
+            if (cleanupFailure is not null)
+            {
+                throw new AggregateException(
+                    "The bootstrap broker failed and terminal cleanup also failed.",
+                    primaryFailure,
+                    cleanupFailure);
+            }
+
+            ExceptionDispatchInfo.Capture(primaryFailure).Throw();
         }
+
+        if (cleanupFailure is not null)
+        {
+            SetTerminalState(BootstrapBrokerSessionState.Failed);
+            ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+        }
+
+        return result ?? throw new InvalidOperationException(
+            "The bootstrap broker completed without a terminal result.");
     }
 
     public void Dispose()
     {
-        CancellationTokenSource? cancellation;
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        TaskCompletionSource<object?> completion;
+        TaskCompletionSource<object?> startGate = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         lock (lifecycleGate)
         {
-            if (disposed)
+            if (disposalTask is not null)
             {
-                return;
+                return new ValueTask(disposalTask);
             }
 
             disposed = true;
-            cancellation = lifetimeCancellation;
-            lifetimeCancellation = null;
             if (state is BootstrapBrokerSessionState.Created or
                 BootstrapBrokerSessionState.Running)
             {
                 state = BootstrapBrokerSessionState.Disposed;
             }
+
+            completion = new TaskCompletionSource<object?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            disposalTask = completion.Task;
         }
 
+        _ = CompleteDisposalAsync(completion, startGate.Task);
+        startGate.TrySetResult(null);
+        return new ValueTask(completion.Task);
+    }
+
+    private async Task CompleteDisposalAsync(
+        TaskCompletionSource<object?> completion,
+        Task startGate)
+    {
         try
         {
-            cancellation?.Cancel();
+            await startGate.ConfigureAwait(false);
+            await DisposeManagedAsync().ConfigureAwait(false);
+            completion.TrySetResult(null);
+        }
+        catch (OperationCanceledException exception)
+        {
+            // DisposeAsync has no caller cancellation contract. An OCE here
+            // is a cleanup/disposal failure and must remain faulted.
+            completion.TrySetException(exception);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async Task DisposeManagedAsync()
+    {
+        CancellationTokenSource? cancellation;
+        Task<BootstrapBrokerSessionResult>? running;
+        lock (lifecycleGate)
+        {
+            cancellation = lifetimeCancellation;
+            lifetimeCancellation = null;
+            running = runTask;
+        }
+
+        Exception? disposalFailure = null;
+        Exception? cancellationRequestFailure = null;
+        try
+        {
+            try
+            {
+                cancellation?.Cancel();
+            }
+            catch (Exception exception)
+            {
+                cancellationRequestFailure = exception;
+            }
+
+            if (running is not null)
+            {
+                try
+                {
+                    _ = await running.ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // RunAsync remains the authoritative protocol-failure
+                    // channel. Disposal waits for its terminal cleanup.
+                }
+            }
         }
         finally
         {
-            CloseProtocolPipes();
-            RemovePublicationIfOwned();
-            DisposeBrokerToken();
-            cancellation?.Dispose();
+            // RunAsync is authoritative for protocol failures, but disposal
+            // independently promises terminal cleanup. Observe the shared
+            // cleanup result even when RunAsync already reported a failure.
+            disposalFailure = await GetOrStartCleanupAsync()
+                .ConfigureAwait(false);
+
+            Exception? cancellationFailure = null;
+            try
+            {
+                cancellation?.Dispose();
+            }
+            catch (Exception exception)
+            {
+                cancellationFailure = exception;
+            }
+
+            List<Exception> failures = new();
+            if (cancellationRequestFailure is not null)
+            {
+                failures.Add(cancellationRequestFailure);
+            }
+
+            if (disposalFailure is not null)
+            {
+                failures.Add(disposalFailure);
+            }
+
+            if (cancellationFailure is not null)
+            {
+                failures.Add(cancellationFailure);
+            }
+
+            if (failures.Count == 1)
+            {
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            }
+
+            if (failures.Count > 1)
+            {
+                throw new AggregateException(
+                    "Bootstrap disposal encountered multiple failures.",
+                    failures);
+            }
         }
     }
 
@@ -258,21 +461,35 @@ internal sealed class BootstrapBrokerSession : IDisposable
             publicationLifetime);
         byte[] encodedDescriptor = descriptor.EncodeCanonical();
         byte[] descriptorDigest = SHA256.HashData(encodedDescriptor);
-        MonotonicDeadline publicationDeadline = MonotonicDeadline.Start(
-            timeProvider,
-            publicationLifetime);
+        MonotonicDeadline activePublicationDeadline =
+            sessionDeadline.CapFromNow(publicationLifetime);
+        publicationDeadline = activePublicationDeadline;
         try
         {
-            if (!store.TryPublish(
+            BootstrapPublishResult publication = await publisher.TryPublishAsync(
                     encodedDescriptor,
-                    out BootstrapPublicationRegistration? registration) ||
-                registration is null)
+                    activePublicationDeadline,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (publication.Status == BootstrapPublishStatus.Occupied &&
+                publication.Lease is null)
             {
                 throw new InvalidOperationException(
                     "The bootstrap publication store is occupied.");
             }
 
-            publicationRegistration = registration;
+            if (publication.Status != BootstrapPublishStatus.Published ||
+                publication.Lease is null)
+            {
+                throw new InvalidOperationException(
+                    "The bootstrap publication publisher returned an invalid result.");
+            }
+
+            await InstallPublicationLeaseAsync(
+                    publication.Lease,
+                    activePublicationDeadline)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             using SensitiveFrame acknowledgement = BootstrapProtocol.Encode(
                 new PublishAck(
                     request.RequestId,
@@ -284,7 +501,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
                     publish,
                     acknowledgement.Bytes,
                     sessionDeadline,
-                    publicationDeadline,
+                    activePublicationDeadline,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -304,14 +521,14 @@ internal sealed class BootstrapBrokerSession : IDisposable
             publicationId,
             descriptorDigest,
             sessionDeadline,
-            publicationDeadline,
+            activePublicationDeadline,
             claimCancellation.Token);
         Task<RevokeRequest> revokeWorker = ReceiveRevokeAsync(
             RequirePipe(revokePipe, "revoke"),
             publicationId,
             descriptorDigest,
             sessionDeadline,
-            publicationDeadline,
+            activePublicationDeadline,
             revokeCancellation.Token);
 
         Task completed = await Task.WhenAny(claimWorker, revokeWorker)
@@ -331,13 +548,16 @@ internal sealed class BootstrapBrokerSession : IDisposable
             ClaimRequest claim = await claimWorker.ConfigureAwait(false);
             await RequireCompletedCompetitorValidAsync(revokeWorker)
                 .ConfigureAwait(false);
-            SelectWinner(ArbitrationWinner.Claim, publicationRegistration);
+            await SelectWinnerAsync(
+                    ArbitrationWinner.Claim,
+                    activePublicationDeadline)
+                .ConfigureAwait(false);
             revokeCancellation.Cancel();
             await DrainLosingWorkerAsync(
                     revokeWorker,
                     revokeCancellation.Token,
                     sessionDeadline,
-                    publicationDeadline,
+                    activePublicationDeadline,
                     cancellationToken)
                 .ConfigureAwait(false);
             DisposePipe(ref revokePipe);
@@ -346,7 +566,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
                     publicationId,
                     descriptorDigest,
                     sessionDeadline,
-                    publicationDeadline,
+                    activePublicationDeadline,
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -354,13 +574,16 @@ internal sealed class BootstrapBrokerSession : IDisposable
         RevokeRequest revoke = await revokeWorker.ConfigureAwait(false);
         await RequireCompletedCompetitorValidAsync(claimWorker)
             .ConfigureAwait(false);
-        SelectWinner(ArbitrationWinner.Revoke, publicationRegistration);
+        await SelectWinnerAsync(
+                ArbitrationWinner.Revoke,
+                activePublicationDeadline)
+            .ConfigureAwait(false);
         claimCancellation.Cancel();
         await DrainLosingWorkerAsync(
                 claimWorker,
                 claimCancellation.Token,
                 sessionDeadline,
-                publicationDeadline,
+                activePublicationDeadline,
                 cancellationToken)
             .ConfigureAwait(false);
         DisposePipe(ref claimPipe);
@@ -369,7 +592,7 @@ internal sealed class BootstrapBrokerSession : IDisposable
                 publicationId,
                 descriptorDigest,
                 sessionDeadline,
-                publicationDeadline,
+                activePublicationDeadline,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -574,11 +797,10 @@ internal sealed class BootstrapBrokerSession : IDisposable
         }
     }
 
-    private void SelectWinner(
+    private async Task SelectWinnerAsync(
         ArbitrationWinner candidate,
-        BootstrapPublicationRegistration? registration)
+        MonotonicDeadline deadline)
     {
-        ArgumentNullException.ThrowIfNull(registration);
         lock (arbitrationGate)
         {
             if (winner != ArbitrationWinner.None)
@@ -587,15 +809,22 @@ internal sealed class BootstrapBrokerSession : IDisposable
                     "The bootstrap publication already has a terminal winner.");
             }
 
-            if (!ReferenceEquals(publicationRegistration, registration) ||
-                !store.TryRemove(registration))
-            {
-                throw new InvalidOperationException(
-                    "The exact bootstrap publication could not be removed.");
-            }
-
-            publicationRegistration = null;
             winner = candidate;
+        }
+
+        BootstrapPublicationRemovalStatus removal =
+            await RemovePublicationIfOwnedAsync(deadline)
+                .ConfigureAwait(false);
+        if (removal == BootstrapPublicationRemovalStatus.RemovedAfterDeadline)
+        {
+            throw new TimeoutException(
+                "The exact bootstrap publication was removed after its deadline.");
+        }
+
+        if (removal != BootstrapPublicationRemovalStatus.Removed)
+        {
+            throw new InvalidOperationException(
+                "The exact bootstrap publication returned an unknown removal status.");
         }
     }
 
@@ -620,8 +849,8 @@ internal sealed class BootstrapBrokerSession : IDisposable
         catch (Exception exception) when (
             losingWorkerCancellation.IsCancellationRequested &&
             !cancellationToken.IsCancellationRequested &&
-            !sessionDeadline.IsExpired(timeProvider) &&
-            !publicationDeadline.IsExpired(timeProvider) &&
+            !sessionDeadline.IsExpired() &&
+            !publicationDeadline.IsExpired() &&
             exception is OperationCanceledException)
         {
             // The selected winner explicitly cancelled the other worker.
@@ -801,15 +1030,226 @@ internal sealed class BootstrapBrokerSession : IDisposable
         }
     }
 
-    private void RemovePublicationIfOwned()
+    private async Task InstallPublicationLeaseAsync(
+        BootstrapPublicationLease lease,
+        MonotonicDeadline deadline)
     {
-        BootstrapPublicationRegistration? registration =
-            publicationRegistration;
-        publicationRegistration = null;
-        if (registration is not null)
+        ArgumentNullException.ThrowIfNull(lease);
+        bool reject;
+        lock (lifecycleGate)
         {
-            _ = store.TryRemove(registration);
+            reject = disposed || lifetimeCancellation is null;
+            lock (publicationGate)
+            {
+                if (publicationLease is not null ||
+                    publicationRemovalTask is not null)
+                {
+                    throw new InvalidOperationException(
+                        "A bootstrap publication lease is already installed.");
+                }
+
+                publicationLease = lease;
+            }
         }
+
+        if (reject)
+        {
+            BootstrapPublicationRemovalStatus removal =
+                await RemovePublicationIfOwnedAsync(deadline)
+                    .ConfigureAwait(false);
+            if (removal ==
+                BootstrapPublicationRemovalStatus.RemovedAfterDeadline)
+            {
+                throw new TimeoutException(
+                    "A publication committed during disposal and was removed after its deadline.");
+            }
+
+            throw new ObjectDisposedException(
+                nameof(BootstrapBrokerSession),
+                "The session was disposed before publication ownership could be installed.");
+        }
+    }
+
+    private Task<BootstrapPublicationRemovalStatus>
+        RemovePublicationIfOwnedAsync(MonotonicDeadline deadline)
+    {
+        TaskCompletionSource<BootstrapPublicationRemovalStatus>? completion =
+            null;
+        BootstrapPublicationLease? owned = null;
+        lock (publicationGate)
+        {
+            if (publicationRemovalTask is not null)
+            {
+                return publicationRemovalTask;
+            }
+
+            if (publicationLease is null)
+            {
+                return Task.FromResult(
+                    BootstrapPublicationRemovalStatus.Removed);
+            }
+
+            owned = publicationLease;
+            completion = new TaskCompletionSource<
+                BootstrapPublicationRemovalStatus>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            publicationRemovalTask = completion.Task;
+        }
+
+        _ = CompleteInstalledLeaseRemovalAsync(
+            completion,
+            owned,
+            deadline);
+        return completion.Task;
+    }
+
+    private async Task CompleteInstalledLeaseRemovalAsync(
+        TaskCompletionSource<BootstrapPublicationRemovalStatus> completion,
+        BootstrapPublicationLease lease,
+        MonotonicDeadline deadline)
+    {
+        try
+        {
+            BootstrapPublicationRemovalStatus result =
+                await RemoveInstalledLeaseAsync(lease, deadline)
+                    .ConfigureAwait(false);
+            completion.TrySetResult(result);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    private async Task<BootstrapPublicationRemovalStatus>
+        RemoveInstalledLeaseAsync(
+            BootstrapPublicationLease lease,
+            MonotonicDeadline deadline)
+    {
+        BootstrapPublicationRemovalStatus result =
+            await lease.RemoveExactAsync(deadline).ConfigureAwait(false);
+        if (result is not BootstrapPublicationRemovalStatus.Removed and
+            not BootstrapPublicationRemovalStatus.RemovedAfterDeadline)
+        {
+            throw new InvalidOperationException(
+                "The publication lease returned an unknown removal status.");
+        }
+
+        lock (publicationGate)
+        {
+            if (ReferenceEquals(publicationLease, lease))
+            {
+                publicationLease = null;
+            }
+        }
+
+        return result;
+    }
+
+    private Task<Exception?> GetOrStartCleanupAsync()
+    {
+        TaskCompletionSource<Exception?>? completion = null;
+        lock (publicationGate)
+        {
+            if (cleanupTask is not null)
+            {
+                return cleanupTask;
+            }
+
+            completion = new TaskCompletionSource<Exception?>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            cleanupTask = completion.Task;
+        }
+
+        _ = CompleteCleanupAsync(completion);
+        return completion.Task;
+    }
+
+    private async Task CompleteCleanupAsync(
+        TaskCompletionSource<Exception?> completion)
+    {
+        try
+        {
+            Exception? result = await TryCleanupCoreAsync()
+                .ConfigureAwait(false);
+            completion.TrySetResult(result);
+        }
+        catch (Exception exception)
+        {
+            // The cleanup task carries failures as its result so RunAsync can
+            // preserve an independent primary protocol failure alongside it.
+            completion.TrySetResult(exception);
+        }
+    }
+
+    private async Task<Exception?> TryCleanupCoreAsync()
+    {
+        List<Exception> failures = new();
+        Task<BootstrapPublicationRemovalStatus>? removalTask = null;
+        MonotonicDeadline? deadline = publicationDeadline;
+        if (deadline is MonotonicDeadline removalDeadline)
+        {
+            try
+            {
+                removalTask = RemovePublicationIfOwnedAsync(removalDeadline);
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        try
+        {
+            DisposeBrokerToken();
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+
+        try
+        {
+            CloseProtocolPipes();
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
+
+        if (removalTask is not null)
+        {
+            try
+            {
+                BootstrapPublicationRemovalStatus removal =
+                    await removalTask.ConfigureAwait(false);
+                if (removal ==
+                    BootstrapPublicationRemovalStatus.RemovedAfterDeadline)
+                {
+                    failures.Add(new TimeoutException(
+                        "Publication removal completed after its deadline."));
+                }
+                else if (removal !=
+                    BootstrapPublicationRemovalStatus.Removed)
+                {
+                    failures.Add(new InvalidOperationException(
+                        "Publication cleanup returned an unknown removal status."));
+                }
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        return failures.Count switch
+        {
+            0 => null,
+            1 => failures[0],
+            _ => new AggregateException(
+                "Multiple terminal bootstrap cleanup operations failed.",
+                failures),
+        };
     }
 
     private void DisposeBrokerToken()
@@ -827,10 +1267,36 @@ internal sealed class BootstrapBrokerSession : IDisposable
 
     private void CloseProtocolPipes()
     {
-        DisposePipe(ref receiptPipe);
-        DisposePipe(ref revokePipe);
-        DisposePipe(ref claimPipe);
-        DisposePipe(ref publishPipe);
+        List<Exception> failures = new();
+        DisposePipeCollect(ref receiptPipe, failures);
+        DisposePipeCollect(ref revokePipe, failures);
+        DisposePipeCollect(ref claimPipe, failures);
+        DisposePipeCollect(ref publishPipe, failures);
+        if (failures.Count == 1)
+        {
+            ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        }
+
+        if (failures.Count > 1)
+        {
+            throw new AggregateException(
+                "Multiple bootstrap pipe closures failed.",
+                failures);
+        }
+    }
+
+    private static void DisposePipeCollect(
+        ref ProtectedNamedPipe? pipe,
+        List<Exception> failures)
+    {
+        try
+        {
+            DisposePipe(ref pipe);
+        }
+        catch (Exception exception)
+        {
+            failures.Add(exception);
+        }
     }
 
     private static void DisposePipe(ref ProtectedNamedPipe? pipe)
@@ -863,10 +1329,10 @@ internal sealed class BootstrapBrokerSession : IDisposable
         MonotonicDeadline sessionDeadline,
         MonotonicDeadline? publicationDeadline)
     {
-        TimeSpan remaining = sessionDeadline.GetRemaining(timeProvider);
+        TimeSpan remaining = sessionDeadline.GetRemaining();
         if (publicationDeadline is MonotonicDeadline publication)
         {
-            TimeSpan publicationRemaining = publication.GetRemaining(timeProvider);
+            TimeSpan publicationRemaining = publication.GetRemaining();
             if (publicationRemaining < remaining)
             {
                 remaining = publicationRemaining;
@@ -941,43 +1407,4 @@ internal sealed class BootstrapBrokerSession : IDisposable
         Revoke,
     }
 
-    private readonly record struct MonotonicDeadline(
-        long StartedTimestamp,
-        TimeSpan Lifetime)
-    {
-        internal static MonotonicDeadline Start(
-            TimeProvider provider,
-            TimeSpan lifetime)
-        {
-            return new MonotonicDeadline(provider.GetTimestamp(), lifetime);
-        }
-
-        internal TimeSpan GetRemaining(TimeProvider provider)
-        {
-            TimeSpan elapsed = provider.GetElapsedTime(
-                StartedTimestamp,
-                provider.GetTimestamp());
-            if (elapsed < TimeSpan.Zero)
-            {
-                throw new InvalidOperationException(
-                    "The monotonic time provider moved backwards.");
-            }
-
-            TimeSpan remaining = Lifetime - elapsed;
-            if (remaining <= TimeSpan.Zero)
-            {
-                throw new TimeoutException(
-                    "The bootstrap session deadline expired.");
-            }
-
-            return remaining;
-        }
-
-        internal bool IsExpired(TimeProvider provider)
-        {
-            return provider.GetElapsedTime(
-                StartedTimestamp,
-                provider.GetTimestamp()) >= Lifetime;
-        }
-    }
 }
