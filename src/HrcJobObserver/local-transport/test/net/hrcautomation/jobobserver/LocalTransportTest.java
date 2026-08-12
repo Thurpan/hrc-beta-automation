@@ -54,7 +54,9 @@ public final class LocalTransportTest {
                 test("cleanCloseStopsAccept", LocalTransportTest::cleanCloseStopsAccept),
                 test("closeWaitsForAdmittedArm", LocalTransportTest::closeWaitsForAdmittedArm),
                 test("serverAllowsOnlyOneConcurrentClient", LocalTransportTest::serverAllowsOnlyOneConcurrentClient),
-                test("tokenIsDefensivelyCopied", LocalTransportTest::tokenIsDefensivelyCopied));
+                test("tokenIsDefensivelyCopied", LocalTransportTest::tokenIsDefensivelyCopied),
+                test("wipesMutableAuthenticationFrames",
+                        LocalTransportTest::wipesMutableAuthenticationFrames));
         int passed = 0;
         for (TestCase test : tests) {
             try {
@@ -138,6 +140,54 @@ public final class LocalTransportTest {
             assertEquals(null, client.read());
             awaitFailure(server.server, TransportFailure.AUTHENTICATION_FAILED);
         }
+    }
+
+    private static void wipesMutableAuthenticationFrames() throws Exception {
+        LocalObserverServer server = new LocalObserverServer(
+                new FakeControl(), TOKEN, TIMEOUT);
+        byte[] valid = ("HELLO\t1\t" + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(TOKEN)).getBytes(StandardCharsets.US_ASCII);
+        server.authenticate(valid);
+        assertAllZero(valid);
+
+        byte[] invalid = ("HELLO\t1\t" + "A".repeat(43))
+                .getBytes(StandardCharsets.US_ASCII);
+        assertThrows(ProtocolFailure.class, () -> server.authenticate(invalid));
+        assertAllZero(invalid);
+
+        byte[] malformed = "HELLO\t1\tinvalid".getBytes(StandardCharsets.US_ASCII);
+        assertThrows(ProtocolFailure.class, () -> server.authenticate(malformed));
+        assertAllZero(malformed);
+
+        byte[] invalidAlphabet = validAuthenticationFrame();
+        invalidAlphabet[invalidAlphabet.length - 1] = '*';
+        assertAuthenticationFailureAndWiped(server, invalidAlphabet);
+
+        byte[] nonCanonical = validAuthenticationFrame();
+        String alphabet =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        int last = alphabet.indexOf((char) nonCanonical[nonCanonical.length - 1]);
+        int alias = (last & 0x3c) | ((last + 1) & 0x03);
+        nonCanonical[nonCanonical.length - 1] = (byte) alphabet.charAt(alias);
+        assertAuthenticationFailureAndWiped(server, nonCanonical);
+        assertTrue(server.closeAndAwait(TIMEOUT).clean());
+    }
+
+    private static byte[] validAuthenticationFrame() {
+        return hello(TOKEN).getBytes(StandardCharsets.US_ASCII);
+    }
+
+    private static void assertAuthenticationFailureAndWiped(
+            LocalObserverServer server, byte[] frame) {
+        AtomicReference<ProtocolFailure> failure = new AtomicReference<>();
+        try {
+            server.authenticate(frame);
+        } catch (ProtocolFailure rejected) {
+            failure.set(rejected);
+        }
+        assertEquals(TransportFailure.AUTHENTICATION_FAILED,
+                Objects.requireNonNull(failure.get(), "authentication failure").reason());
+        assertAllZero(frame);
     }
 
     private static void acceptsLfAndCrLfOnly() throws Exception {
@@ -563,6 +613,14 @@ public final class LocalTransportTest {
     private static void assertFalse(boolean value) {
         if (value) {
             throw new AssertionError("expected false");
+        }
+    }
+
+    private static void assertAllZero(byte[] values) {
+        for (byte value : values) {
+            if (value != 0) {
+                throw new AssertionError("expected a wiped byte array");
+            }
         }
     }
 

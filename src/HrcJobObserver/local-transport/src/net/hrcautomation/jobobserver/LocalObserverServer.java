@@ -24,6 +24,12 @@ final class LocalObserverServer {
     static final int PROTOCOL_VERSION = 1;
     static final int MAX_FRAME_BYTES = 8 * 1024;
     static final int TOKEN_BYTES = 32;
+    private static final byte[] HELLO_PREFIX = ("HELLO\t"
+            + PROTOCOL_VERSION + "\t").getBytes(StandardCharsets.US_ASCII);
+    private static final int ENCODED_TOKEN_BYTES =
+            (TOKEN_BYTES * 8 + 5) / 6;
+    private static final int HELLO_FRAME_BYTES =
+            HELLO_PREFIX.length + ENCODED_TOKEN_BYTES;
     static final long MIN_ARM_TIMEOUT_MILLIS = Duration.ofSeconds(5).toMillis();
     static final long MAX_ARM_TIMEOUT_MILLIS = Duration.ofMinutes(5).toMillis();
 
@@ -212,7 +218,7 @@ final class LocalObserverServer {
         BoundedAsciiLineReader reader =
                 new BoundedAsciiLineReader(socket.getInputStream(), MAX_FRAME_BYTES);
         BufferedOutputStream output = new BufferedOutputStream(socket.getOutputStream());
-        authenticate(reader.readLine());
+        authenticate(reader.readFrame());
         write(output, "READY\t" + PROTOCOL_VERSION + "\t" + sessionId);
         while (state.get() == State.ACTIVE) {
             String frame = reader.readLine();
@@ -292,27 +298,53 @@ final class LocalObserverServer {
         throw new ProtocolFailure(TransportFailure.PROTOCOL_VIOLATION);
     }
 
-    private void authenticate(String frame) throws ProtocolFailure {
-        if (frame == null) {
-            throw new ProtocolFailure(TransportFailure.AUTHENTICATION_FAILED);
-        }
-        String[] fields = frame.split("\\t", -1);
-        byte[] supplied = new byte[0];
-        boolean syntaxValid = fields.length == 3
-                && "HELLO".equals(fields[0])
-                && Integer.toString(PROTOCOL_VERSION).equals(fields[1]);
-        if (syntaxValid) {
-            try {
-                supplied = Base64.getUrlDecoder().decode(fields[2]);
-            } catch (IllegalArgumentException ignored) {
-                syntaxValid = false;
+    void authenticate(byte[] frame) throws ProtocolFailure {
+        byte[] supplied = new byte[TOKEN_BYTES];
+        byte[] encoded = new byte[ENCODED_TOKEN_BYTES];
+        boolean syntaxValid = frame != null
+                && frame.length == HELLO_FRAME_BYTES
+                && prefixMatches(frame);
+        try {
+            if (syntaxValid) {
+                System.arraycopy(
+                        frame, HELLO_PREFIX.length, encoded, 0, encoded.length);
+                try {
+                    syntaxValid = Base64.getUrlDecoder().decode(
+                            encoded, supplied) == TOKEN_BYTES;
+                    if (syntaxValid) {
+                        byte[] canonical = Base64.getUrlEncoder()
+                                .withoutPadding().encode(supplied);
+                        try {
+                            syntaxValid = MessageDigest.isEqual(
+                                    encoded, canonical);
+                        } finally {
+                            java.util.Arrays.fill(canonical, (byte) 0);
+                        }
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    syntaxValid = false;
+                }
+            }
+            if (!syntaxValid || !MessageDigest.isEqual(token, supplied)) {
+                throw new ProtocolFailure(
+                        TransportFailure.AUTHENTICATION_FAILED);
+            }
+        } finally {
+            java.util.Arrays.fill(encoded, (byte) 0);
+            java.util.Arrays.fill(supplied, (byte) 0);
+            if (frame != null) {
+                java.util.Arrays.fill(frame, (byte) 0);
             }
         }
-        boolean matches = MessageDigest.isEqual(token, supplied);
-        java.util.Arrays.fill(supplied, (byte) 0);
-        if (!syntaxValid || !matches) {
-            throw new ProtocolFailure(TransportFailure.AUTHENTICATION_FAILED);
+    }
+
+    private static boolean prefixMatches(byte[] frame) {
+        for (int index = 0; index < HELLO_PREFIX.length; index++) {
+            if (frame[index] != HELLO_PREFIX[index]) {
+                return false;
+            }
         }
+        return true;
     }
 
     private void requireSession(String value) throws ProtocolFailure {
