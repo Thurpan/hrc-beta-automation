@@ -6,7 +6,8 @@ This directory contains an internal `net8.0-windows` class library and a
 dependency-free console test harness. It is a source/test-only feasibility
 module. It contains an in-memory publication store, an offline guarded
 descriptor-file publication seam, an independent file reader, and a one-shot
-synthetic broker session. The file seam operates only in a caller-supplied,
+synthetic broker session. It also contains a one-file artefact-identity
+primitive. The file seam operates only in a caller-supplied,
 already-existing protected directory. It is not production descriptor
 persistence, a production broker or controller, an installer, a standalone
 runner, a Java bridge, or HRC integration.
@@ -28,6 +29,17 @@ runtime-terminal evidence. Feasibility remains `TO CONFIRM`.
 the PID, raw creation `FILETIME`, absolute image path, account SID, logon SID,
 token session ID, and process session ID. A match requires every field and a
 still-live retained process object, so a recycled PID is not accepted.
+
+`TrustedArtifactIdentity` accepts one caller-supplied canonical DOS file path on
+a fixed local drive and Mount Manager volume. It opens the default data stream
+with a retained read handle. The handle denies new data-write and delete access,
+but not attribute or extended-attribute access. The primitive checks the
+expected length and SHA-256, a single link, no reparse ancestor or leaf, the
+final handle path, volume serial number, and 128-bit `FILE_ID`.
+
+`TrustedArtifactLease.RevalidateCurrentPath` reopens the path and detects path,
+identity, length, or digest drift. It is detection-only. It does not make a
+later path-based process launch atomic.
 
 `SecretBuffer` generates exactly 32 cryptographically random bytes, rejects the
 all-zero value, never converts the secret to a string, and wipes its owned
@@ -191,6 +203,13 @@ licence data, poker data, network client, registry access, or environment-secret
 input. The fixed file contains only the public canonical descriptor, not the
 bearer token.
 
+The artefact lease verifies only one file. It does not bind mutable siblings,
+including a framework-dependent apphost's DLL, `.deps.json`,
+`.runtimeconfig.json`, or selected .NET runtime. It proves no trusted release
+manifest, artefact provenance, file ACL, signature, launch atomicity, launched-
+process identity, production role executables, containment, private handoff,
+role-bound `READY`, Java integration, or HRC runtime behaviour.
+
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
 therefore connect first and cause denial of service before being rejected.
@@ -290,14 +309,20 @@ verified removal, namespace pinning, bounded multi-page enumeration, real
 fixed-leaf and root junction rejection, and retained-root cross-directory
 rename without replacement.
 
-The current result is 66/66: 20 primitive tests, 8 descriptor and protocol
-tests, 27 broker and in-memory-store tests, and 11 filesystem tests. This is
-offline Windows model, codec, primitive, publication-seam, and synthetic broker
-evidence only.
+Five artefact-identity cases cover exact identity and digest retention, invalid
+paths and content expectations, real reparse and multi-link rejection, a
+pre-existing writable mapping, and the mutable-sibling boundary.
+
+The current result is 71/71: 20 primitive tests, 8 descriptor and protocol
+tests, 27 broker and in-memory-store tests, 11 filesystem tests, and 5 artefact-
+identity tests. This is
+offline Windows model, codec, primitive, publication-seam, artefact-identity,
+and synthetic broker evidence only.
 
 Still unvalidated: production observer, broker, and controller executables;
 secure pipe-name delivery; known-folder resolution; LocalAppData hierarchy
 provisioning and provenance; stale and crash recovery; production descriptor
-persistence; executable-hash policy; crash-contained child cleanup; Java
+persistence; a trusted complete artefact-set manifest; atomic kill-on-close Job
+Object containment; private handoff and role-bound `READY`; Java
 integration; OSGi startup; installation; rollback; HRC runtime use; and every
 standalone-runner action.

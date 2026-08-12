@@ -280,7 +280,9 @@ asynchronous publisher contract. Successful publication returns a store-affine
 lease that coalesces exact removal. The module also contains an internal file
 publisher and an independent reader for a caller-supplied, already-existing
 protected local NTFS directory. This is an offline existing-directory seam, not
-production descriptor persistence. The broker executes all four exchanges,
+production descriptor persistence. A separate artefact-identity primitive
+retains and verifies one caller-supplied local file. The broker executes all
+four exchanges,
 serialises claim and revoke, rejects an already-completed malformed loser, caps
 the publication budget by the remaining absolute session deadline, and wipes
 its token copies before the final or revocation acknowledgement. Its
@@ -292,9 +294,10 @@ still fails the session before terminal acknowledgement. The deadline checks
 are cooperative and do not hard-preempt an arbitrary blocking native call. The
 current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 66 Windows bootstrap tests. The Windows total is
+tests, 13 packaging tests, and 71 Windows bootstrap tests. The Windows total is
 20 primitive tests, 8 descriptor and protocol tests, 27 broker and
-in-memory-store tests, and 11 filesystem tests. The start-level
+in-memory-store tests, 11 filesystem tests, and 5 artefact-identity tests. The
+start-level
 fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
 observer-failure tests.
 
@@ -314,8 +317,9 @@ scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
 Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 and provenance, stale or crash recovery, secure initial pipe-name delivery,
-dedicated production observer, broker, and controller executables, executable-
-hash identity, crash containment, an activatable manifest, controller
+dedicated production observer, broker, and controller executables, a trusted
+release manifest for their complete artefact sets, crash containment, an
+activatable manifest, controller
 ownership, Java-to-Windows integration, or persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
@@ -365,12 +369,29 @@ junction rejection, ABA and identity replacement, namespace pinning, bounded
 multi-page enumeration, retained-root cross-directory rename, collision,
 deadline, cancellation, and late-removal cases.
 
-Next, add guarded Windows known-folder resolution, protected LocalAppData
-hierarchy provisioning and provenance, stale and crash recovery, and secure
-initial pipe-name handoff around the existing-directory seam. Add dedicated
-production observer, broker, and controller roles with exact executable-hash
-identity and kill-on-close crash containment. Do not connect this seam to Java
-or open the standalone-runner gate until those boundaries pass. Then enforce
+The five artefact-identity tests verify one default data stream through a
+caller-supplied canonical DOS path on a fixed local drive and Mount Manager
+volume. A retained read handle denies new data-write and delete access, but not
+attribute or extended-attribute access. The primitive checks expected length and
+SHA-256, a single link, reparse ancestors and leaf, final path, volume serial
+number, and 128-bit `FILE_ID`. Revalidation is detection-only; it does not make
+a later path-based process launch atomic.
+
+One verified file does not bind mutable sibling files. In particular, it does
+not bind a framework-dependent apphost's DLL, `.deps.json`,
+`.runtimeconfig.json`, or selected .NET runtime. The slice proves no trusted
+release manifest, artefact provenance, file ACL, signature, launch atomicity,
+launched-process identity, role executables, containment, private handoff,
+role-bound `READY`, Java integration, or HRC runtime behaviour.
+
+Next, define and verify a trusted release manifest for each complete production
+artefact set. Add dedicated roles that enter kill-on-close Job Object
+containment atomically at process creation. Complete that boundary before
+private initial name handoff and role-bound `READY`. Then add guarded Windows
+known-folder resolution, protected LocalAppData hierarchy provisioning and
+provenance, and stale or crash recovery around the existing-directory seam. Do
+not connect this seam to Java or open the standalone-runner gate until those
+boundaries pass. Then enforce
 the recorded configuration, provider, class, and start-level gates in a
 deterministic JAR, manifest, guarded install, and rollback design. Extend the
 active-process runtime identity gate for all added providers before live use.

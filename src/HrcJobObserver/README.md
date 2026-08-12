@@ -26,8 +26,10 @@ The broker executes all four exchanges and fail-closed claim-versus-revoke
 arbitration. The module also tests an internal descriptor-file publisher and an
 independent reader against caller-supplied, already-existing protected local
 NTFS directories. This existing-directory seam is not production persistence.
-The module has no secure initial pipe-name handoff, dedicated production role
-executables, crash containment, or connection to the Java layers. This
+A separate primitive retains and verifies one caller-supplied local artefact.
+The module has no trusted release manifest, secure initial pipe-name handoff,
+dedicated production role executables, crash containment, or connection to
+the Java layers. This
 component is not the standalone runner or an installable HRC plug-in. It has no
 OSGi manifest, enabled activator, live listener registration, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
@@ -228,9 +230,10 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 66/66: 20 primitive tests, 8 descriptor
-and protocol tests, 27 broker and in-memory-store tests, and 11 filesystem
-tests. The broker and in-memory-store tests cover asynchronous publication,
+tests. The Windows bootstrap result is 71/71: 20 primitive tests, 8 descriptor
+and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
+and 5 artefact-identity tests. The broker and in-memory-store tests cover
+asynchronous publication,
 store-affine coalesced removal, cross-store and ABA defence, exact role context,
 all four cross-process exchanges, and
 claim/revoke races. They also cover a completed malformed loser, transcript and
@@ -245,6 +248,21 @@ public-byte publication and removal, independent reader snapshots, capacity and
 collision paths, deadline and cancellation boundaries, late verified removal,
 namespace pinning, bounded multi-page enumeration, file-identity and ABA
 replacement, and real fixed-leaf and root junction rejection.
+
+The artefact-identity tests cover one caller-supplied canonical DOS path on a
+fixed local drive and Mount Manager volume. The primitive retains a read handle
+that denies new data-write and delete access, but not attribute or extended-
+attribute access. It verifies the default stream's expected length and SHA-256,
+a single link, reparse ancestors and leaf, final path, volume serial number, and
+128-bit `FILE_ID`. Revalidation only detects drift. It does not make a later
+path-based launch atomic.
+
+One verified file does not bind mutable sibling files, including a framework-
+dependent apphost's DLL, `.deps.json`, `.runtimeconfig.json`, or selected .NET
+runtime. This slice proves no trusted release manifest, artefact provenance,
+file ACL, signature, launch atomicity, launched-process identity, production
+role executables, containment, private handoff, role-bound `READY`, Java
+integration, or HRC runtime behaviour.
 
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
@@ -270,7 +288,7 @@ and removal, real Eclipse callback delivery, secure token and endpoint
 provisioning, Windows known-folder resolution, LocalAppData hierarchy
 provisioning and provenance, stale and crash recovery, production descriptor
 persistence, secure initial pipe-name delivery, dedicated production bootstrap
-executables, executable-hash identity, crash containment, Java-to-Windows
+executables, complete artefact-set identity, crash containment, Java-to-Windows
 integration, packaging, startup, installation, rollback, safe final shutdown,
 runtime correlation, and every standalone-runner operation.
 The normal clean-start evidence does not validate arbitrary early class loading

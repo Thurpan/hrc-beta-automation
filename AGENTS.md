@@ -151,9 +151,10 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 66/66
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 71/71
   harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
-  broker and in-memory-store tests, and 11 filesystem tests. It proves exact
+  broker and in-memory-store tests, 11 filesystem tests, and 5 artefact-identity
+  tests. It proves exact
   applied protected-DACL read-back, two-sided process identity, bounded one-shot
   frames, fixed public-frame exchange with a synthetic child, rejection of a
   wrong live child, a canonical HMAC-bound descriptor model, and eight phase-
@@ -195,21 +196,37 @@ unexpected source or target difference.
   include real fixed-leaf and root junction rejection, retained-root
   cross-directory rename, namespace pinning, bounded multi-page enumeration,
   ABA and identity replacement, collision, cancellation, deadline, and late-removal
-  paths. This evidence does not prove known-folder resolution, protected
+  paths.
+  The artefact-identity primitive accepts one caller-supplied canonical DOS
+  path on a fixed local drive and Mount Manager volume. It opens the default
+  data stream with a retained read handle that denies new data-write and delete
+  access, but not attribute or extended-attribute access. It verifies the
+  expected length and SHA-256, a single link, no reparse ancestor or leaf, the
+  final path, volume serial number, and 128-bit `FILE_ID`. Revalidation detects
+  later path, identity, length, or digest drift. It does not make a later
+  path-based process launch atomic.
+  One verified file does not bind mutable siblings, including a framework-
+  dependent apphost's DLL, `.deps.json`, `.runtimeconfig.json`, or selected .NET
+  runtime. This evidence does not prove a trusted release manifest, artefact
+  provenance, file ACL, signature, launch atomicity, launched-process identity,
+  dedicated role executables, containment, private handoff, role-bound `READY`,
+  known-folder resolution, protected
   LocalAppData hierarchy provisioning or provenance, stale or crash recovery,
   production descriptor persistence, secure initial pipe-name delivery,
-  dedicated production role executables, executable-hash policy, crash
-  containment, Java integration, or HRC runtime use.
+  Java integration, or HRC runtime use.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until known-folder resolution, protected LocalAppData hierarchy provisioning
-  and provenance, stale and crash recovery, secure initial name delivery,
-  dedicated production-role orchestration and identity, crash containment, and
-  Java lifecycle integration are implemented and validated. The
-  existing-directory seam, in-memory store, and synthetic broker do not prove
-  those runtime properties.
+  until a trusted release manifest binds each complete production artefact set,
+  dedicated roles enter validated kill-on-close Job Object containment at
+  process creation, private initial name delivery and role-bound `READY` are
+  validated, and known-folder resolution, protected LocalAppData hierarchy
+  provisioning and provenance, stale and crash recovery, and Java lifecycle
+  integration are implemented and validated. Complete the artefact-set and
+  atomic-containment boundary before the private handoff and `READY` boundary.
+  The existing-directory seam, in-memory store, and synthetic broker do not
+  prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
   system-wide HRC-control lease.
 - Do not treat the test harness's kill-and-bounded-wait cleanup as crash

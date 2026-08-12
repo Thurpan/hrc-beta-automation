@@ -280,9 +280,10 @@ arbitrary early class-loading absence, or the protected tabs' safe disposition.
 On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness at
 checkpoint `2ea4d0e` passed 40/40 tests on the licensed host. Checkpoint
 `6283fe8` expanded the same harness and passed 55/55 tests on the licensed host.
-The current working snapshot expands it to 66/66 tests: 20 primitive tests, 8
-descriptor and protocol tests, 27 broker and in-memory-store tests, and 11
-filesystem tests. No checkpoint hash is attributed to the working snapshot.
+Checkpoint `be83a90` added guarded file publication and passed 66/66 tests.
+Checkpoint `efc399a` adds retained artefact identity and passes 71/71 tests: 20
+primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
+tests, 11 filesystem tests, and 5 artefact-identity tests.
 None of these builds installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -384,6 +385,27 @@ enumeration, real fixed-leaf and root junction rejection, and cross-directory
 retained-root rename without replacement. The deadline and cancellation checks
 are cooperative. They do not hard-preempt a blocking synchronous native call.
 
+Five artefact-identity cases exercise `TrustedArtifactIdentity` against one
+caller-supplied canonical DOS path. The path must name a file on a fixed local
+drive and Mount Manager volume. The primitive opens the default data stream
+with a retained read handle that denies new data-write and delete access. This
+sharing guarantee does not deny attribute or extended-attribute access.
+
+The primitive verifies the expected default-stream length and SHA-256, a single
+link, no reparse ancestor or leaf, the final handle path, volume serial number,
+and 128-bit `FILE_ID`. Revalidation reopens the path and detects path, identity,
+length, or digest drift. It is detection-only and does not make a later
+path-based process launch atomic.
+
+One verified file does not bind mutable siblings. The tests specifically show
+that a sibling DLL and `.runtimeconfig.json` can change while the leased file
+continues to revalidate. The lease therefore does not bind a framework-
+dependent apphost's DLL, `.deps.json`, `.runtimeconfig.json`, or selected .NET
+runtime. It proves no trusted release manifest, artefact provenance, file ACL,
+signature, launch atomicity, launched-process identity, production role
+executables, containment, private handoff, role-bound `READY`, Java integration,
+or HRC runtime behaviour.
+
 The one-shot broker runs in the main harness process. Long-lived synthetic
 observer and controller child modes run in two child processes. All three roles
 must be distinct and must match one user, logon, token session, and process
@@ -442,8 +464,9 @@ This is offline existing-directory publication, an asynchronous
 in-memory publisher, and synthetic three-process broker evidence only. The
 module has no Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 or provenance, stale or crash recovery, secure initial pipe-name handoff,
-dedicated production role executables, executable-hash policy, kill-on-close
-containment, Java bridge, controller integration, or HRC entry point. The
+trusted release manifest, dedicated production role executables, atomic
+kill-on-close containment, role-bound `READY`, Java bridge, controller
+integration, or HRC entry point. The
 harness's kill-and-bounded-wait failure cleanup is not crash containment. The
 module adds no HRC runtime observation. `Feasibility` remains `TO CONFIRM`.
 
@@ -1718,10 +1741,10 @@ Equinox start-level fixture, and source/test-only Windows bootstrap module with
 an asynchronous in-memory publisher, a guarded existing-directory file seam,
 an independent file reader, and a synthetic broker under `src/HrcJobObserver/`.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 66
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 71
 Windows bootstrap tests. The Windows total is 20 primitive tests, 8 descriptor
-and protocol tests, 27 broker and in-memory-store tests, and 11 filesystem
-tests. The start-level fixture passes 12/12 prerequisite,
+and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
+and 5 artefact-identity tests. The start-level fixture passes 12/12 prerequisite,
 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
@@ -1770,12 +1793,23 @@ independent wipeable structural snapshot. Terminal removal uncertainty cannot
 claim absence or permit store reuse. Cooperative checks do not hard-preempt
 synchronous native calls.
 
-Next, add guarded Windows known-folder resolution, protected LocalAppData
-hierarchy provisioning and provenance, stale and crash recovery, and secure
-initial pipe-name handoff around the existing-directory seam. Add dedicated
-production observer, broker, and controller roles with exact executable-hash
-identity and kill-on-close crash containment. Do not integrate this seam with
-Java or open the standalone-runner gate until those boundaries pass.
+The one-file artefact lease verifies a caller-supplied canonical DOS path, fixed
+local drive and Mount Manager volume, retained read sharing, default-stream
+length and SHA-256, single-link state, reparse ancestors and leaf, final path,
+volume serial number, and 128-bit `FILE_ID`. Its revalidation is detection-only.
+It does not bind mutable siblings or prove a trusted release manifest,
+provenance, ACL, signature, launch atomicity, launched-process identity, role
+executables, containment, private handoff, role-bound `READY`, Java integration,
+or HRC runtime use.
+
+Next, define and verify a trusted release manifest for each complete production
+artefact set. Add dedicated roles that enter kill-on-close Job Object
+containment atomically at process creation. Complete that boundary before
+private initial name handoff and role-bound `READY`. Then add guarded Windows
+known-folder resolution, protected LocalAppData hierarchy provisioning and
+provenance, and stale or crash recovery around the existing-directory seam. Do
+not integrate this seam with Java or open the standalone-runner gate until those
+boundaries pass.
 
 Before creating an installable Bundle, enforce the exact clean-launch
 configuration, provider rows, provider hashes, Job-class hashes, and normal
