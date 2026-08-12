@@ -152,6 +152,37 @@ recorded locations and produces only an in-memory `OFFLINE_PLAN_ONLY` proposal.
 It did not write to HRC. The simpleconfigurator and Java runtime identities are
 not enforced inputs to that planner and remain future artefact-build gates.
 
+### Offline Windows bootstrap implementation evidence
+
+On 12 August 2026, the source/test-only .NET 8 Windows bootstrap harness passed
+14/14 tests on the licensed host. The build did not install, load, attach to, or
+interact with HRC.
+
+The implementation records one process ID, creation `FILETIME`, full image
+path, user SID, logon SID, token session ID, and process session ID. It retains
+the process handle and checks liveness and creation identity before matching.
+The pipe server retrieves and matches the client identity. The pipe client
+retrieves and matches the server identity. Separate tests reject every field
+mismatch and exercise each endpoint's rejection path.
+
+Pipe creation requests a protected DACL with exactly two full-access entries:
+`SYSTEM` and the bound user. It reads back the applied DACL and fails unless its
+canonical form equals the requested DACL. The harness directly confirmed the
+protected flag, both trustees, full-access rights, and exactly two entries.
+
+The candidate pipe accepts frames from 1 through 8,192 bytes. Connection
+acceptance and each endpoint's one send and one receive accept a positive
+timeout of at most 30 seconds. An admitted I/O failure, malformed received
+frame, or timeout disposes the channel. The forced timeout test covered receive
+and verified that the poisoned channel could not receive again. The synchronous
+client connect call is outside this timeout contract.
+
+Both pipe endpoints ran as tasks inside one test process. No independently
+launched peer participated. The module defines no endpoint-discovery
+descriptor, application message schema, token-transfer protocol, Java bridge,
+publication lifecycle, controller integration, or HRC entry point. It adds no
+HRC runtime observation. `Feasibility` remains `TO CONFIRM`.
+
 The runner must first identify the one active HRC process and resolve the
 `plugins` directory from that process's own `hrc.exe` installation. It must
 rehash these exact files there before relying on the NatTable, Rename, Nash Job,
@@ -1412,10 +1443,11 @@ completion, or failure states.
 
 The repository now contains an offline-tested Java correlation core, Eclipse
 Jobs adapter, bearer-token loopback transport, ordered runtime assembly,
-disabled OSGi lifecycle owner, and in-memory simpleconfigurator planner under
-`src/HrcJobObserver/`. The current suites pass 30 core tests, 34 adapter tests,
-25 transport tests, 10 joined-assembly tests, 14 lifecycle tests, and 13
-packaging tests. The assembly
+disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, and
+source/test-only Windows bootstrap primitives under `src/HrcJobObserver/`.
+The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 14
+Windows bootstrap tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1436,12 +1468,19 @@ or runtime terminal capture. The ordered barrier and actionable-checkpoint
 contract are offline-tested but not HRC-runtime validated. `Feasibility`
 remains `TO CONFIRM`.
 
-Next, close two public-API lifecycle gaps before creating an installable Bundle.
+The Windows primitives now prove exact applied DACL read-back, both endpoint-
+side process identity checks, and bounded one-shot frame operations in one
+process. Next, define the endpoint-discovery descriptor, bounded bootstrap
+protocol, token-copy ownership, wiping, acknowledgement, publication, and
+revocation. Validate them between independently launched processes before
+integrating the seam with Java.
+
+Also close two public-API lifecycle gaps before creating an installable Bundle.
 Listener registration plus `find(null)` is not atomic. Listener removal also
 does not prove provider-level callback drainage or safe unload. Implement secure
-same-user token and endpoint publication through a reviewed Windows native seam.
-Then add a deterministic JAR, manifest, guarded install, and rollback design.
-Before live use, extend the
+same-user token and endpoint publication only after the Windows prerequisites
+above. Then add a deterministic JAR, manifest, guarded install, and rollback
+design. Before live use, extend the
 active-process runtime identity gate for the adapter's Equinox Common and
 Eclipse OSGi providers. The runtime observer must subscribe to the Eclipse Jobs
 lifecycle and must not read strategy or licence data.

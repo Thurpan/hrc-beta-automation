@@ -20,6 +20,11 @@ value. The server defensively copies the token, compares a Base64URL-decoded
 terminal shutdown.
 It does not generate the token, provision it to a controller, protect endpoint
 metadata, or wipe the caller-owned copy.
+The separate
+[offline Windows bootstrap module](../windows-bootstrap/README.md) now tests an
+owned random-secret buffer and candidate local pipe primitives. It does not call
+`LocalObserverServer`, supply its token, publish its endpoint, or carry this
+transport protocol.
 
 The token is a bearer credential. It and all protocol data travel as
 unencrypted plaintext over IPv4 loopback. Base64URL is an encoding, not
@@ -133,8 +138,9 @@ authentication; and mutable authentication-buffer wiping.
 
 The current transport result is 25/25. This is offline validation only.
 
-Still unvalidated: secure token generation, same-user token and endpoint
-provisioning, controller ownership and takeover, cross-process IPC, OSGi
-packaging and activation, listener registration, active-process identity
-checks, startup, rollback, safe unload, real HRC callbacks and runtime results,
-and standalone-runner integration.
+Still unvalidated: per-observer integration of fresh token generation; token
+and endpoint provisioning; controller ownership and takeover; independent
+cross-process IPC; Java/Windows integration; OSGi packaging and activation;
+listener registration; active-process identity checks; startup; rollback; safe
+unload; real HRC callbacks and runtime results; and standalone-runner
+integration.

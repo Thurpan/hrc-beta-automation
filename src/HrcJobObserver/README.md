@@ -10,7 +10,11 @@ through their package-private contracts. An
 [offline OSGi lifecycle owner](osgi-lifecycle/README.md) tests registration,
 startup, cleanup, and a disabled activator. An
 [offline simpleconfigurator planner](osgi-packaging/README.md) produces only an
-in-memory proposal for the recorded baseline. This component is not the
+in-memory proposal for the recorded baseline. An
+[offline Windows bootstrap module](windows-bootstrap/README.md) tests secret
+ownership, exact applied pipe-DACL read-back, process identity at both pipe
+endpoints, and bounded one-shot framing. It is not connected to the Java
+layers. This component is not the
 standalone runner or an installable HRC plug-in. It has no OSGi manifest,
 enabled activator, live listener registration, file writer, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
@@ -136,9 +140,9 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The runtime tests cover the ordered
-checkpoint, two-marker arm control, and fresh lease renewal for an exact
-idempotent retry.
+tests. The Windows bootstrap result is 14/14. The runtime tests cover the
+ordered checkpoint, two-marker arm control, and fresh lease renewal for an
+exact idempotent retry.
 
 The lifecycle tests cover synthetic manager registration, bounded baseline
 scans, startup callback admission, ordered health checks, publication rollback,
@@ -147,6 +151,6 @@ tests validate only in-memory bytes and cannot install the proposal.
 
 Still unvalidated: real Eclipse callback delivery, OSGi resolution and
 activation, listener registration and removal, secure token and endpoint
-provisioning, same-user access control, cross-process IPC, packaging, startup,
-installation, rollback, safe unload, HRC runtime correlation, and every
-standalone-runner operation.
+provisioning, independent cross-process IPC, the token-transfer protocol,
+Java-to-Windows integration, packaging, startup, installation, rollback, safe
+unload, HRC runtime correlation, and every standalone-runner operation.

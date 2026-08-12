@@ -265,9 +265,13 @@ and an
 An [offline OSGi lifecycle owner](src/HrcJobObserver/osgi-lifecycle/README.md)
 tests manager registration and ordered cleanup behind a disabled activator. An
 [offline simpleconfigurator planner](src/HrcJobObserver/osgi-packaging/README.md)
-produces an in-memory proposal only. The current suites pass 30 core tests,
+produces an in-memory proposal only. An
+[offline Windows bootstrap module](src/HrcJobObserver/windows-bootstrap/README.md)
+tests secret ownership, exact applied pipe-DACL read-back, process identity at
+both pipe endpoints, and bounded one-shot framing. The current suites pass 30
+core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, and 13 packaging tests.
+tests, 13 packaging tests, and 14 Windows bootstrap tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
 checkpoint replay, and serialises only allow-listed event primitives. The
@@ -283,8 +287,9 @@ must enforce a local round-trip and pre-input margin within the lease. The
 lifecycle implements synthetic manager registration, two bounded baseline
 scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
-secure token or endpoint provisioning, an activatable manifest, controller
-ownership, cross-process proof, or persistence across restart.
+the token-transfer protocol, secure endpoint publication, an activatable
+manifest, controller ownership, independent cross-process proof, or
+persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -296,11 +301,13 @@ feasibility verdict.
 Next, close the two lifecycle blockers before creating an installable Bundle.
 The public Eclipse APIs do not make listener registration plus `find(null)`
 atomic, and listener removal does not prove provider-level callback drainage.
-Implement secure same-user token and endpoint publication through a reviewed
-Windows native seam. Then add a deterministic JAR, manifest, guarded install,
-and rollback design. Extend the active-process runtime identity gate for the
-adapter's Equinox Common and Eclipse OSGi providers before live use. Do not
-install it or restart HRC while the dirty tabs `*Hand 7` and
+Define the non-secret endpoint-discovery descriptor and bounded bootstrap
+protocol. Specify token-copy ownership, wiping, acknowledgement, publication,
+and revocation, then test between independently launched processes before
+connecting the Windows seam to Java. Then add a deterministic JAR, manifest,
+guarded install, and rollback design. Extend the active-process runtime identity
+gate for the adapter's Equinox Common and Eclipse OSGi providers before live
+use. Do not install it or restart HRC while the dirty tabs `*Hand 7` and
 `*From Hand 7` remain protected. Resolve those resources explicitly before the
 first clean-start observer validation. Reserve the authorised smoke until the
 runtime observer and standalone control path are ready.

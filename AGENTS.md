@@ -144,6 +144,16 @@ through, the active-process identity gate in `docs/feasibility.md`.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its
+  same-process harness proves an exact applied protected DACL, process identity
+  checks from both pipe endpoints, and bounded one-shot frame operations only.
+  It does not prove a token-transfer protocol, independent cross-process
+  operation, Java integration, or HRC runtime use.
+- Do not publish or transfer a real observer token through the Windows seam
+  until token-copy ownership, wiping, acknowledgement, revocation, secure name
+  delivery, independent-process tests, and Java lifecycle integration are
+  implemented and validated. Do not reuse a channel after an I/O failure or
+  timeout. The pipe is not the system-wide HRC-control lease.
 - Treat public Job names and staging filenames as sensitive local plaintext.
   Base64URL encoding does not protect them.
 - Do not activate the transport until the offline-tested ordered mailbox
