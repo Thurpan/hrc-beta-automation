@@ -25,6 +25,41 @@ Do not record licence data, unnecessary poker data, or assumptions as facts.
 | HRC window state on 11 August | HRC was restored and sized close to the full work area. It was not maximised. No resize, maximise, or activation action was issued during the control-map run. | Euan supplied a full-screen screenshot that showed the restored title-bar state. The control log contained no window-state action. | CONFIRMED for that run. Do not infer current or maximised state from capture dimensions. |
 | Coordinate-target failure | An unverified coordinate intended for the hand-tab close control selected the tree root row instead. No setting or output changed. The later close used a point that first showed the exact `Close` tooltip. | Compared the expected target with the captured cursor position and the resulting HRC state during the `HU-2` run. | CONFIRMED for discovery; raw coordinates are not a safe automation path. |
 
+## Vendor-authorisation boundary identified on 12 August 2026
+
+This is current official vendor-documentation evidence, not legal advice.
+
+- The [HRC v4+ EULA](https://www.holdemresources.net/legal/eula/hrc_v4)
+  licenses the Product in unmodified binary form, limits usage to the provided
+  launcher, and says the product and its components may be used only through
+  the user interface accessible via that launcher.
+- It expressly prohibits automated scraping of information from the product's
+  user interface or memory. It separately prohibits decompilation, reverse
+  engineering, or modification without the licensor's consent, subject to
+  applicable law.
+- The published [HRC scripting documentation](https://www.holdemresources.net/docs/scripting/)
+  describes JavaScript callbacks for tree-building decisions. Its
+  [complete public API](https://www.holdemresources.net/s/updatesites/hrc/latest/scripting/javadoc/allclasses-index.html)
+  contains only the
+  tree-related `IDecisionContext`, `IPlayerAction`, `IPlayerAction.ActionType`,
+  `IPotState`, and `ITreeBuildingScript` types. It exposes no Nash, sampling,
+  queue, save, export, Job, callback, or terminal-status type.
+- Searches of current official documentation found no advertised lifecycle API,
+  CLI/headless solver, per-Job status log, or third-party plug-in SDK. This is
+  absence of published evidence, not proof that no private or partner interface
+  exists.
+- The official [contact page](https://www.holdemresources.net/contact) lists
+  `support@holdemresources.net` and the HRC Discord community.
+
+Further HRC UI automation, memory inspection, private implementation
+inspection, injection, attachment, restart for an observer, or smoke execution
+is therefore stopped pending written HoldemResources permission covering the
+intended local single-user accessibility runner and exact terminal-status
+observer. This vendor gate is independent of the technical feasibility gaps
+below. A draft request is stored at
+[`vendor-permission-request.md`](vendor-permission-request.md); it has not been
+sent.
+
 ## Installed component identity gate
 
 The HRC application version remains TO CONFIRM. Version-specific static findings
@@ -137,13 +172,22 @@ Standalone foreground, native-focus, and delivery assertions remain TO CONFIRM.
   exposed only in the task text after that Job starts. Exact association requires
   retaining the Java Job object received by the scheduled event and matching
   later events by object identity and submission order.
-- The Progress framework retains an error result, but HRC does not retain
-  successful or cancelled Nash Jobs. Both can disappear and leave exact idle
-  text `No operations to display at this time.` A UI-only observer therefore
-  cannot distinguish success from cancellation. The only exact contract found
-  is the in-process Eclipse Jobs API and its `IJobChangeListener` events; no
-  supported external event, IPC, or structured Nash log hook was found. An
-  in-process bridge would be a separate architecture and authorisation decision.
+- HRC registers the legacy Eclipse UI Workbench Progress view. That view removes
+  a Job from its active model when the Job's `done` event arrives. Its
+  finished-Job model retains an individual Job only when that exact object has
+  Eclipse's `KEEP_PROPERTY` or `KEEPONE_PROPERTY` set to true, or when its
+  result severity is `ERROR`. HRC sets neither keep property on its Nash Jobs.
+  The installed Progress view menu exposes only Remove All Finished Operations
+  and Preferences, and its preferences expose only Show sleeping and system
+  operations. There is no global retain-completed-jobs or history setting.
+  Successful and cancelled Nash Jobs can therefore both disappear and leave
+  exact idle text
+  `No operations to display at this time.` A UI-only observer cannot
+  distinguish success from cancellation. The only exact contract found is the
+  in-process Eclipse Jobs API and its `IJobChangeListener` events; no supported
+  external event, IPC, structured Nash log, or Progress-history hook was found.
+  An in-process bridge would be a separate architecture and authorisation
+  decision.
 - Achieved CI remains job-local and is never stored on the hand. Success,
   cancellation, and error all preserve accumulated strategy/sample state, store
   the same root-derived data, update the timestamp and dirty state, and invoke
@@ -1050,7 +1094,6 @@ completion, or failure states.
 | Lifecycle step | Visible label | Accessible name | Control type | Automation ID | Supported patterns | Keyboard path | Required action | Observable success | Observable failure | Safe to automate |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Start tree setup | `New: Monte Carlo Hand`; `Start New Calculation` | `New: Monte Carlo Hand`; shortcut command label observed in the menu | Link; command | Home link `3342566` in one session; stability TO CONFIRM | TO CONFIRM | From an active hand, `Ctrl+W`, then `H` opened Hand Setup in run 18 | Open a new Monte Carlo hand from `Home` and require a known clean or fully overwritten setup. Do not use the active-hand shortcut as a reset. | The Home link opened Basic Hand Data in isolated discovery. The shortcut also opened Hand Setup. | Run 18's shortcut path retained the active hand's two rows and script and ultimately produced `*From Hand 7`. Any inherited, unexpected, or unverifiable state must stop. | TO CONFIRM: the shortcut dispatch is live-confirmed but is not a clean next-simulation route; the Home post-close transition and machine-readable reset verification remain unproven. |
-| Configure HU stacks | `Stacks and Blinds` | Empty for both stack fields | Edit | `2036322` and `1642500` during this session; stability TO CONFIRM | Value, Text, and LegacyIAccessible | Both fields are focusable. Exact Tab order is TO CONFIRM. | Change both starting stacks from `80.0` to `1`. | The fields accepted `1`. The created HU table showed the expected shallow stacks. | TBD | TO CONFIRM: the fields have no accessible names and their numeric IDs have not been shown stable. |
 | Select table size or add multiway player rows | `Auto`; `HU`; `3-max` through `10-max`; empty BB-column cells | The open selector exposed every named table-size item; empty cells remained unnamed | Selector list and list items while open; table cell and transient edit for the earlier manual method | Open-list IDs `95687566`, `18224586`, `11606852`, and `6359478`; closed selector and empty-cell IDs TBD | The open items were selectable; Space opened the list after the non-coordinate NatTable bootstrap | From the newly opened page: press `Tab` seven times, `Ctrl+A`, `Ctrl+Home`, Space. For the observed HU case only, press `Down` once from `Auto`, then `Enter`; other choices and arrow counts remain TO CONFIRM. Escape cancels without selection. | Select the required table size. Then overwrite every active seat and verify the exact row count, position order, and values before advancing. | In two follow-ups, one `Down` press selected `HU` and Enter committed it. The first reduced five retained rows to SB and BB; the next setup reopened as `Auto` while retaining those two rows. Earlier manual empty-cell selection populated `HJ`, `CO`, `BU`, `SB`, `BB`. | A missing, extra, retained, reset, or misordered row or value must stop the workflow. | NO: HU selection and its row-removal effect are observed, but multiway choice effects, machine-readable row/value verification, and standalone delivery remain untested. Numeric list IDs changed. |
 | Configure active stacks | `BB`; `Chips`; `Auto`; `HU` | Active edits were unnamed | Table cell; transient edit | `6690946` in the earlier run; `1185980`, `1251516`, and `1382588` during the HU run; stability disproven | TO CONFIRM | After the HU commit, Down selected SB, Right selected Chips, and `F2` opened the editor. Enter committed and moved down. After the last active row, Enter opened the blank next-row editor; Escape cancelled it. | Overwrite each active stack. After the last commit, cancel the blank-row editor. Verify the exact row count, positions, chip values, and derived BB values before advancing. | `4100` and `5100` committed as `41.0 bb` and `51.0 bb`. Enter advanced through both rows; Escape cancelled the blank third row without adding it. | Invalid `abc` stayed red; Enter did not commit or advance and the derived value stayed `41.0`. Escape restored `4100`. Any other mismatch must stop. The provider still reported background Range edit `69008` as focused. | NO: the combined supervised HU keyboard path, visual read-back, and one invalid-input recovery are observed, but machine-readable cell verification, multiway operation, foreground/focus assertions, and standalone delivery remain unproven. |
 | Advance Hand Setup | `Next` | `&Next` | Button | `268476` in the earlier session; stability TO CONFIRM | TO CONFIRM | `Alt+N` | After validating all inputs and confirming Basic Hand Data is open, press `Alt+N`. | Euan confirmed that `Alt+N` advanced Hand Setup to Betting Setup. A read-only capture confirmed the resulting page. | Earlier semantic clicks, Tab, and Enter did not change the page. Any unchanged or unexpected page must stop the workflow. | TO CONFIRM through the target runner: the supervised keyboard route works, but reliable dialog focus, key delivery, and post-state detection are unproven. |
@@ -1233,6 +1276,7 @@ completion, or failure states.
 ## Verdict
 
 - Feasibility: TO CONFIRM
+- Execution status: PAUSED PENDING WRITTEN VENDOR AUTHORISATION
 - Confidence: TO CONFIRM
 - Basis: The selected HU tree was configured and created without a visible
   error. Rename, both Nash submissions, running targets, Viewer Save, and
@@ -1293,16 +1337,29 @@ completion, or failure states.
 
 ## Next action
 
-Continue supervised, non-writing discovery on the representative HU workflow.
-Before relying on any static route, resolve the active HRC installation and
-rehash the exact eight-component identity set above from its `plugins`
-directory. Stop on any process, path, filename, or hash mismatch.
-Preserve both current unsaved tabs. On active `*From Hand 7`, live-test the
-statically defined exact-tab-focus, selection-round-trip, one-shot `Ctrl+F4`,
-and `Save Resource` Cancel path only after native focus and active-editor identity
-can be proved. Do not use Enter, Escape, `Alt+F4`, or `Don't Save` in that probe.
-Require both dirty tabs, selected tab, Progress, HRC bounds, and files to remain
-unchanged. Stop without retry on any mismatch or unknown outcome.
+Obtain written HoldemResources permission before any further HRC automation,
+private implementation inspection, memory observation, injection, attachment,
+observer installation, restart for automation, or runner smoke. Ask whether HRC
+offers a supported API, CLI, callback, or structured log that reports each
+sampling, save, and export Job's identity and terminal success, cancellation,
+or error. If not, ask whether a local single-user accessibility runner and a
+minimal companion status observer are permitted. Do not infer permission from
+the public tree-building scripting API.
+
+Until written permission arrives, preserve both current unsaved tabs, do not
+send additional HRC input, and do not consume the reserved smoke. Offline
+candidate tests, repository validation, and public-documentation research may
+continue without HRC interaction.
+
+If written permission covers the intended design, first resolve the active HRC
+installation and rehash the exact eight-component identity set above from its
+`plugins` directory. Stop on any process, path, filename, or hash mismatch.
+Then resume the remaining non-writing probes, beginning with the statically
+defined exact-tab-focus, selection-round-trip, one-shot `Ctrl+F4`, and
+`Save Resource` Cancel path on active `*From Hand 7` only after native focus and
+active-editor identity can be proved. Require both dirty tabs, selected tab,
+Progress, HRC bounds, and files to remain unchanged, and stop without retry on
+any mismatch or unknown outcome.
 
 Integrate the confirmed per-cell Nash route with exact native-focus,
 clipboard-transition, and CI `10.0` post-edit read-back assertions. Before any
@@ -1313,10 +1370,11 @@ Treat any focus, transition, value, hash, reset-pair, or post-state mismatch as 
 stop. A separate pre-runner live submission requires separate authorisation.
 
 Do not spend the authorised Nash submission merely watching Progress; that UI
-cannot make terminal success durable. First resolve the architectural blocker:
-either obtain explicit authorisation for an in-process Eclipse Job event bridge,
-or prove another durable external postcondition that distinguishes `OK` from
-`CANCEL` and `ERROR` for each exact submission.
+cannot make terminal success durable. After vendor permission, resolve the
+technical architecture through a vendor-supported status facility or an
+explicitly permitted in-process event bridge. No read-only external
+postcondition found so far distinguishes `OK` from `CANCEL` and `ERROR` for each
+exact submission.
 
 Do not submit the authorised strategy export until the standalone design can
 read the exact two-filter list and selected ZIP value in the actual Save As.

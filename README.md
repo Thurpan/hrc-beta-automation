@@ -21,11 +21,22 @@ The project is in accessibility inspection and first-workflow validation. The
 licensed host is `EM-3960X`, which reports an AMD Ryzen Threadripper 3960X
 processor.
 
+Further HRC automation and private implementation inspection are paused pending
+written HoldemResources permission. This is a vendor-authorisation blocker, not
+a positive or negative technical-feasibility verdict.
+
 The earlier 5950X portfolio reference was incorrect for this host. Local
 machine evidence and Euan's licence confirmation supersede that reference.
 
 ## Boundaries
 
+- Treat written HoldemResources permission as a prerequisite for further HRC
+  automation or private implementation inspection. The current
+  [HRC v4+ EULA](https://www.holdemresources.net/legal/eula/hrc_v4) licenses the
+  Product in unmodified binary form, limits usage to the provided launcher,
+  permits component use only through its accessible UI, and prohibits
+  automated UI or memory scraping and reverse engineering without consent,
+  subject to applicable law.
 - Prove one small non-overwriting workflow before broader design.
 - Do not create unattended automation during feasibility discovery.
 - Do not use blind coordinate clicks.
@@ -223,6 +234,27 @@ unverified.
 
 ## Current next action
 
+The immediate next action is vendor authorisation, not another HRC click. The
+official HRC v4+ EULA licenses the Product in unmodified binary form, limits
+usage to the provided launcher, permits component use only through the UI
+accessible via that launcher, expressly prohibits automated scraping of the UI
+or memory, and prohibits decompilation, reverse engineering, or modification
+without the licensor's consent, subject to applicable law. The published scripting API is
+limited to tree-building decisions and exposes no Nash, Job, save, export, or
+terminal-status callback. No public supported lifecycle API, CLI, or durable
+status log was found. This is absence of published evidence, not proof that a
+private or partner interface does not exist.
+
+Ask HoldemResources for written confirmation that this local, single-user
+project may operate HRC through a project-owned accessibility runner and may
+receive exact sampling/save/export terminal results through a supported API or
+a minimal companion status observer. Until that answer is received, do not
+send further automated HRC input, inspect private implementation details,
+install an observer, restart HRC, or consume the reserved smoke. The two dirty
+tabs `*Hand 7` and `*From Hand 7` remain protected. A concise request is ready
+in [`docs/vendor-permission-request.md`](docs/vendor-permission-request.md); it
+has not been sent.
+
 Installed-component inspection identified the Stacks and Blinds surface as an
 Eclipse Nebula NatTable with default selection and edit bindings. A live check
 then established a keyboard bootstrap: from the newly opened Basic Hand Data
@@ -372,6 +404,14 @@ verification, and Viewer-only hand-tab closure before the next simulation.
 
 A feasible workflow must complete the full lifecycle once. Do not repeat a
 long-running calculation only to obtain a second feasibility sample.
+
+Project completion additionally requires a vendor-authorised, project-owned
+runner independent of Codex Computer Use; explicit terminal success and failure
+for every critical Job; fail-if-exists output publication; the authorised tiny
+HU lifecycle from Home back to Home; a safe next-simulation transition; focused
+tests; an operator runbook; a clean worktree; reviewable pushed commits; and a
+validated fast-forward merge to `main`. None of those implementation outcomes
+is implied by the current discovery evidence.
 
 ## Authority
 

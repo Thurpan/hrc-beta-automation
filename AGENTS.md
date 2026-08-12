@@ -14,6 +14,22 @@ Run HRC Beta only on the licensed host `EM-3960X`. The host reports an AMD Ryzen
 
 Do not copy HRC Beta, its licence material, or its private configuration to another computer. Do not expose licence data in files, logs, screenshots, commits, or completion reports.
 
+## Vendor-authorisation gate
+
+The HRC v4+ EULA licenses the Product in unmodified binary form, limits usage
+to the provided launcher, and permits use of components only through the user
+interface accessible via that launcher. It expressly prohibits automated
+scraping of the product's user interface or memory, as well as decompilation,
+reverse engineering, or modification without the licensor's consent, subject
+to applicable law. Do not perform further HRC
+UI automation, memory inspection, private implementation inspection, agent or
+bundle injection, runtime attachment, or runner smoke testing unless
+HoldemResources gives written permission that covers the intended local
+single-user automation and exact status-observer design. Static and live
+findings already recorded remain evidence, not ongoing authority. Public
+documentation research, repository documentation, offline candidate tests, and
+preparation of a permission request may continue without touching HRC.
+
 ## Discovery-first rules
 
 - Inspect accessibility before choosing an automation method.
