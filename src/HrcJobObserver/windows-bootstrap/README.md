@@ -274,6 +274,29 @@ checks revalidate the
 expected set. The wrapper, failed-launch cleanup, and detached reaper retain the
 policy-bound aggregate with all other launch authority.
 
+Checkpoint `9d947ce` adds `NativeLaunchPolicyPackageV1`. Its canonical
+`HRCNLP01` wire uses big-endian integers and totals 440 through 38,667 bytes.
+The fixed 92-byte header contains the eight-byte magic, 16-bit closed
+`SyntheticNativeFixture` profile value `1`, zero 16-bit reserved field, nonzero
+64-bit generation, 32-bit release length from 98 through 38,325, 32-bit module-
+policy length fixed at 250, and two 32-byte nested pins. Canonical `HRCREL01`
+and `HRCOSM01` bytes follow. The outer domain-
+separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-LAUNCH-POLICY-PACKAGE-PIN-V1\0`. The package compares
+that pin in fixed time before structural parsing. It then independently
+authenticates each nested document against its header pin. Authentication is
+relative only to the caller-supplied outer pin; it supplies no issuer,
+signature, release provenance, or protected pin origin. It admits only the
+synthetic native-fixture release, no-CRT System32 deployment, `win-x64` runtime
+label, and synthetic native system-module profile. Generation is opaque
+nonzero metadata only; it supplies no freshness or rollback rule.
+
+Package authentication is pure and performs no filesystem or live-host access.
+The package owns and wipes its canonical bytes, outer pin, and nested policy
+state. It exposes `IsEligibleForTrustedLaunch` as `false`. This checkpoint adds
+no selector, writer, update path, audited-launcher integration, production
+role, HRC integration, or runner integration.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the wrapper
 continues that event. It then requires exactly four `LOAD_DLL` events in the
 stated order, followed by the exact initial first-chance breakpoint. Every
@@ -727,17 +750,27 @@ later debugger `hFile` checks directly bind that fourth member. Checkpoint
 `4d7781b` adds standalone policy authentication. Checkpoint `66c6e87` composes
 the mandatory policy through the aggregate and launcher. Direct Release
 validation passes 110/110 on `66c6e87`, with no native-fixture child residue.
-The total remains 110 through the same 3 system-module and 5 audited native-
-containment cases. This is offline
+Checkpoint `9d947ce` adds 4 focused pure package cases. They cover an
+independently encoded golden identity, outer authentication before parsing,
+canonical and nested-profile rejection, nested pin authentication, owned-copy
+and disposal behaviour, cancellation, deadlines, and clean recovery after
+failure. The checkpoint also preserves, through the existing release-manifest
+case, standalone release-manifest authentication and two-way owned artefact-
+copy disposal. Direct Release validation passes 114/114
+on `9d947ce`, with no native-fixture child residue. The total is 114, including
+the same 3 system-module and 5 audited native-containment cases plus 4 native
+launch-policy package cases. This is offline
 Windows model, codec, primitive, publication-seam, artefact-identity, artefact-
 set, pinned-manifest, synthetic-broker, test-harness containment, and native-
 fixture evidence only.
 
-Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Add independent native module-policy and
-pin issuance, protected policy selection, freshness and rollback rules, and a
-fail-closed servicing and update transaction. The synthetic current-host test
-policy and further self-baselined enumeration cannot supply that trust. Keep
+Define an independently provisioned outer-pin issuer and rotation policy. Add
+protected package selection, a freshness and rollback floor, trusted installer
+and updater transactions with crash recovery, and servicing coordination. The
+package implements no selector, writer, update mechanism, audited-launcher
+integration, production role, HRC integration, or runner integration. The
+synthetic current-host test policy and
+further self-baselined enumeration cannot supply that trust. Keep
 the existing containment proof separate until dedicated production
 roles integrate it. Close the production namespace and complete production
 runtime-module, loader, and dependency closure before private initial name

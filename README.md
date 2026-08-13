@@ -304,7 +304,7 @@ unknown removal cannot claim absence. Removal verified only after its deadline
 still fails the session before terminal acknowledgement. The deadline checks
 are cooperative and do not hard-preempt an arbitrary blocking native call. The
 current suites pass 30 core tests, 34 adapter tests, 25 transport tests, 10
-joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 110 Windows
+joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 114 Windows
 bootstrap tests. Committed checkpoint `64043e5` passes 102/102. Committed
 checkpoint `70e0d77` adds 5 audited native-containment cases and passes
 107/107. Committed checkpoint `2512c6a` extends those cases with real startup
@@ -322,13 +322,17 @@ child residue. Checkpoint
 `4d7781b` adds the standalone authenticated `HRCOSM01` policy. Checkpoint
 `66c6e87` makes that policy and its independently supplied pin mandatory for
 the aggregate and native launcher. Direct Release validation of `66c6e87`
-passes 110/110 with no native-fixture child residue. The Windows
+passes 110/110 with no native-fixture child residue. Checkpoint `9d947ce` adds
+the standalone authenticated `HRCNLP01` native launch-policy package. Direct
+Release validation of `9d947ce` passes 114/114 with no native-fixture child
+residue. The Windows
 total is 20 primitive tests, 8 descriptor and
 protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests, 5
 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
 6 pinned release-manifest tests, 7 native-fixture tests, 7 audited native-
 release binding tests, 5 harness-containment tests, 3 native system-module
-identity tests, and 5 audited native-containment tests. The start-level fixture
+identity tests, 5 audited native-containment tests, and 4 native launch-policy
+package tests. The start-level fixture
 passes 12/12 prerequisite tests,
 18/18 recorded-row tests, and 9/9 observer-failure tests.
 
@@ -602,6 +606,25 @@ inputs, owns and wipes dedicated-thread copies, and opens the policy-bound
 aggregate before `CreateProcessW`. The wrapper, cleanup, and detached reaper
 retain the bound aggregate with the other launch authority.
 
+Checkpoint `9d947ce` adds the pure `NativeLaunchPolicyPackageV1` seam. Its
+canonical `HRCNLP01` wire uses big-endian integers and totals 440 through 38,667
+bytes. The fixed 92-byte header contains the eight-byte magic, 16-bit closed
+`SyntheticNativeFixture` profile value `1`, zero 16-bit reserved field, nonzero
+64-bit generation, 32-bit release length from 98 through 38,325, 32-bit module-
+policy length fixed at 250, and two 32-byte nested pins. Canonical `HRCREL01`
+and `HRCOSM01` bytes follow. The outer domain-
+separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-LAUNCH-POLICY-PACKAGE-PIN-V1\0`. The package compares
+that pin in fixed time before structural parsing. It then independently
+authenticates each nested document against its header pin. Authentication is
+relative only to the caller-supplied outer pin; it supplies no issuer,
+signature, release provenance, or protected pin origin. Only the synthetic
+native-fixture release, no-CRT System32 deployment, `win-x64` runtime label, and
+synthetic native system-module profile are admitted. Generation is opaque
+nonzero metadata only; it provides no freshness or rollback policy. The seam is
+pure and performs no filesystem or live-host access. It owns and wipes its byte
+and pin copies and exposes `IsEligibleForTrustedLaunch` as `false`.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continues that event. It then accepts exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -670,8 +693,14 @@ deadline. They also cover aggregate revalidation and disposal, the forced
 pre-entry failure exit, and prior containment behaviour. Baseline and final
 reaper assertions show only that no retained or terminal reaper state remained
 at each assertion time. They do not prove that the reaper was never used. The
-total remains 110. Direct Release validation of `66c6e87` passes 110/110 with
-no child residue.
+4 package tests at checkpoint `9d947ce` cover an independently encoded golden
+identity, outer authentication before parsing, canonical and nested-profile
+rejection, nested pin authentication, ownership and disposal, cancellation,
+deadlines, and clean recovery after failure. The checkpoint also preserves,
+through the existing release-manifest case, standalone release-manifest
+authentication and two-way owned artefact-copy disposal. The
+total is 114. Direct Release validation of `9d947ce` passes 114/114 with no
+child residue.
 
 The tests do not terminate the parent abruptly. The initial breakpoint is not
 a direct entry sentinel. No debug-event file handle proves section, mapping,
@@ -681,11 +710,13 @@ loader closure. It does not establish trusted or production
 launch, a production role, private handoff, role-bound `READY`, Java
 integration, or HRC runtime behaviour.
 
-Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Add independent native module-policy and
-pin issuance, protected policy selection, freshness and rollback rules, and a
-fail-closed servicing and update transaction. The synthetic current-host test
-policy and further self-baselined enumeration cannot provide that trust. Close
+Define an independently provisioned outer-pin issuer and rotation policy. Add
+protected package selection, a freshness and rollback floor, trusted installer
+and updater transactions with crash recovery, and servicing coordination. The
+package implements no selector, writer, update mechanism, audited-launcher
+integration, production role, HRC integration, or runner integration. The
+synthetic current-host test policy and
+further self-baselined enumeration cannot provide that trust. Close
 the production namespace and complete runtime-module, loader, and
 dependency closure before using the synthetic proof in dedicated roles. Keep
 the current containment proof separate until those roles integrate it. Complete

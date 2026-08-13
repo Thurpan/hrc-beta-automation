@@ -657,6 +657,25 @@ aggregate before `CreateProcessW`. Pre-create checks revalidate the expected
 set. The wrapper, failed-launch cleanup, and detached reaper retain the
 policy-bound aggregate with the other launch authority.
 
+Checkpoint `9d947ce` added the pure `NativeLaunchPolicyPackageV1` seam. Its
+canonical `HRCNLP01` wire uses big-endian integers and totals 440 through 38,667
+bytes. The fixed 92-byte header contains the eight-byte magic, 16-bit closed
+`SyntheticNativeFixture` profile value `1`, zero 16-bit reserved field, nonzero
+64-bit generation, 32-bit release length from 98 through 38,325, 32-bit module-
+policy length fixed at 250, and two 32-byte nested pins. Canonical `HRCREL01`
+and `HRCOSM01` bytes follow. The outer domain-
+separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-LAUNCH-POLICY-PACKAGE-PIN-V1\0`. The implementation
+compared that pin in fixed time before structural parsing. It then independently
+authenticated each nested document against its header pin. Authentication was
+relative only to the caller-supplied outer pin; it supplied no issuer,
+signature, release provenance, or protected pin origin. It admitted only the
+synthetic native-fixture release, no-CRT System32 deployment, `win-x64` runtime
+label, and synthetic native system-module profile. Generation was opaque
+nonzero metadata only; it supplied no freshness or rollback rule. Authentication
+performed no filesystem or live-host access. The package owned and wiped its
+byte and pin copies and exposed `IsEligibleForTrustedLaunch` as `false`.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continued that event. It then received exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -729,8 +748,15 @@ aggregate revalidation and disposal, the forced pre-entry failure exit, and
 prior containment behaviour. Baseline and final reaper assertions
 showed only that no retained or terminal reaper state remained at each
 assertion time. They do not prove that the reaper was never used. The same 3
-system-module and 5 containment cases keep the total at 110. Direct Release
-validation of `66c6e87` passes 110/110 with no child residue.
+system-module and 5 containment cases kept the total at 110 through `66c6e87`.
+Checkpoint `9d947ce` added 4 focused pure package cases. They cover an
+independently encoded golden identity, outer authentication before parsing,
+canonical and nested-profile rejection, nested pin authentication, owned-copy
+and disposal behaviour, cancellation, deadlines, and clean recovery after
+failure. The checkpoint also preserves, through the existing release-manifest
+case, standalone release-manifest authentication and two-way owned artefact-
+copy disposal. Direct Release validation of `9d947ce`
+passes 114/114 with no child residue.
 
 No test directly terminated the parent. The initial breakpoint is not a direct
 entry sentinel. No debug-event file handle proves section, mapping, or executed-
@@ -2088,8 +2114,11 @@ KernelBase, and Apphelp `LOAD_DLL` `hFile` values, bases, and order to four
 current System32 files before the initial first-chance breakpoint barrier.
 Checkpoint `4d7781b` authenticates the exact 250-byte `HRCOSM01` policy.
 Checkpoint `66c6e87` makes the policy and pin mandatory before process creation.
+Checkpoint `9d947ce` authenticates the pure `HRCNLP01` package that binds one
+closed synthetic native release manifest to one module policy. It does not
+select or launch either nested policy.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 110
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 114
 Windows bootstrap tests. Committed checkpoint `64043e5` passes 102/102.
 Committed checkpoint `70e0d77` adds 5 audited native-containment cases and
 passes 107/107. Committed checkpoint `2512c6a` extends those cases with real
@@ -2101,13 +2130,15 @@ before identity validation. A separate bounded, read-only `Process.Modules`
 probe implicated System32 `apphelp.dll`. Checkpoint `445d02a` closes the four-
 member profile, and its later debugger `hFile` checks directly bind Apphelp.
 Direct Release validation of `66c6e87` passes 110/110 with no native-fixture
-child residue. The
+child residue. Direct Release validation of `9d947ce` passes 114/114 with no
+native-fixture child residue. The
 Windows total is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
 artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture tests, 7
 audited native-release binding tests, 5 harness-containment tests, 3 native
-system-module identity tests, and 5 audited native-containment tests. The
+system-module identity tests, 5 audited native-containment tests, and 4 native
+launch-policy package tests. The
 start-level fixture passes 12/12
 prerequisite, 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
@@ -2228,8 +2259,10 @@ disposal, concurrent disposal, and the forced pre-entry failure exit.
 Checkpoints `4d7781b` and `66c6e87` extend these same registered cases with
 policy authentication and mandatory composition. They cover pre-create
 rejection for correctly re-pinned wrong first-member length and fourth-member
-digest values. The same 3 system-module cases keep the overall count at 110.
-Direct Release validation of `66c6e87` passes 110/110 with no child residue.
+digest values. The same 3 system-module cases kept the overall count at 110
+through `66c6e87`. Checkpoint `9d947ce` adds 4 pure package cases, bringing the
+overall count to 114. Direct Release validation of `9d947ce` passes 114/114 with
+no child residue.
 Baseline and final reaper assertions show only that no retained or terminal
 reaper state remained at each assertion time.
 
@@ -2264,11 +2297,13 @@ integration, trusted release provenance, shared-runtime or loader trust,
 production roles, private handoff, role-bound `READY`, token transfer, Java or
 HRC integration, sandbox, or same-user hostile-process defence.
 
-Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Add independent native module-policy and
-pin issuance, protected policy selection, freshness and rollback rules, and a
-fail-closed servicing and update transaction. The synthetic current-host test
-policy and further self-baselined enumeration cannot supply that trust. Keep
+Define an independently provisioned outer-pin issuer and rotation policy. Add
+protected package selection, a freshness and rollback floor, trusted installer
+and updater transactions with crash recovery, and servicing coordination. The
+package implements no selector, writer, update mechanism, audited-launcher
+integration, production role, HRC integration, or runner integration. The
+synthetic current-host test policy and
+further self-baselined enumeration cannot supply that trust. Keep
 the current containment proof separate until dedicated production
 roles integrate it. Close the production namespace and complete production
 runtime-module, loader, and dependency closure before private initial name

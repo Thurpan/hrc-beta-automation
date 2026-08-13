@@ -170,14 +170,16 @@ unexpected source or target difference.
   `HRCOSM01` native system-module policy. Checkpoint
   `66c6e87` makes that policy and its independently supplied pin mandatory for
   the aggregate and audited native launcher. Direct Release validation of
-  `66c6e87` passes 110/110 with no native-fixture child residue. The total
-  remains 20 primitive tests, 8
+  `66c6e87` passes 110/110 with no native-fixture child residue. Checkpoint
+  `9d947ce` adds the standalone authenticated `HRCNLP01` native launch-policy
+  package. Direct Release validation of `9d947ce` passes 114/114 with no native-
+  fixture child residue. The total is 20 primitive tests, 8
   descriptor and protocol tests, 27 broker and in-memory-store tests, 11
   filesystem tests, 5 single-file artefact-identity tests, 6 protected app-
   local artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture
   tests, 7 audited native-release binding tests, 5 harness-containment tests,
-  3 native system-module identity tests, and 5 audited native-containment
-  tests. It proves
+  3 native system-module identity tests, 5 audited native-containment tests,
+  and 4 native launch-policy package tests. It proves
   exact applied protected-DACL read-back, two-sided process identity, bounded
   one-shot frames, fixed
   public-frame exchange with a synthetic child, rejection of a wrong live
@@ -402,6 +404,25 @@ unexpected source or target difference.
   aggregate before `CreateProcessW`. Pre-create checks revalidate the expected
   set. The wrapper, failed-launch cleanup, and detached reaper retain the
   policy-bound aggregate with the other launch authority.
+  Checkpoint `9d947ce` adds the pure `NativeLaunchPolicyPackageV1` seam. Its
+  canonical `HRCNLP01` wire uses big-endian integers and totals 440 through
+  38,667 bytes. The fixed 92-byte header contains the eight-byte magic, 16-bit
+  closed `SyntheticNativeFixture` profile value `1`, zero 16-bit reserved
+  field, nonzero 64-bit generation, 32-bit release length from 98 through
+  38,325, 32-bit module-policy length fixed at 250, and two 32-byte nested pins.
+  Canonical `HRCREL01` and `HRCOSM01` bytes follow the header. The outer
+  domain-separated SHA-256 pin uses
+  `HRC-BETA-OBSERVER-NATIVE-LAUNCH-POLICY-PACKAGE-PIN-V1\0`. It is compared in
+  fixed time before structural parsing. Each nested document then authenticates
+  independently against its header pin. Authentication is relative only to the
+  caller-supplied outer pin; it supplies no issuer, signature, release
+  provenance, or protected pin origin. The package admits only the synthetic
+  native-fixture release, no-CRT System32 deployment, `win-x64` runtime label,
+  and synthetic native system-module profile. Generation is opaque nonzero
+  metadata only; it supplies no freshness or rollback rule. Authentication is
+  pure and performs no filesystem or live-host access. The package owns and
+  wipes its byte and pin copies and exposes `IsEligibleForTrustedLaunch` as
+  `false`.
   After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
   launcher continues that event. It then accepts exactly four `LOAD_DLL` events
   in the stated order, followed by the exact initial first-chance breakpoint.
@@ -467,8 +488,14 @@ unexpected source or target difference.
   pinned wrong NTDLL length and wrong Apphelp digest policies both fail before
   `CreateProcessW`; the Apphelp case also exercises cleanup after three expected
   members opened.
-  Direct Release validation of `66c6e87` passes 110/110 with no native-fixture
-  child residue. The
+  Checkpoint `9d947ce` adds 4 focused pure package cases. They cover an
+  independently encoded golden identity, outer authentication before parsing,
+  canonical and nested-profile rejection, nested pin authentication, owned-copy
+  and disposal behaviour, cancellation, deadlines, and clean recovery after
+  failure. The checkpoint also preserves, through the existing release-manifest
+  case, standalone release-manifest authentication and two-way owned artefact-
+  copy disposal. Direct Release validation of `9d947ce`
+  passes 114/114 with no native-fixture child residue. The
   explicit Job-close result is not a direct abrupt-parent-death or crash test.
   The initial breakpoint is not a direct entry sentinel. No debug-event file
   handle proves section, mapping, or executed-page identity. The evidence
@@ -489,13 +516,16 @@ unexpected source or target difference.
   provisioning and provenance, stale and crash recovery, and Java lifecycle
   integration are implemented and validated. Keep the atomic containment proof
   as a separate boundary until dedicated production roles integrate it. Resolve
-  trusted installer policy and pin provenance, independent native module-policy
-  and pin issuance, protected policy selection, freshness and rollback rules,
-  a fail-closed servicing and update transaction, the production application
-  namespace, complete production
+  an independently provisioned outer-pin issuer and rotation policy, protected
+  package selection, a freshness and rollback floor, trusted installer and
+  updater transactions with crash recovery, servicing coordination, the
+  production application namespace, complete production
   runtime-module and dependency closure, and loader trust before the private
-  handoff and `READY` boundary. The current-host test policy and further self-
-  baselined module enumeration do not supply that trust. Keep the
+  handoff and `READY` boundary. The package implements no selector, writer,
+  update mechanism, audited-launcher integration, production role, HRC
+  integration, or runner integration.
+  The current-host test policy and further self-baselined module enumeration do
+  not supply that trust. Keep the
   audited synthetic containment proof separate until dedicated production
   roles integrate it. Complete the production gate before private handoff or
   role-bound `READY` work.

@@ -35,9 +35,11 @@ bytes to the strict PE audit. A dedicated containment primitive launches only
 that exact synthetic fixture through atomic Job assignment and a pre-user-mode
 debug-event image-handle check. The native module aggregate and audited launcher
 now require policy bytes and a pin authenticated through a standalone
-`HRCOSM01` seam. Each layer remains ineligible for trusted launch. The module
-has no trusted installer policy, independent pin
-provenance, secure initial pipe-name handoff, dedicated production role
+`HRCOSM01` seam. A pure `HRCNLP01` seam authenticates one closed synthetic
+native release manifest and one module policy under an outer pin. Each layer
+remains ineligible for trusted launch. The module has no independently
+provisioned outer-pin issuer or rotation policy, protected selector, trusted
+installer or updater, secure initial pipe-name handoff, dedicated production role
 executables, production-role containment integration, or connection to the
 Java layers.
 This component is not the standalone runner or an installable HRC plug-in. It
@@ -479,6 +481,25 @@ thread input copies and opens this policy-bound aggregate before
 `CreateProcessW`. The wrapper, cleanup,
 and detached reaper retain the bound aggregate with the other launch authority.
 
+Checkpoint `9d947ce` adds the pure `NativeLaunchPolicyPackageV1` seam. Its
+canonical `HRCNLP01` wire uses big-endian integers and totals 440 through 38,667
+bytes. The fixed 92-byte header contains the eight-byte magic, 16-bit closed
+`SyntheticNativeFixture` profile value `1`, zero 16-bit reserved field, nonzero
+64-bit generation, 32-bit release length from 98 through 38,325, 32-bit module-
+policy length fixed at 250, and two 32-byte nested pins. Canonical `HRCREL01`
+and `HRCOSM01` bytes follow. The outer domain-
+separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-LAUNCH-POLICY-PACKAGE-PIN-V1\0`. The package compares
+that pin in fixed time before structural parsing. It then independently
+authenticates each nested document against its header pin. Authentication is
+relative only to the caller-supplied outer pin; it supplies no issuer,
+signature, release provenance, or protected pin origin. It admits only the
+synthetic native-fixture release, no-CRT System32 deployment, `win-x64` runtime
+label, and synthetic native system-module profile. Generation is opaque
+nonzero metadata only; it supplies no freshness or rollback rule. The seam is
+pure and performs no filesystem or live-host access. It owns and wipes its byte
+and pin copies and exposes `IsEligibleForTrustedLaunch` as `false`.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continues that event. It then accepts exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -545,9 +566,15 @@ its load event remains owned, and a post-resume late deadline. They also cover
 aggregate revalidation and disposal, the forced pre-entry failure exit, and
 prior containment behaviour. Baseline and final reaper assertions
 show only that no retained or terminal reaper state remained at each assertion
-time. They do not prove that the reaper was never used. The overall Release
-count remains 110. Direct Release validation of `66c6e87` passes 110/110 with
-no child residue.
+time. They do not prove that the reaper was never used. Checkpoint `9d947ce`
+adds 4 focused pure package cases. They cover an independently encoded golden
+identity, outer authentication before parsing, canonical and nested-profile
+rejection, nested pin authentication, owned-copy and disposal behaviour,
+cancellation, deadlines, and clean recovery after failure. The checkpoint also
+preserves, through the existing release-manifest case, standalone release-
+manifest authentication and two-way owned artefact-copy disposal. The overall
+Release count is 114. Direct Release validation of
+`9d947ce` passes 114/114 with no child residue.
 
 They do not directly terminate the parent. The initial breakpoint is not a
 direct entry sentinel. No debug-event file handle proves section, mapping, or
@@ -591,11 +618,13 @@ operation.
 The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.
 
-Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Add independent native module-policy and
-pin issuance, protected policy selection, freshness and rollback rules, and a
-fail-closed servicing and update transaction. The synthetic current-host test
-policy and further self-baselined enumeration do not provide that trust. Keep
+Define an independently provisioned outer-pin issuer and rotation policy. Add
+protected package selection, a freshness and rollback floor, trusted installer
+and updater transactions with crash recovery, and servicing coordination. The
+package implements no selector, writer, update mechanism, audited-launcher
+integration, production role, HRC integration, or runner integration. The
+synthetic current-host test policy and
+further self-baselined enumeration do not provide that trust. Keep
 the current containment proof separate until dedicated production
 roles integrate it. Close the production namespace and complete production
 runtime-module, loader, and dependency closure before private handoff and role-
