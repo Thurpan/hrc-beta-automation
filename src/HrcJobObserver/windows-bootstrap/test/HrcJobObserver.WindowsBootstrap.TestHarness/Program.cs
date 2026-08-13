@@ -26,6 +26,10 @@ internal static partial class Program
     private const string ChildMode = "--cross-process-child";
     private const string BrokerObserverChildMode = "--broker-observer-child";
     private const string BrokerControllerChildMode = "--broker-controller-child";
+    private const string ContainedExitMode = "--contained-exit";
+    private const string ContainedBlockMode = "--contained-block";
+    private const string ContainedEntryEventPrefix =
+        @"Local\HrcBetaAutomation-ContainedHarness-Entered-v1-";
     private const byte ChildConnect = 1;
     private const byte ChildExpectServerRejection = 2;
     private const byte ChildExit = 3;
@@ -64,6 +68,24 @@ internal static partial class Program
                 StringComparison.Ordinal))
         {
             return await RunBrokerControllerChild().ConfigureAwait(false);
+        }
+
+        if (args.Length == 1 &&
+            string.Equals(args[0], ContainedExitMode, StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
+        if (args.Length == 1 &&
+            string.Equals(args[0], ContainedBlockMode, StringComparison.Ordinal))
+        {
+            using EventWaitHandle entered = new(
+                false,
+                EventResetMode.ManualReset,
+                ContainedEntryEventName(checked((uint)Environment.ProcessId)));
+            entered.Set();
+            await Task.Delay(Timeout.InfiniteTimeSpan).ConfigureAwait(false);
+            return 0;
         }
 
         if (args.Length != 0)
@@ -126,6 +148,11 @@ internal static partial class Program
             new("trusted artifact set manifest is canonical and case-bound", TestTrustedArtifactSetManifest),
             new("trusted artifact set enforces its absolute operation bounds", TestTrustedArtifactSetBounds),
             new("trusted artifact set rejects unprotected and reparse roots", TestTrustedArtifactSetRootGuards),
+            new("contained harness atomically enters a kill-on-close job", TestContainedHarnessExit),
+            new("contained harness job close terminates a blocked child", TestContainedHarnessBlock),
+            new("contained harness pre-resume failure terminates its suspended child", TestContainedHarnessPreResumeFailure),
+            new("contained harness rejects success after its absolute deadline", TestContainedHarnessLateResume),
+            new("contained harness disposal is concurrent and coalesced", TestContainedHarnessConcurrentDisposal),
             new("broker enforces role identity and security context", TestBrokerRoleBindings),
             new("broker disposal before run is coalesced and releases its name", TestBrokerDisposeBeforeRun),
             new("broker completes a cross-process claim and receipt", TestBrokerClaim),
