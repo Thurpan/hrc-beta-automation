@@ -566,6 +566,88 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
     }
 
     /// <summary>
+    /// Package-selector composition helper. Requires a canonical application
+    /// directory to resolve to an identity distinct from this retained root.
+    /// No identity value or borrowed handle escapes this method.
+    /// </summary>
+    internal void RequireDistinctFromCanonicalDirectory(
+        string canonicalDirectoryPath,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        CheckOperation(deadline, cancellationToken);
+        string targetPath = CanonicalLocalPath(canonicalDirectoryPath);
+        if (Path.EndsInDirectorySeparator(canonicalDirectoryPath) ||
+            !string.Equals(
+                targetPath,
+                canonicalDirectoryPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "The comparison directory path must already be canonical.",
+                nameof(canonicalDirectoryPath));
+        }
+
+        RequireDirectoryUnchanged();
+        using SafeFileHandle target = OpenHandle(
+            targetPath,
+            NativeMethods.FileReadAttributes,
+            NativeMethods.FileShareRead | NativeMethods.FileShareWrite,
+            NativeMethods.OpenExisting,
+            NativeMethods.FileFlagBackupSemantics |
+                NativeMethods.FileFlagOpenReparsePoint,
+            securityAttributes: 0);
+        if (NativeMethods.GetFileType(target) != NativeMethods.FileTypeDisk)
+        {
+            throw new SecurityException(
+                "The comparison directory is not a disk directory.");
+        }
+
+        RequireDirectory(target);
+        RequireFinalPath(target, targetPath);
+        // The audited application directory already uses this same guarded
+        // local-NTFS host policy. Repeat it here so the identity comparison is
+        // self-contained rather than relying on its caller's open sequence.
+        RequireLocalNtfsPosixVolume(target);
+        NativeFileIdentity? retainedIdentity = null;
+        NativeFileIdentity? targetIdentity = null;
+        try
+        {
+            retainedIdentity = ReadIdentity(directory);
+            targetIdentity = ReadIdentity(target);
+            CheckOperation(deadline, cancellationToken);
+            if (retainedIdentity.Value.Equals(targetIdentity.Value))
+            {
+                throw new SecurityException(
+                    "The comparison directory is the retained guarded directory under another path.");
+            }
+        }
+        finally
+        {
+            if (targetIdentity is not null)
+            {
+                WipeIdentity(targetIdentity.Value);
+            }
+
+            if (retainedIdentity is not null)
+            {
+                WipeIdentity(retainedIdentity.Value);
+            }
+        }
+
+        if (NativeMethods.GetFileType(target) != NativeMethods.FileTypeDisk)
+        {
+            throw new SecurityException(
+                "The comparison directory ceased to be a disk directory.");
+        }
+
+        RequireDirectory(target);
+        RequireFinalPath(target, targetPath);
+        RequireDirectoryUnchanged();
+        CheckOperation(deadline, cancellationToken);
+    }
+
+    /// <summary>
     /// Package-file composition helper. Only
     /// <see cref="NativeLaunchPolicyPackageFileLease"/> may call this method.
     /// The caller owns the returned handle, must serialize all operations on

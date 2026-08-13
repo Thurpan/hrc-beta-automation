@@ -80,7 +80,10 @@ internal interface INativeFixtureContainmentTestFaults
 /// static fixture import or general dependency claim. Their debugger-reported
 /// bases must also be nonzero and distinct from each other and the recorded
 /// main-image base. The exact initial breakpoint is sealed before detach and
-/// the exact initial-thread resume. This remains synthetic containment
+/// the exact initial-thread resume. The selected-package route additionally
+/// retains its authenticated fixed-leaf selector for the exact process
+/// lifetime, but its caller-supplied outer pin supplies no issuer, freshness,
+/// rollback, or servicing authority. This remains synthetic containment
 /// evidence, not release provenance, section-object or executed-page identity,
 /// Microsoft or KnownDLL provenance, general loader closure, or production
 /// launch eligibility.
@@ -101,6 +104,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     private TrustedArtifactLaunchNamespaceLease? launchNamespace;
     private AuditedNativeFixtureReleaseLease? auditedRelease;
     private NativeStartupSystemModuleSetLease? startupSystemModuleSet;
+    private NativeLaunchPolicyPackageFileLease? selectedPackage;
     private readonly CleanupFailureLedger disposalFailures;
     private readonly Stopwatch disposalStopwatch;
     private Task? disposalTask;
@@ -112,6 +116,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         AuditedNativeFixtureReleaseLease auditedRelease,
         NativeStartupSystemModuleSetLease startupSystemModuleSet,
+        NativeLaunchPolicyPackageFileLease? selectedPackage,
         BootstrapBinding binding)
     {
         // Allocate every disposal-only resource before this object accepts the
@@ -125,6 +130,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         this.launchNamespace = launchNamespace;
         this.auditedRelease = auditedRelease;
         this.startupSystemModuleSet = startupSystemModuleSet;
+        this.selectedPackage = selectedPackage;
         ProcessId = binding.ProcessId;
         Binding = binding;
     }
@@ -157,6 +163,133 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             deadline,
             cancellationToken,
             testFaults: null);
+    }
+
+    internal static ContainedAuditedNativeFixtureProcess
+        OpenSelectedPackageAndLaunch(
+            string exactPackageDirectory,
+            string expectedPackageOwnerSid,
+            ReadOnlySpan<byte> expectedPackagePinSha256,
+            string exactApplicationDirectory,
+            ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+            ContainedNativeFixtureMode mode,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+    {
+        return OpenSelectedPackageAndLaunch(
+            exactPackageDirectory,
+            expectedPackageOwnerSid,
+            expectedPackagePinSha256,
+            exactApplicationDirectory,
+            exactEmbeddedApplicationManifest,
+            mode,
+            deadline,
+            cancellationToken,
+            packageTestHook: null,
+            testFaults: null);
+    }
+
+    /// <summary>
+    /// Test-only overload. Only the package selector's <c>SnapshotRead</c>
+    /// stage carries a borrowed byte array. The hook must not mutate it and may
+    /// retain it only to verify zeroing after a forced failure.
+    /// </summary>
+    internal static ContainedAuditedNativeFixtureProcess
+        OpenSelectedPackageAndLaunch(
+            string exactPackageDirectory,
+            string expectedPackageOwnerSid,
+            ReadOnlySpan<byte> expectedPackagePinSha256,
+            string exactApplicationDirectory,
+            ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+            ContainedNativeFixtureMode mode,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken,
+            Action<NativeLaunchPolicyPackageFileStage, byte[]?>?
+                packageTestHook,
+            INativeFixtureContainmentTestFaults? testFaults)
+    {
+        // Allocate the bounded failed-launch cleanup state before the selector
+        // can acquire any retained filesystem authority.
+        CleanupFailureLedger cleanupFailures = new();
+        Stopwatch cleanupStopwatch = new();
+        ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
+        if (expectedPackagePinSha256.Length != Sha256Length)
+        {
+            throw new ArgumentException(
+                "The expected native launch-policy package pin must contain exactly 32 bytes.",
+                nameof(expectedPackagePinSha256));
+        }
+
+        if (exactEmbeddedApplicationManifest.Length !=
+            NativeFixturePeAudit.ExactManifestLength)
+        {
+            throw new ArgumentException(
+                "The native fixture embedded manifest must have its exact bounded length.",
+                nameof(exactEmbeddedApplicationManifest));
+        }
+
+        _ = mode switch
+        {
+            ContainedNativeFixtureMode.Exit => true,
+            ContainedNativeFixtureMode.Block => true,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+        };
+
+        byte[]? ownedPackagePin = null;
+        byte[]? ownedEmbeddedManifest = null;
+        try
+        {
+            ownedPackagePin = expectedPackagePinSha256.ToArray();
+            ownedEmbeddedManifest = exactEmbeddedApplicationManifest.ToArray();
+            byte[] launchPackagePin = ownedPackagePin;
+            byte[] launchEmbeddedManifest = ownedEmbeddedManifest;
+            LaunchThreadResult holder = new();
+            Thread worker = new(() =>
+            {
+                try
+                {
+                    SynchronizationContext.SetSynchronizationContext(null);
+                    holder.Result = OpenSelectedPackageAndLaunchCore(
+                        exactPackageDirectory,
+                        expectedPackageOwnerSid,
+                        launchPackagePin,
+                        exactApplicationDirectory,
+                        launchEmbeddedManifest,
+                        mode,
+                        deadline,
+                        cancellationToken,
+                        packageTestHook,
+                        testFaults,
+                        cleanupStopwatch,
+                        cleanupFailures);
+                }
+                catch (Exception exception)
+                {
+                    holder.Failure = ExceptionDispatchInfo.Capture(exception);
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "HRC selected-package native-fixture launch",
+            };
+            StartWithoutExecutionContext(worker);
+            JoinNonAbandonably(worker);
+            holder.Failure?.Throw();
+            return holder.Result ?? throw new InvalidOperationException(
+                "The dedicated selected-package launch thread returned no result.");
+        }
+        finally
+        {
+            if (ownedPackagePin is not null)
+            {
+                CryptographicOperations.ZeroMemory(ownedPackagePin);
+            }
+
+            if (ownedEmbeddedManifest is not null)
+            {
+                CryptographicOperations.ZeroMemory(ownedEmbeddedManifest);
+            }
+        }
     }
 
     internal static ContainedAuditedNativeFixtureProcess OpenAndLaunch(
@@ -250,6 +383,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 try
                 {
                     SynchronizationContext.SetSynchronizationContext(null);
+                    NativeLaunchPolicyPackageFileLease? selectedPackage = null;
                     holder.Result = OpenAndLaunchCore(
                         exactApplicationDirectory,
                         launchManifest,
@@ -257,6 +391,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         launchEmbeddedManifest,
                         launchNativeSystemModulePolicy,
                         launchNativeSystemModulePolicyPin,
+                        ref selectedPackage,
                         mode,
                         deadline,
                         cancellationToken,
@@ -310,6 +445,94 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
+    private static ContainedAuditedNativeFixtureProcess
+        OpenSelectedPackageAndLaunchCore(
+            string exactPackageDirectory,
+            string expectedPackageOwnerSid,
+            ReadOnlySpan<byte> expectedPackagePinSha256,
+            string exactApplicationDirectory,
+            ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+            ContainedNativeFixtureMode mode,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken,
+            Action<NativeLaunchPolicyPackageFileStage, byte[]?>?
+                packageTestHook,
+            INativeFixtureContainmentTestFaults? testFaults,
+            Stopwatch cleanupStopwatch,
+            CleanupFailureLedger cleanupFailures)
+    {
+        NativeLaunchPolicyPackageFileLease? selectedPackage = null;
+        byte[]? canonicalReleaseManifest = null;
+        byte[]? releaseManifestPinSha256 = null;
+        byte[]? canonicalNativeSystemModulePolicy = null;
+        byte[]? nativeSystemModulePolicyPinSha256 = null;
+        try
+        {
+            selectedPackage = NativeLaunchPolicyPackageFileLease.Open(
+                exactPackageDirectory,
+                expectedPackageOwnerSid,
+                expectedPackagePinSha256,
+                deadline,
+                cancellationToken,
+                packageTestHook);
+            RequireClosedSelectedPackageProfile(selectedPackage);
+            selectedPackage.Revalidate(deadline, cancellationToken);
+            canonicalReleaseManifest =
+                selectedPackage.CopyCanonicalReleaseManifest();
+            releaseManifestPinSha256 =
+                selectedPackage.CopyReleaseManifestPinSha256();
+            canonicalNativeSystemModulePolicy =
+                selectedPackage.CopyCanonicalNativeSystemModulePolicy();
+            nativeSystemModulePolicyPinSha256 =
+                selectedPackage.CopyNativeSystemModulePolicyPinSha256();
+            selectedPackage.Revalidate(deadline, cancellationToken);
+            ContainedHarnessProcess.CheckOperation(
+                deadline,
+                cancellationToken);
+
+            return OpenAndLaunchCore(
+                exactApplicationDirectory,
+                canonicalReleaseManifest,
+                releaseManifestPinSha256,
+                exactEmbeddedApplicationManifest,
+                canonicalNativeSystemModulePolicy,
+                nativeSystemModulePolicyPinSha256,
+                ref selectedPackage,
+                mode,
+                deadline,
+                cancellationToken,
+                testFaults,
+                cleanupStopwatch,
+                cleanupFailures);
+        }
+        finally
+        {
+            if (canonicalReleaseManifest is not null)
+            {
+                CryptographicOperations.ZeroMemory(canonicalReleaseManifest);
+            }
+
+            if (releaseManifestPinSha256 is not null)
+            {
+                CryptographicOperations.ZeroMemory(releaseManifestPinSha256);
+            }
+
+            if (canonicalNativeSystemModulePolicy is not null)
+            {
+                CryptographicOperations.ZeroMemory(
+                    canonicalNativeSystemModulePolicy);
+            }
+
+            if (nativeSystemModulePolicyPinSha256 is not null)
+            {
+                CryptographicOperations.ZeroMemory(
+                    nativeSystemModulePolicyPinSha256);
+            }
+
+            selectedPackage?.Dispose();
+        }
+    }
+
     private static unsafe ContainedAuditedNativeFixtureProcess OpenAndLaunchCore(
         string exactApplicationDirectory,
         ReadOnlySpan<byte> canonicalReleaseManifest,
@@ -317,6 +540,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
         ReadOnlySpan<byte> canonicalNativeSystemModulePolicy,
         ReadOnlySpan<byte> expectedNativeSystemModulePolicyPinSha256,
+        ref NativeLaunchPolicyPackageFileLease? selectedPackage,
         ContainedNativeFixtureMode mode,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken,
@@ -324,7 +548,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         Stopwatch cleanupStopwatch,
         CleanupFailureLedger cleanupFailures)
     {
-        ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
         string argument = mode switch
         {
             ContainedNativeFixtureMode.Exit => ExitArgument,
@@ -352,6 +575,13 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         uint createdProcessId = 0;
         try
         {
+            ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
+            if (selectedPackage is not null)
+            {
+                RequireClosedSelectedPackageProfile(selectedPackage);
+                selectedPackage.Revalidate(deadline, cancellationToken);
+            }
+
             moduleSet = NativeStartupSystemModuleSetLease.OpenExpectedPinned(
                 canonicalNativeSystemModulePolicy,
                 expectedNativeSystemModulePolicyPinSha256,
@@ -379,6 +609,15 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     "The synthetic audited release crossed its launch-eligibility boundary.");
             }
 
+            if (selectedPackage is not null)
+            {
+                RequireDistinctSelectedPackageDirectory(
+                    selectedPackage,
+                    audit.ApplicationDirectory,
+                    deadline,
+                    cancellationToken);
+            }
+
             namespaceLease = audit.OpenLaunchNamespaceLease(
                 deadline,
                 cancellationToken);
@@ -386,12 +625,14 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             RevalidateAuditedRelease(
                 audit,
                 namespaceLease,
+                selectedPackage,
                 deadline,
                 cancellationToken);
             testFaults?.AfterNamespacePinned();
             RevalidateAuditedRelease(
                 audit,
                 namespaceLease,
+                selectedPackage,
                 deadline,
                 cancellationToken);
 
@@ -399,6 +640,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 audit,
                 namespaceLease,
                 moduleSet,
+                selectedPackage,
                 deadline,
                 cancellationToken);
 
@@ -426,6 +668,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.CheckOperation(
@@ -516,6 +759,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.RequireProcessInExactJob(
@@ -528,6 +772,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
 
@@ -554,6 +799,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     CloseDebugEventFile(ref debugEventFile);
@@ -580,6 +826,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.RequireProcessInExactJob(
@@ -596,6 +843,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     DetachDebugger(ref debugAttached, created.ProcessId);
@@ -608,6 +856,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
 
@@ -616,6 +865,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     RequireExactAmd64Process(process);
@@ -635,6 +885,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         audit,
                         namespaceLease,
                         moduleSet,
+                        selectedPackage,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.CheckOperation(
@@ -649,10 +900,21 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         namespaceLease,
                         audit,
                         moduleSet,
+                        selectedPackage,
                         binding);
-                    result.RevalidateStartupSystemModuleSet(
-                        deadline,
-                        cancellationToken);
+                    if (selectedPackage is null)
+                    {
+                        result.RevalidateStartupSystemModuleSet(
+                            deadline,
+                            cancellationToken);
+                    }
+                    else
+                    {
+                        result.RevalidateSelectedNativeLaunchPolicyPackageBinding(
+                            deadline,
+                            cancellationToken);
+                    }
+
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
                         cancellationToken);
@@ -662,6 +924,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     namespaceLease = null;
                     audit = null;
                     moduleSet = null;
+                    selectedPackage = null;
                     return result;
                 }
             }
@@ -688,6 +951,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 ref namespaceLease,
                 ref audit,
                 ref moduleSet,
+                ref selectedPackage,
                 cleanupStopwatch,
                 cleanupFailures);
             if (cleanupFailures.HasFailures)
@@ -871,6 +1135,65 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
+    internal bool IsBoundToSelectedNativeLaunchPolicyPackage
+    {
+        get
+        {
+            lock (gate)
+            {
+                _ = process ?? throw new ObjectDisposedException(
+                    nameof(ContainedAuditedNativeFixtureProcess));
+                return selectedPackage is not null;
+            }
+        }
+    }
+
+    internal ulong SelectedNativeLaunchPolicyGeneration
+    {
+        get
+        {
+            lock (gate)
+            {
+                return RequireSelectedPackageUnderLock().Generation;
+            }
+        }
+    }
+
+    internal byte[] CopySelectedNativeLaunchPolicyPackagePinSha256()
+    {
+        lock (gate)
+        {
+            return RequireSelectedPackageUnderLock().CopyPackagePinSha256();
+        }
+    }
+
+    internal void RevalidateSelectedNativeLaunchPolicyPackageBinding(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            NativeLaunchPolicyPackageFileLease package =
+                RequireSelectedPackageUnderLock();
+            TrustedArtifactLaunchNamespaceLease currentNamespace =
+                launchNamespace ?? throw new ObjectDisposedException(
+                    nameof(ContainedAuditedNativeFixtureProcess));
+            AuditedNativeFixtureReleaseLease currentAudit =
+                auditedRelease ?? throw new ObjectDisposedException(
+                    nameof(ContainedAuditedNativeFixtureProcess));
+            NativeStartupSystemModuleSetLease currentModuleSet =
+                startupSystemModuleSet ?? throw new ObjectDisposedException(
+                    nameof(ContainedAuditedNativeFixtureProcess));
+            RevalidatePreResume(
+                currentAudit,
+                currentNamespace,
+                currentModuleSet,
+                package,
+                deadline,
+                cancellationToken);
+        }
+    }
+
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource<object?>? completion = null;
@@ -921,6 +1244,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         TrustedArtifactLaunchNamespaceLease? ownedNamespace;
         AuditedNativeFixtureReleaseLease? ownedAudit;
         NativeStartupSystemModuleSetLease? ownedStartupSystemModuleSet;
+        NativeLaunchPolicyPackageFileLease? ownedSelectedPackage;
         lock (gate)
         {
             ownedJob = job;
@@ -935,6 +1259,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             auditedRelease = null;
             ownedStartupSystemModuleSet = startupSystemModuleSet;
             startupSystemModuleSet = null;
+            ownedSelectedPackage = selectedPackage;
+            selectedPackage = null;
         }
 
         DisposeCleanupResource(failures, ownedJob);
@@ -980,13 +1306,15 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     ownedIdentity,
                     ownedNamespace,
                     ownedAudit,
-                    ownedStartupSystemModuleSet);
+                    ownedStartupSystemModuleSet,
+                    ownedSelectedPackage);
                 ownedJob = null;
                 ownedProcess = null;
                 ownedIdentity = null;
                 ownedNamespace = null;
                 ownedAudit = null;
                 ownedStartupSystemModuleSet = null;
+                ownedSelectedPackage = null;
             }
             catch (Exception exception)
             {
@@ -1020,6 +1348,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             DisposeCleanupResource(failures, ownedNamespace);
             DisposeCleanupResource(failures, ownedAudit);
             DisposeCleanupResource(failures, ownedStartupSystemModuleSet);
+            DisposeCleanupResource(failures, ownedSelectedPackage);
         }
         if (failures.MaterializedCount == 1)
         {
@@ -1059,10 +1388,62 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
+    private static void RequireClosedSelectedPackageProfile(
+        NativeLaunchPolicyPackageFileLease package)
+    {
+        if (package.Profile !=
+                NativeLaunchPolicyProfile.SyntheticNativeFixture ||
+            package.ReleaseArtifactRole !=
+                ReleaseArtifactRole.SyntheticNativeFixture ||
+            package.ReleaseDeploymentKind !=
+                ReleaseDeploymentKind.NativeNoCrtSystem32Fixture ||
+            package.TargetRuntimeIdentifier !=
+                ReleaseTargetRuntimeIdentifier.WinX64 ||
+            package.NativeSystemModuleConsumerProfile !=
+                TrustedNativeSystemModuleConsumerProfile
+                    .SyntheticNativeFixture ||
+            package.IsEligibleForTrustedLaunch)
+        {
+            throw new SecurityException(
+                "The selected package is not the closed ineligible synthetic native-fixture profile.");
+        }
+    }
+
+    private static void RequireDistinctSelectedPackageDirectory(
+        NativeLaunchPolicyPackageFileLease package,
+        string canonicalApplicationDirectory,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        string packageFilePath = package.PackageFilePath;
+        string? packageDirectory = Path.GetDirectoryName(packageFilePath);
+        if (string.IsNullOrEmpty(packageDirectory) ||
+            !string.Equals(
+                Path.Combine(
+                    packageDirectory,
+                    NativeLaunchPolicyPackageFileLease.PackageFileName),
+                packageFilePath,
+                StringComparison.Ordinal) ||
+            string.Equals(
+                packageDirectory,
+                canonicalApplicationDirectory,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new SecurityException(
+                "The selected package and audited application require distinct canonical DOS directories.");
+        }
+
+        package.RequireDistinctApplicationDirectory(
+            canonicalApplicationDirectory,
+            deadline,
+            cancellationToken);
+    }
+
     private static void RevalidatePreCreate(
         AuditedNativeFixtureReleaseLease audit,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         NativeStartupSystemModuleSetLease startupSystemModuleSet,
+        NativeLaunchPolicyPackageFileLease? selectedPackage,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
@@ -1072,18 +1453,33 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         startupSystemModuleSet.RevalidateExpectedSet(
             deadline,
             cancellationToken);
+        if (selectedPackage is not null)
+        {
+            selectedPackage.RequireDistinctApplicationDirectory(
+                audit.ApplicationDirectory,
+                deadline,
+                cancellationToken);
+        }
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
     }
 
     private static void RevalidateAuditedRelease(
         AuditedNativeFixtureReleaseLease audit,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
+        NativeLaunchPolicyPackageFileLease? selectedPackage,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
         launchNamespace.Revalidate(deadline, cancellationToken);
         audit.RevalidateExactSet(deadline, cancellationToken);
+        if (selectedPackage is not null)
+        {
+            selectedPackage.RequireDistinctApplicationDirectory(
+                audit.ApplicationDirectory,
+                deadline,
+                cancellationToken);
+        }
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
     }
 
@@ -1091,6 +1487,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         AuditedNativeFixtureReleaseLease audit,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         NativeStartupSystemModuleSetLease startupSystemModuleSet,
+        NativeLaunchPolicyPackageFileLease? selectedPackage,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
@@ -1098,7 +1495,22 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         launchNamespace.Revalidate(deadline, cancellationToken);
         audit.RevalidateExactSet(deadline, cancellationToken);
         startupSystemModuleSet.Revalidate(deadline, cancellationToken);
+        if (selectedPackage is not null)
+        {
+            selectedPackage.RequireDistinctApplicationDirectory(
+                audit.ApplicationDirectory,
+                deadline,
+                cancellationToken);
+        }
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
+    }
+
+    private NativeLaunchPolicyPackageFileLease RequireSelectedPackageUnderLock()
+    {
+        _ = process ?? throw new ObjectDisposedException(
+            nameof(ContainedAuditedNativeFixtureProcess));
+        return selectedPackage ?? throw new InvalidOperationException(
+            "This native-fixture process was not launched from a selected package.");
     }
 
     private static void RequireExactDebugAbi()
@@ -1491,6 +1903,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ref TrustedArtifactLaunchNamespaceLease? launchNamespace,
         ref AuditedNativeFixtureReleaseLease? audit,
         ref NativeStartupSystemModuleSetLease? startupSystemModuleSet,
+        ref NativeLaunchPolicyPackageFileLease? selectedPackage,
         Stopwatch cleanupStopwatch,
         CleanupFailureLedger failures)
     {
@@ -1571,13 +1984,15 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         identity,
                         launchNamespace,
                         audit,
-                        startupSystemModuleSet);
+                        startupSystemModuleSet,
+                        selectedPackage);
                     job = null;
                     process = null;
                     identity = null;
                     launchNamespace = null;
                     audit = null;
                     startupSystemModuleSet = null;
+                    selectedPackage = null;
                 }
                 catch (Exception exception)
                 {
@@ -1618,6 +2033,10 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 startupSystemModuleSet;
             startupSystemModuleSet = null;
             DisposeCleanupResource(failures, ownedStartupSystemModuleSet);
+            NativeLaunchPolicyPackageFileLease? ownedSelectedPackage =
+                selectedPackage;
+            selectedPackage = null;
+            DisposeCleanupResource(failures, ownedSelectedPackage);
         }
 
         if (crossedBound)

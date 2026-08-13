@@ -307,6 +307,30 @@ internal sealed class NativeLaunchPolicyPackageFileLease : IDisposable
         }
     }
 
+    internal void RequireDistinctApplicationDirectory(
+        string canonicalApplicationDirectory,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            directory.RequireDistinctFromCanonicalDirectory(
+                canonicalApplicationDirectory,
+                deadline,
+                cancellationToken);
+            RevalidateCore(
+                directory,
+                retainedFile,
+                package,
+                expectedPackagePinSha256,
+                deadline,
+                cancellationToken);
+            CheckOperation(deadline, cancellationToken);
+        }
+    }
+
     internal byte[] CopyCanonicalPackage()
     {
         lock (gate)

@@ -5,8 +5,9 @@ using System.Threading;
 namespace HrcJobObserver.WindowsBootstrap;
 
 /// <summary>
-/// Retains all native-fixture process authority after a fully detached debug
-/// session when a bounded synchronous wait cannot prove exact process exit.
+/// Retains all native-fixture process authority, including any selected
+/// launch-policy package, after a fully detached debug session when a bounded
+/// synchronous wait cannot prove exact process exit.
 /// The exact retained process handle is the only completion signal. No PID
 /// lookup, cancellation, deadline, or additional termination action is used.
 /// </summary>
@@ -47,7 +48,8 @@ internal static class NativeFixtureProcessReaper
         ProcessIdentityLease? identity,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         AuditedNativeFixtureReleaseLease audit,
-        NativeStartupSystemModuleSetLease startupSystemModuleSet)
+        NativeStartupSystemModuleSetLease startupSystemModuleSet,
+        NativeLaunchPolicyPackageFileLease? selectedPackage)
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(launchNamespace);
@@ -66,7 +68,8 @@ internal static class NativeFixtureProcessReaper
             identity,
             launchNamespace,
             audit,
-            startupSystemModuleSet);
+            startupSystemModuleSet,
+            selectedPackage);
         lock (Gate)
         {
             // Install the emergency root synchronously before the worker can
@@ -148,7 +151,8 @@ internal static class NativeFixtureProcessReaper
         private readonly TrustedArtifactLaunchNamespaceLease launchNamespace;
         private readonly AuditedNativeFixtureReleaseLease audit;
         private readonly NativeStartupSystemModuleSetLease startupSystemModuleSet;
-        private readonly Exception?[] cleanupFailures = new Exception?[6];
+        private readonly NativeLaunchPolicyPackageFileLease? selectedPackage;
+        private readonly Exception?[] cleanupFailures = new Exception?[7];
         private int cleanupFailureCount;
 
         internal Retention(
@@ -157,7 +161,8 @@ internal static class NativeFixtureProcessReaper
             ProcessIdentityLease? identity,
             TrustedArtifactLaunchNamespaceLease launchNamespace,
             AuditedNativeFixtureReleaseLease audit,
-            NativeStartupSystemModuleSetLease startupSystemModuleSet)
+            NativeStartupSystemModuleSetLease startupSystemModuleSet,
+            NativeLaunchPolicyPackageFileLease? selectedPackage)
         {
             this.job = job;
             this.process = process;
@@ -165,6 +170,7 @@ internal static class NativeFixtureProcessReaper
             this.launchNamespace = launchNamespace;
             this.audit = audit;
             this.startupSystemModuleSet = startupSystemModuleSet;
+            this.selectedPackage = selectedPackage;
         }
 
         internal void Start()
@@ -225,6 +231,7 @@ internal static class NativeFixtureProcessReaper
             Capture(launchNamespace);
             Capture(audit);
             Capture(startupSystemModuleSet);
+            Capture(selectedPackage);
             if (cleanupFailureCount == 1)
             {
                 failure = cleanupFailures[0];
