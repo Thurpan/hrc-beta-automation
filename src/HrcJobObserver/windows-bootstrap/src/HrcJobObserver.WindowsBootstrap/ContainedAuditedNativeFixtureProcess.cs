@@ -41,9 +41,12 @@ internal interface INativeFixtureContainmentTestFaults
         _ = processId;
     }
 
-    void AfterKernel32EvidenceCaptured(uint processId)
+    void AfterStartupSystemModuleCaptured(
+        uint processId,
+        NativeStartupSystemModule module)
     {
         _ = processId;
+        _ = module;
     }
 
     void AfterInitialBreakpointOwned(uint processId)
@@ -71,17 +74,23 @@ internal interface INativeFixtureContainmentTestFaults
 /// namespace binding. A synchronous initial debug event supplies the loader's
 /// image-file handle, which is
 /// authenticated directly against the retained file identity. Startup debug
-/// events then bind one real KERNEL32 load-file handle to the contemporaneous
-/// native System32 file before the initial breakpoint is continued, detach,
-/// and the exact initial-thread resume. This remains synthetic containment
-/// evidence, not release provenance, section-object identity, Microsoft or
-/// KnownDLL provenance, or production launch eligibility.
+/// events then bind exact NTDLL, KERNEL32, KernelBase, and Apphelp load-file
+/// handles, in that host-observed order, to contemporaneously retained native
+/// System32 files. Apphelp is host/build/fixture appcompat-loader policy, not a
+/// static fixture import or general dependency claim. Their debugger-reported
+/// bases must also be nonzero and distinct from each other and the recorded
+/// main-image base. The exact initial breakpoint is sealed before detach and
+/// the exact initial-thread resume. This remains synthetic containment
+/// evidence, not release provenance, section-object or executed-page identity,
+/// Microsoft or KnownDLL provenance, general loader closure, or production
+/// launch eligibility.
 /// </summary>
 internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
 {
     private const int MinimumReleaseManifestLength = 98;
     private const int Sha256Length = 32;
-    private const int MaximumStartupEvents = 32;
+    private const int MaximumStartupEvents =
+        NativeStartupSystemModuleSetLease.RequiredModuleCount + 1;
     internal const uint FailedLaunchExitCode = 0xE0435243;
     private const string ExitArgument = "--native-exit";
     private const string BlockArgument = "--native-block";
@@ -91,8 +100,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     private ProcessIdentityLease? identity;
     private TrustedArtifactLaunchNamespaceLease? launchNamespace;
     private AuditedNativeFixtureReleaseLease? auditedRelease;
-    private NativeSystemModuleIdentityLease? expectedSystemModule;
-    private NativeSystemModuleLoadEvidence? loadedSystemModuleEvidence;
+    private NativeStartupSystemModuleSetLease? startupSystemModuleSet;
     private readonly CleanupFailureLedger disposalFailures;
     private readonly Stopwatch disposalStopwatch;
     private Task? disposalTask;
@@ -103,8 +111,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ProcessIdentityLease identity,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         AuditedNativeFixtureReleaseLease auditedRelease,
-        NativeSystemModuleIdentityLease expectedSystemModule,
-        NativeSystemModuleLoadEvidence loadedSystemModuleEvidence,
+        NativeStartupSystemModuleSetLease startupSystemModuleSet,
         BootstrapBinding binding)
     {
         // Allocate every disposal-only resource before this object accepts the
@@ -117,8 +124,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         this.identity = identity;
         this.launchNamespace = launchNamespace;
         this.auditedRelease = auditedRelease;
-        this.expectedSystemModule = expectedSystemModule;
-        this.loadedSystemModuleEvidence = loadedSystemModuleEvidence;
+        this.startupSystemModuleSet = startupSystemModuleSet;
         ProcessId = binding.ProcessId;
         Binding = binding;
     }
@@ -288,11 +294,11 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         NativeMethods.SafeProcessHandle? process = null;
         NativeMethods.SafeThreadHandle? thread = null;
         ProcessIdentityLease? identity = null;
-        NativeSystemModuleIdentityLease? expectedModule = null;
-        NativeSystemModuleLoadEvidence? loadedModuleEvidence = null;
+        NativeStartupSystemModuleSetLease? moduleSet = null;
         nint attributeList = 0;
         nint jobValue = 0;
         nint debugEventFile = 0;
+        nint mainImageBaseAddress = 0;
         bool attributeListInitialized = false;
         bool debugAttached = false;
         bool debugEventOutstanding = false;
@@ -331,19 +337,19 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 deadline,
                 cancellationToken);
 
-            expectedModule = NativeSystemModuleIdentityLease.OpenKernel32(
+            moduleSet = NativeStartupSystemModuleSetLease.OpenExpected(
                 deadline,
                 cancellationToken);
-            if (expectedModule.IsEligibleForTrustedLaunch)
+            if (moduleSet.IsEligibleForTrustedLaunch)
             {
                 throw new SecurityException(
-                    "The native System32 identity crossed its launch-eligibility boundary.");
+                    "The native startup System32 set crossed its launch-eligibility boundary.");
             }
 
             RevalidatePreCreate(
                 audit,
                 namespaceLease,
-                expectedModule,
+                moduleSet,
                 deadline,
                 cancellationToken);
 
@@ -370,7 +376,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreCreate(
                         audit,
                         namespaceLease,
-                        expectedModule,
+                        moduleSet,
                         deadline,
                         cancellationToken);
                     NativeFixturePlatformPolicy
@@ -450,7 +456,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     debugEventProcessId = initialEvent.ProcessId;
                     debugEventThreadId = initialEvent.ThreadId;
                     debugEventFile = AdoptTypedDebugEventFile(initialEvent);
-                    RequireExactInitialDebugEvent(
+                    mainImageBaseAddress = RequireExactInitialDebugEvent(
                         initialEvent,
                         created.ProcessId,
                         created.ThreadId,
@@ -462,7 +468,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreCreate(
                         audit,
                         namespaceLease,
-                        expectedModule,
+                        moduleSet,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.RequireProcessInExactJob(
@@ -474,7 +480,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreCreate(
                         audit,
                         namespaceLease,
-                        expectedModule,
+                        moduleSet,
                         deadline,
                         cancellationToken);
 
@@ -500,7 +506,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreCreate(
                         audit,
                         namespaceLease,
-                        expectedModule,
+                        moduleSet,
                         deadline,
                         cancellationToken);
                     CloseDebugEventFile(ref debugEventFile);
@@ -509,12 +515,12 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         debugEventProcessId,
                         debugEventThreadId);
                     testFaults?.AfterDebugEventContinued(created.ProcessId);
-                    WaitForInitialBreakpointAndCaptureSystemModule(
+                    WaitForInitialBreakpointAndCaptureSystemModuleSet(
                         created.ProcessId,
                         created.ThreadId,
                         thread,
-                        expectedModule,
-                        ref loadedModuleEvidence,
+                        moduleSet,
+                        mainImageBaseAddress,
                         ref debugEventFile,
                         ref debugEventOutstanding,
                         ref debugEventCode,
@@ -523,14 +529,10 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         deadline,
                         cancellationToken,
                         testFaults);
-                    NativeSystemModuleLoadEvidence exactLoadedModuleEvidence =
-                        loadedModuleEvidence ?? throw new SecurityException(
-                            "The initial breakpoint arrived without KERNEL32 load evidence.");
                     RevalidatePreResume(
                         audit,
                         namespaceLease,
-                        expectedModule,
-                        exactLoadedModuleEvidence,
+                        moduleSet,
                         deadline,
                         cancellationToken);
                     ContainedHarnessProcess.RequireProcessInExactJob(
@@ -543,6 +545,12 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         ref debugEventOutstanding,
                         debugEventProcessId,
                         debugEventThreadId);
+                    RevalidatePreResume(
+                        audit,
+                        namespaceLease,
+                        moduleSet,
+                        deadline,
+                        cancellationToken);
                     DetachDebugger(ref debugAttached, created.ProcessId);
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
@@ -552,8 +560,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreResume(
                         audit,
                         namespaceLease,
-                        expectedModule,
-                        exactLoadedModuleEvidence,
+                        moduleSet,
                         deadline,
                         cancellationToken);
 
@@ -561,8 +568,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     RevalidatePreResume(
                         audit,
                         namespaceLease,
-                        expectedModule,
-                        exactLoadedModuleEvidence,
+                        moduleSet,
                         deadline,
                         cancellationToken);
                     RequireExactAmd64Process(process);
@@ -580,6 +586,12 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     }
 
                     testFaults?.AfterResume(created.ProcessId);
+                    RevalidatePreResume(
+                        audit,
+                        namespaceLease,
+                        moduleSet,
+                        deadline,
+                        cancellationToken);
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
                         cancellationToken);
@@ -591,9 +603,11 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         identity,
                         namespaceLease,
                         audit,
-                        expectedModule,
-                        exactLoadedModuleEvidence,
+                        moduleSet,
                         binding);
+                    result.RevalidateStartupSystemModuleSet(
+                        deadline,
+                        cancellationToken);
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
                         cancellationToken);
@@ -602,8 +616,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     identity = null;
                     namespaceLease = null;
                     audit = null;
-                    expectedModule = null;
-                    loadedModuleEvidence = null;
+                    moduleSet = null;
                     return result;
                 }
             }
@@ -629,8 +642,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 ref thread,
                 ref namespaceLease,
                 ref audit,
-                ref expectedModule,
-                ref loadedModuleEvidence,
+                ref moduleSet,
                 cleanupStopwatch,
                 cleanupFailures);
             if (cleanupFailures.HasFailures)
@@ -785,20 +797,17 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
-    internal void RevalidateSystemModuleEvidence(
+    internal void RevalidateStartupSystemModuleSet(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
         lock (gate)
         {
-            NativeSystemModuleIdentityLease expected = expectedSystemModule ??
+            NativeStartupSystemModuleSetLease moduleSet =
+                startupSystemModuleSet ??
                 throw new ObjectDisposedException(
                     nameof(ContainedAuditedNativeFixtureProcess));
-            NativeSystemModuleLoadEvidence loaded =
-                loadedSystemModuleEvidence ?? throw new ObjectDisposedException(
-                    nameof(ContainedAuditedNativeFixtureProcess));
-            expected.Revalidate(deadline, cancellationToken);
-            loaded.Revalidate(deadline, cancellationToken);
+            moduleSet.Revalidate(deadline, cancellationToken);
             ContainedHarnessProcess.CheckOperation(
                 deadline,
                 cancellationToken);
@@ -854,8 +863,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ProcessIdentityLease? ownedIdentity;
         TrustedArtifactLaunchNamespaceLease? ownedNamespace;
         AuditedNativeFixtureReleaseLease? ownedAudit;
-        NativeSystemModuleIdentityLease? ownedExpectedSystemModule;
-        NativeSystemModuleLoadEvidence? ownedLoadedSystemModuleEvidence;
+        NativeStartupSystemModuleSetLease? ownedStartupSystemModuleSet;
         lock (gate)
         {
             ownedJob = job;
@@ -868,10 +876,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             launchNamespace = null;
             ownedAudit = auditedRelease;
             auditedRelease = null;
-            ownedExpectedSystemModule = expectedSystemModule;
-            expectedSystemModule = null;
-            ownedLoadedSystemModuleEvidence = loadedSystemModuleEvidence;
-            loadedSystemModuleEvidence = null;
+            ownedStartupSystemModuleSet = startupSystemModuleSet;
+            startupSystemModuleSet = null;
         }
 
         DisposeCleanupResource(failures, ownedJob);
@@ -907,7 +913,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
 
         if (!signalled && ownedProcess is not null &&
             ownedNamespace is not null && ownedAudit is not null &&
-            ownedExpectedSystemModule is not null)
+            ownedStartupSystemModuleSet is not null)
         {
             try
             {
@@ -917,15 +923,13 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                     ownedIdentity,
                     ownedNamespace,
                     ownedAudit,
-                    ownedExpectedSystemModule,
-                    ownedLoadedSystemModuleEvidence);
+                    ownedStartupSystemModuleSet);
                 ownedJob = null;
                 ownedProcess = null;
                 ownedIdentity = null;
                 ownedNamespace = null;
                 ownedAudit = null;
-                ownedExpectedSystemModule = null;
-                ownedLoadedSystemModuleEvidence = null;
+                ownedStartupSystemModuleSet = null;
             }
             catch (Exception exception)
             {
@@ -958,10 +962,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             DisposeCleanupResource(failures, ownedJob);
             DisposeCleanupResource(failures, ownedNamespace);
             DisposeCleanupResource(failures, ownedAudit);
-            DisposeCleanupResource(
-                failures,
-                ownedLoadedSystemModuleEvidence);
-            DisposeCleanupResource(failures, ownedExpectedSystemModule);
+            DisposeCleanupResource(failures, ownedStartupSystemModuleSet);
         }
         if (failures.MaterializedCount == 1)
         {
@@ -1004,14 +1005,16 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     private static void RevalidatePreCreate(
         AuditedNativeFixtureReleaseLease audit,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
-        NativeSystemModuleIdentityLease expectedSystemModule,
+        NativeStartupSystemModuleSetLease startupSystemModuleSet,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
         launchNamespace.Revalidate(deadline, cancellationToken);
         audit.RevalidateExactSet(deadline, cancellationToken);
-        expectedSystemModule.Revalidate(deadline, cancellationToken);
+        startupSystemModuleSet.RevalidateExpectedSet(
+            deadline,
+            cancellationToken);
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
     }
 
@@ -1030,18 +1033,14 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     private static void RevalidatePreResume(
         AuditedNativeFixtureReleaseLease audit,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
-        NativeSystemModuleIdentityLease expectedSystemModule,
-        NativeSystemModuleLoadEvidence loadedSystemModuleEvidence,
+        NativeStartupSystemModuleSetLease startupSystemModuleSet,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
-        RevalidatePreCreate(
-            audit,
-            launchNamespace,
-            expectedSystemModule,
-            deadline,
-            cancellationToken);
-        loadedSystemModuleEvidence.Revalidate(deadline, cancellationToken);
+        ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
+        launchNamespace.Revalidate(deadline, cancellationToken);
+        audit.RevalidateExactSet(deadline, cancellationToken);
+        startupSystemModuleSet.Revalidate(deadline, cancellationToken);
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
     }
 
@@ -1145,12 +1144,12 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
-    private static unsafe void WaitForInitialBreakpointAndCaptureSystemModule(
+    private static unsafe void WaitForInitialBreakpointAndCaptureSystemModuleSet(
         uint createdProcessId,
         uint createdThreadId,
         NativeMethods.SafeThreadHandle initialThread,
-        NativeSystemModuleIdentityLease expectedModule,
-        ref NativeSystemModuleLoadEvidence? loadedModuleEvidence,
+        NativeStartupSystemModuleSetLease startupSystemModuleSet,
+        nint mainImageBaseAddress,
         ref nint debugEventFile,
         ref bool debugEventOutstanding,
         ref uint debugEventCode,
@@ -1212,36 +1211,32 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
 
             if (value.Code == NativeMethods.LoadDllDebugEvent)
             {
-                if (value.Union.LoadDll.File == -1 ||
+                if (value.Union.LoadDll.File == 0 ||
+                    value.Union.LoadDll.File == -1 ||
+                    debugEventFile != value.Union.LoadDll.File ||
                     value.Union.LoadDll.BaseOfDll == 0)
                 {
                     throw new SecurityException(
                         "A native-fixture startup LOAD_DLL event supplied an invalid module identity.");
                 }
 
-                if (debugEventFile != 0)
+                using (SafeFileHandle borrowedLoadFile = new(
+                           debugEventFile,
+                           ownsHandle: false))
                 {
-                    using SafeFileHandle borrowedLoadFile = new(
-                        debugEventFile,
-                        ownsHandle: false);
-                    NativeSystemModuleLoadEvidence? captured =
-                        expectedModule.TryCaptureLoadedModuleEvidence(
+                    NativeStartupSystemModule capturedModule =
+                        startupSystemModuleSet.CaptureNextLoadedModule(
                             borrowedLoadFile,
+                            value.Union.LoadDll.BaseOfDll,
+                            mainImageBaseAddress,
                             deadline,
                             cancellationToken);
-                    if (captured is not null)
-                    {
-                        if (loadedModuleEvidence is not null)
-                        {
-                            captured.Dispose();
-                            throw new SecurityException(
-                                "The native fixture reported KERNEL32 more than once during startup.");
-                        }
-
-                        loadedModuleEvidence = captured;
-                        testFaults?.AfterKernel32EvidenceCaptured(
-                            createdProcessId);
-                    }
+                    testFaults?.AfterStartupSystemModuleCaptured(
+                        createdProcessId,
+                        capturedModule);
+                    ContainedHarnessProcess.CheckOperation(
+                        deadline,
+                        cancellationToken);
                 }
 
                 CloseDebugEventFile(ref debugEventFile);
@@ -1256,13 +1251,15 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 debugEventFile != 0 ||
                 value.Union.Exception.ExceptionRecord.ExceptionCode !=
                     NativeMethods.ExceptionBreakpoint ||
-                value.Union.Exception.FirstChance != 1 ||
-                loadedModuleEvidence is null)
+                value.Union.Exception.FirstChance != 1)
             {
                 throw new SecurityException(
-                    "The native-fixture startup sequence did not stop at its exact initial breakpoint after KERNEL32 load evidence.");
+                    "The native-fixture startup sequence did not stop at its exact initial breakpoint after the exact startup system-module set.");
             }
 
+            startupSystemModuleSet.SealAtInitialBreakpoint(
+                deadline,
+                cancellationToken);
             testFaults?.AfterInitialBreakpointOwned(createdProcessId);
 
             uint previousSuspendCount =
@@ -1285,7 +1282,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         }
     }
 
-    private static void RequireExactInitialDebugEvent(
+    private static nint RequireExactInitialDebugEvent(
         NativeMethods.DebugEvent value,
         uint createdProcessId,
         uint createdThreadId,
@@ -1304,7 +1301,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         if (ownedDebugEventFile != information.File ||
             ownedDebugEventFile == 0 || ownedDebugEventFile == -1 ||
             information.Process == 0 || information.Process == -1 ||
-            information.Thread == 0 || information.Thread == -1)
+            information.Thread == 0 || information.Thread == -1 ||
+            information.BaseOfImage == 0)
         {
             if (ownedDebugEventFile == -1)
             {
@@ -1327,6 +1325,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             throw new SecurityException(
                 "The debug-event handles did not identify the created process and thread.");
         }
+
+        return information.BaseOfImage;
     }
 
     private static void RequireExactAmd64Process(
@@ -1433,8 +1433,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ref NativeMethods.SafeThreadHandle? thread,
         ref TrustedArtifactLaunchNamespaceLease? launchNamespace,
         ref AuditedNativeFixtureReleaseLease? audit,
-        ref NativeSystemModuleIdentityLease? expectedSystemModule,
-        ref NativeSystemModuleLoadEvidence? loadedSystemModuleEvidence,
+        ref NativeStartupSystemModuleSetLease? startupSystemModuleSet,
         Stopwatch cleanupStopwatch,
         CleanupFailureLedger failures)
     {
@@ -1505,7 +1504,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         if (!signalled && process is not null && !process.IsInvalid)
         {
             if (launchNamespace is not null && audit is not null &&
-                expectedSystemModule is not null)
+                startupSystemModuleSet is not null)
             {
                 try
                 {
@@ -1515,15 +1514,13 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         identity,
                         launchNamespace,
                         audit,
-                        expectedSystemModule,
-                        loadedSystemModuleEvidence);
+                        startupSystemModuleSet);
                     job = null;
                     process = null;
                     identity = null;
                     launchNamespace = null;
                     audit = null;
-                    expectedSystemModule = null;
-                    loadedSystemModuleEvidence = null;
+                    startupSystemModuleSet = null;
                 }
                 catch (Exception exception)
                 {
@@ -1560,16 +1557,10 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             AuditedNativeFixtureReleaseLease? ownedAudit = audit;
             audit = null;
             DisposeCleanupResource(failures, ownedAudit);
-            NativeSystemModuleLoadEvidence? ownedLoadedSystemModuleEvidence =
-                loadedSystemModuleEvidence;
-            loadedSystemModuleEvidence = null;
-            DisposeCleanupResource(
-                failures,
-                ownedLoadedSystemModuleEvidence);
-            NativeSystemModuleIdentityLease? ownedExpectedSystemModule =
-                expectedSystemModule;
-            expectedSystemModule = null;
-            DisposeCleanupResource(failures, ownedExpectedSystemModule);
+            NativeStartupSystemModuleSetLease? ownedStartupSystemModuleSet =
+                startupSystemModuleSet;
+            startupSystemModuleSet = null;
+            DisposeCleanupResource(failures, ownedStartupSystemModuleSet);
         }
 
         if (crossedBound)

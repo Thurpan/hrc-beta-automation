@@ -14,6 +14,7 @@ internal enum NativeStartupSystemModule
     Ntdll = 0,
     Kernel32 = 1,
     KernelBase = 2,
+    Apphelp = 3,
 }
 
 /// <summary>
@@ -368,6 +369,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
             NativeStartupSystemModule.Ntdll => "NTDLL",
             NativeStartupSystemModule.Kernel32 => "KERNEL32",
             NativeStartupSystemModule.KernelBase => "KernelBase",
+            NativeStartupSystemModule.Apphelp => "Apphelp",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(module),
                 module,
@@ -380,6 +382,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
             NativeStartupSystemModule.Ntdll => "ntdll.dll",
             NativeStartupSystemModule.Kernel32 => "kernel32.dll",
             NativeStartupSystemModule.KernelBase => "KernelBase.dll",
+            NativeStartupSystemModule.Apphelp => "apphelp.dll",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(module),
                 module,
@@ -756,16 +759,18 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
 }
 
 /// <summary>
-/// Retains the exact native System32 NTDLL, KERNEL32, and KernelBase files and
-/// owns debugger-supplied LOAD_DLL evidence for that exact observed order. The
-/// aggregate is a closed host-compatibility policy for the synthetic fixture;
-/// it does not establish KnownDLL, signer, section, or trusted-launch identity.
+/// Retains the exact native System32 NTDLL, KERNEL32, KernelBase, and Apphelp
+/// files and owns debugger-supplied LOAD_DLL evidence for that exact observed
+/// order. Apphelp is host/build/fixture appcompat-loader policy, not a static
+/// fixture import. The aggregate is a closed host-compatibility policy for the
+/// synthetic fixture; it does not establish KnownDLL, signer, section, general
+/// loader closure, or trusted-launch identity.
 /// Its retained read-only, non-delete-sharing file handles can defer replacement
-/// or Windows servicing of these three System32 files for the lease lifetime.
+/// or Windows servicing of these four System32 files for the lease lifetime.
 /// </summary>
 internal sealed class NativeStartupSystemModuleSetLease : IDisposable
 {
-    internal const int RequiredModuleCount = 3;
+    internal const int RequiredModuleCount = 4;
 
     private readonly object gate = new();
     private readonly NativeSystemModuleIdentityLease?[] expectedModules;
@@ -965,10 +970,34 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         }
     }
 
+    internal void RevalidateExpectedSet(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            ThrowIfFaulted();
+            for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
+            {
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+                GetExpectedAtOrdinal(ordinal).Revalidate(
+                    deadline,
+                    cancellationToken);
+            }
+
+            NativeSystemModuleIdentityLease.CheckOperation(
+                deadline,
+                cancellationToken);
+        }
+    }
+
     /// <summary>
     /// Duplicates the borrowed debug-event file handle before validating the
     /// event's addresses. The candidate must match the next exact member in the
-    /// fixed NTDLL, KERNEL32, KernelBase order.
+    /// fixed NTDLL, KERNEL32, KernelBase, Apphelp order.
     /// </summary>
     internal NativeStartupSystemModule CaptureNextLoadedModule(
         SafeFileHandle borrowedEventFile,
@@ -1268,6 +1297,7 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
             0 => NativeStartupSystemModule.Ntdll,
             1 => NativeStartupSystemModule.Kernel32,
             2 => NativeStartupSystemModule.KernelBase,
+            3 => NativeStartupSystemModule.Apphelp,
             _ => throw new ArgumentOutOfRangeException(nameof(ordinal)),
         };
 
@@ -1277,6 +1307,7 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
             NativeStartupSystemModule.Ntdll => 0,
             NativeStartupSystemModule.Kernel32 => 1,
             NativeStartupSystemModule.KernelBase => 2,
+            NativeStartupSystemModule.Apphelp => 3,
             _ => throw new ArgumentOutOfRangeException(
                 nameof(module),
                 module,

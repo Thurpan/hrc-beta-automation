@@ -25,8 +25,38 @@ internal static partial class Program
                 new NativeFixtureWindowsVersion(10, 0, 16_299, 1)));
 
         AssertEqual(8, IntPtr.Size, "native containment pointer size");
+        AssertEqual(4, NativeStartupSystemModuleSetLease.RequiredModuleCount,
+            "native containment startup system-module count");
+        AssertEqual(
+            NativeStartupSystemModule.Ntdll,
+            (NativeStartupSystemModule)0,
+            "native containment NTDLL module ordinal");
+        AssertEqual(
+            NativeStartupSystemModule.Kernel32,
+            (NativeStartupSystemModule)1,
+            "native containment KERNEL32 module ordinal");
+        AssertEqual(
+            NativeStartupSystemModule.KernelBase,
+            (NativeStartupSystemModule)2,
+            "native containment KernelBase module ordinal");
+        AssertEqual(
+            NativeStartupSystemModule.Apphelp,
+            (NativeStartupSystemModule)3,
+            "native containment Apphelp module ordinal");
         AssertEqual(72, Marshal.SizeOf<NativeMethods.CreateProcessDebugInfo>(),
             "CREATE_PROCESS_DEBUG_INFO size");
+        AssertEqual(0, Marshal.OffsetOf<NativeMethods.CreateProcessDebugInfo>(
+            nameof(NativeMethods.CreateProcessDebugInfo.File)).ToInt32(),
+            "CREATE_PROCESS_DEBUG_INFO file offset");
+        AssertEqual(8, Marshal.OffsetOf<NativeMethods.CreateProcessDebugInfo>(
+            nameof(NativeMethods.CreateProcessDebugInfo.Process)).ToInt32(),
+            "CREATE_PROCESS_DEBUG_INFO process offset");
+        AssertEqual(16, Marshal.OffsetOf<NativeMethods.CreateProcessDebugInfo>(
+            nameof(NativeMethods.CreateProcessDebugInfo.Thread)).ToInt32(),
+            "CREATE_PROCESS_DEBUG_INFO thread offset");
+        AssertEqual(24, Marshal.OffsetOf<NativeMethods.CreateProcessDebugInfo>(
+            nameof(NativeMethods.CreateProcessDebugInfo.BaseOfImage)).ToInt32(),
+            "CREATE_PROCESS_DEBUG_INFO image-base offset");
         AssertEqual(152, Marshal.SizeOf<NativeMethods.ExceptionRecord>(),
             "EXCEPTION_RECORD size");
         AssertEqual(160, Marshal.SizeOf<NativeMethods.ExceptionDebugInfo>(),
@@ -117,7 +147,7 @@ internal static partial class Program
                     NewNativeContainmentDeadline())
                 .ConfigureAwait(false);
             AssertEqual(0U, exitCode, "audited native Exit code");
-            child.RevalidateSystemModuleEvidence(
+            child.RevalidateStartupSystemModuleSet(
                 NewNativeContainmentDeadline(),
                 CancellationToken.None);
             AssertNativeFixtureDirectoryRenameDenied(
@@ -131,7 +161,7 @@ internal static partial class Program
 
         AssertNativeFixtureDirectoryRenameable(fixture);
         AssertThrows<ObjectDisposedException>(() =>
-            child.RevalidateSystemModuleEvidence(
+            child.RevalidateStartupSystemModuleSet(
                 NewNativeContainmentDeadline(),
                 CancellationToken.None));
         AssertNativeFixtureReaperUnchanged(reaperBefore);
@@ -149,6 +179,9 @@ internal static partial class Program
         {
             Assert(child.IsAlive(),
                 "the native Block role must be alive before explicit Job closure");
+            child.RevalidateStartupSystemModuleSet(
+                NewNativeContainmentDeadline(),
+                CancellationToken.None);
             AssertNativeFixtureDirectoryRenameDenied(
                 fixture,
                 "the retained executable ancestor must deny rename for the wrapper lifetime");
@@ -159,6 +192,10 @@ internal static partial class Program
         }
 
         AssertThrows<ObjectDisposedException>(() => child.IsAlive());
+        AssertThrows<ObjectDisposedException>(() =>
+            child.RevalidateStartupSystemModuleSet(
+                NewNativeContainmentDeadline(),
+                CancellationToken.None));
         AssertNativeFixtureDirectoryRenameable(fixture);
         AssertNativeFixtureReaperUnchanged(reaperBefore);
     }
@@ -175,7 +212,10 @@ internal static partial class Program
             NativeContainmentFaultStage.AfterImageFileIdentityVerified,
             NativeContainmentFaultStage.AfterDebugEventContinued,
             NativeContainmentFaultStage.AfterStartupLoadEventOwned,
+            NativeContainmentFaultStage.AfterNtdllEvidenceCaptured,
             NativeContainmentFaultStage.AfterKernel32EvidenceCaptured,
+            NativeContainmentFaultStage.AfterKernelBaseEvidenceCaptured,
+            NativeContainmentFaultStage.AfterApphelpEvidenceCaptured,
             NativeContainmentFaultStage.AfterInitialBreakpointOwned,
             NativeContainmentFaultStage.AfterInitialBreakpointThreadSuspended,
             NativeContainmentFaultStage.AfterDebuggerDetached,
@@ -216,6 +256,7 @@ internal static partial class Program
             }
 
             AssertNativeFixtureDirectoryRenameable(fixture);
+            AssertNativeFixtureReaperUnchanged(reaperBefore);
         }
 
         AssertNativeFixtureReaperUnchanged(reaperBefore);
@@ -228,7 +269,7 @@ internal static partial class Program
         using (NativeReleaseFixture preResumeFixture =
                    NativeReleaseFixture.Create())
         using (LateNativeContainmentProbe preResume = new(
-                   NativeContainmentFaultStage.AfterKernel32EvidenceCaptured))
+                   NativeContainmentFaultStage.AfterApphelpEvidenceCaptured))
         {
             ManualTimeProvider clock = new(CanonicalTestUtcNow());
             MonotonicDeadline deadline = MonotonicDeadline.Start(
@@ -246,6 +287,7 @@ internal static partial class Program
                 "the late pre-resume probe must retain the exact process object");
             AssertExactNativeProcessExited(preResume.ExactProcess!);
             AssertNativeFixtureDirectoryRenameable(preResumeFixture);
+            AssertNativeFixtureReaperUnchanged(reaperBefore);
         }
 
         using (NativeReleaseFixture lateFixture = NativeReleaseFixture.Create())
@@ -268,6 +310,7 @@ internal static partial class Program
                 "the late post-resume probe must retain the exact process object");
             AssertExactNativeProcessExited(late.ExactProcess!);
             AssertNativeFixtureDirectoryRenameable(lateFixture);
+            AssertNativeFixtureReaperUnchanged(reaperBefore);
         }
 
         using NativeReleaseFixture fixture = NativeReleaseFixture.Create();
@@ -452,7 +495,10 @@ internal static partial class Program
         AfterImageFileIdentityVerified,
         AfterDebugEventContinued,
         AfterStartupLoadEventOwned,
+        AfterNtdllEvidenceCaptured,
         AfterKernel32EvidenceCaptured,
+        AfterKernelBaseEvidenceCaptured,
+        AfterApphelpEvidenceCaptured,
         AfterInitialBreakpointOwned,
         AfterInitialBreakpointThreadSuspended,
         AfterDebuggerDetached,
@@ -464,12 +510,36 @@ internal static partial class Program
     {
         CreateProcessEventOwned,
         StartupLoadEventOwned,
+        NtdllEvidenceCaptured,
         Kernel32EvidenceCaptured,
+        KernelBaseEvidenceCaptured,
+        ApphelpEvidenceCaptured,
         InitialBreakpointOwned,
         InitialBreakpointThreadSuspended,
         DebuggerDetached,
         BeforeResume,
         AfterResume,
+    }
+
+    private static NativeContainmentFaultStage
+        GetStartupSystemModuleCaptureFaultStage(
+            NativeStartupSystemModule module)
+    {
+        return module switch
+        {
+            NativeStartupSystemModule.Ntdll =>
+                NativeContainmentFaultStage.AfterNtdllEvidenceCaptured,
+            NativeStartupSystemModule.Kernel32 =>
+                NativeContainmentFaultStage.AfterKernel32EvidenceCaptured,
+            NativeStartupSystemModule.KernelBase =>
+                NativeContainmentFaultStage.AfterKernelBaseEvidenceCaptured,
+            NativeStartupSystemModule.Apphelp =>
+                NativeContainmentFaultStage.AfterApphelpEvidenceCaptured,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(module),
+                module,
+                "The captured startup system module is unsupported."),
+        };
     }
 
     private readonly record struct NativeFixtureReaperSnapshot(
@@ -519,10 +589,26 @@ internal static partial class Program
                 processId);
         }
 
-        public void AfterKernel32EvidenceCaptured(uint processId)
+        public void AfterStartupSystemModuleCaptured(
+            uint processId,
+            NativeStartupSystemModule module)
         {
             Record(
-                NativeContainmentSequenceStage.Kernel32EvidenceCaptured,
+                module switch
+                {
+                    NativeStartupSystemModule.Ntdll =>
+                        NativeContainmentSequenceStage.NtdllEvidenceCaptured,
+                    NativeStartupSystemModule.Kernel32 =>
+                        NativeContainmentSequenceStage.Kernel32EvidenceCaptured,
+                    NativeStartupSystemModule.KernelBase =>
+                        NativeContainmentSequenceStage.KernelBaseEvidenceCaptured,
+                    NativeStartupSystemModule.Apphelp =>
+                        NativeContainmentSequenceStage.ApphelpEvidenceCaptured,
+                    _ => throw new ArgumentOutOfRangeException(
+                        nameof(module),
+                        module,
+                        "The captured startup system module is unsupported."),
+                },
                 processId);
         }
 
@@ -557,54 +643,32 @@ internal static partial class Program
 
         internal void AssertExactSuccessfulOrder()
         {
-            AssertEqual(
-                1,
-                Count(NativeContainmentSequenceStage.CreateProcessEventOwned),
-                "successful startup create-process event count");
-            Assert(
-                Count(NativeContainmentSequenceStage.StartupLoadEventOwned) >= 1,
-                "successful startup must own at least one LOAD_DLL event");
-            AssertEqual(
-                1,
-                Count(NativeContainmentSequenceStage.Kernel32EvidenceCaptured),
-                "successful startup KERNEL32 capture count");
-            RequireSingle(
-                NativeContainmentSequenceStage.InitialBreakpointOwned,
-                "successful startup breakpoint event count");
-            RequireSingle(
-                NativeContainmentSequenceStage.InitialBreakpointThreadSuspended,
-                "successful startup breakpoint suspension count");
-            RequireSingle(
-                NativeContainmentSequenceStage.DebuggerDetached,
-                "successful startup debugger-detach count");
-            RequireSingle(
-                NativeContainmentSequenceStage.BeforeResume,
-                "successful startup before-resume count");
-            RequireSingle(
-                NativeContainmentSequenceStage.AfterResume,
-                "successful startup after-resume count");
-
-            RequireBefore(
+            NativeContainmentSequenceStage[] expected =
+            {
                 NativeContainmentSequenceStage.CreateProcessEventOwned,
-                NativeContainmentSequenceStage.StartupLoadEventOwned);
-            RequireBefore(
                 NativeContainmentSequenceStage.StartupLoadEventOwned,
-                NativeContainmentSequenceStage.Kernel32EvidenceCaptured);
-            RequireBefore(
+                NativeContainmentSequenceStage.NtdllEvidenceCaptured,
+                NativeContainmentSequenceStage.StartupLoadEventOwned,
                 NativeContainmentSequenceStage.Kernel32EvidenceCaptured,
-                NativeContainmentSequenceStage.InitialBreakpointOwned);
-            RequireBefore(
+                NativeContainmentSequenceStage.StartupLoadEventOwned,
+                NativeContainmentSequenceStage.KernelBaseEvidenceCaptured,
+                NativeContainmentSequenceStage.StartupLoadEventOwned,
+                NativeContainmentSequenceStage.ApphelpEvidenceCaptured,
                 NativeContainmentSequenceStage.InitialBreakpointOwned,
-                NativeContainmentSequenceStage.InitialBreakpointThreadSuspended);
-            RequireBefore(
                 NativeContainmentSequenceStage.InitialBreakpointThreadSuspended,
-                NativeContainmentSequenceStage.DebuggerDetached);
-            RequireBefore(
                 NativeContainmentSequenceStage.DebuggerDetached,
-                NativeContainmentSequenceStage.BeforeResume);
-            RequireBefore(
                 NativeContainmentSequenceStage.BeforeResume,
-                NativeContainmentSequenceStage.AfterResume);
+                NativeContainmentSequenceStage.AfterResume,
+            };
+            AssertEqual(expected.Length, observed.Count,
+                "successful native startup sequence length");
+            for (int index = 0; index < expected.Length; index++)
+            {
+                AssertEqual(
+                    expected[index],
+                    observed[index],
+                    $"successful native startup sequence stage {index}");
+            }
         }
 
         private void Record(
@@ -616,36 +680,6 @@ internal static partial class Program
             observed.Add(stage);
         }
 
-        private int Count(NativeContainmentSequenceStage stage)
-        {
-            int count = 0;
-            for (int index = 0; index < observed.Count; index++)
-            {
-                if (observed[index] == stage)
-                {
-                    count++;
-                }
-            }
-
-            return count;
-        }
-
-        private void RequireSingle(
-            NativeContainmentSequenceStage stage,
-            string description)
-        {
-            AssertEqual(1, Count(stage), description);
-        }
-
-        private void RequireBefore(
-            NativeContainmentSequenceStage earlier,
-            NativeContainmentSequenceStage later)
-        {
-            int earlierIndex = observed.IndexOf(earlier);
-            int laterIndex = observed.IndexOf(later);
-            Assert(earlierIndex >= 0 && laterIndex > earlierIndex,
-                $"{earlier} must precede {later}");
-        }
     }
 
     private sealed class NativeContainmentFaultProbe :
@@ -704,10 +738,12 @@ internal static partial class Program
             Visit(NativeContainmentFaultStage.AfterStartupLoadEventOwned, processId);
         }
 
-        public void AfterKernel32EvidenceCaptured(uint processId)
+        public void AfterStartupSystemModuleCaptured(
+            uint processId,
+            NativeStartupSystemModule module)
         {
             Visit(
-                NativeContainmentFaultStage.AfterKernel32EvidenceCaptured,
+                GetStartupSystemModuleCaptureFaultStage(module),
                 processId);
         }
 
@@ -813,10 +849,12 @@ internal static partial class Program
             _ = processId;
         }
 
-        public void AfterKernel32EvidenceCaptured(uint processId)
+        public void AfterStartupSystemModuleCaptured(
+            uint processId,
+            NativeStartupSystemModule module)
         {
             Expire(
-                NativeContainmentFaultStage.AfterKernel32EvidenceCaptured,
+                GetStartupSystemModuleCaptureFaultStage(module),
                 processId);
         }
 

@@ -47,13 +47,12 @@ internal static class NativeFixtureProcessReaper
         ProcessIdentityLease? identity,
         TrustedArtifactLaunchNamespaceLease launchNamespace,
         AuditedNativeFixtureReleaseLease audit,
-        NativeSystemModuleIdentityLease expectedSystemModule,
-        NativeSystemModuleLoadEvidence? loadedSystemModuleEvidence)
+        NativeStartupSystemModuleSetLease startupSystemModuleSet)
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(launchNamespace);
         ArgumentNullException.ThrowIfNull(audit);
-        ArgumentNullException.ThrowIfNull(expectedSystemModule);
+        ArgumentNullException.ThrowIfNull(startupSystemModuleSet);
         if (process.IsInvalid || process.IsClosed)
         {
             throw new ArgumentException(
@@ -67,8 +66,7 @@ internal static class NativeFixtureProcessReaper
             identity,
             launchNamespace,
             audit,
-            expectedSystemModule,
-            loadedSystemModuleEvidence);
+            startupSystemModuleSet);
         lock (Gate)
         {
             // Install the emergency root synchronously before the worker can
@@ -149,10 +147,8 @@ internal static class NativeFixtureProcessReaper
         private readonly ProcessIdentityLease? identity;
         private readonly TrustedArtifactLaunchNamespaceLease launchNamespace;
         private readonly AuditedNativeFixtureReleaseLease audit;
-        private readonly NativeSystemModuleIdentityLease expectedSystemModule;
-        private readonly NativeSystemModuleLoadEvidence?
-            loadedSystemModuleEvidence;
-        private readonly Exception?[] cleanupFailures = new Exception?[7];
+        private readonly NativeStartupSystemModuleSetLease startupSystemModuleSet;
+        private readonly Exception?[] cleanupFailures = new Exception?[6];
         private int cleanupFailureCount;
 
         internal Retention(
@@ -161,16 +157,14 @@ internal static class NativeFixtureProcessReaper
             ProcessIdentityLease? identity,
             TrustedArtifactLaunchNamespaceLease launchNamespace,
             AuditedNativeFixtureReleaseLease audit,
-            NativeSystemModuleIdentityLease expectedSystemModule,
-            NativeSystemModuleLoadEvidence? loadedSystemModuleEvidence)
+            NativeStartupSystemModuleSetLease startupSystemModuleSet)
         {
             this.job = job;
             this.process = process;
             this.identity = identity;
             this.launchNamespace = launchNamespace;
             this.audit = audit;
-            this.expectedSystemModule = expectedSystemModule;
-            this.loadedSystemModuleEvidence = loadedSystemModuleEvidence;
+            this.startupSystemModuleSet = startupSystemModuleSet;
         }
 
         internal void Start()
@@ -230,8 +224,7 @@ internal static class NativeFixtureProcessReaper
             Capture(job);
             Capture(launchNamespace);
             Capture(audit);
-            Capture(loadedSystemModuleEvidence);
-            Capture(expectedSystemModule);
+            Capture(startupSystemModuleSet);
             if (cleanupFailureCount == 1)
             {
                 failure = cleanupFailures[0];

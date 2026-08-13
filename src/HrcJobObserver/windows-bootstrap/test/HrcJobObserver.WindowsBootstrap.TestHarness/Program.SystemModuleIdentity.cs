@@ -64,7 +64,7 @@ internal static partial class Program
                 CancellationToken.None);
         try
         {
-            AssertEqual(3, NativeStartupSystemModuleSetLease.RequiredModuleCount,
+            AssertEqual(4, NativeStartupSystemModuleSetLease.RequiredModuleCount,
                 "required startup system-module count");
             AssertEqual(0, moduleSet.CapturedCount,
                 "new startup system-module captured count");
@@ -247,6 +247,7 @@ internal static partial class Program
             (nint)0x0002_0000,
             (nint)0x0003_0000,
             (nint)0x0004_0000,
+            (nint)0x0005_0000,
         };
         try
         {
@@ -394,7 +395,7 @@ internal static partial class Program
         AssertTerminalAggregateState(moduleSet, prefixCount, description);
     }
 
-    private static void AssertTerminalAggregateFourthCaptureFailure()
+    private static void AssertTerminalAggregateExtraCaptureFailure()
     {
         using NativeStartupSystemModuleSetLease moduleSet =
             NativeStartupSystemModuleSetLease.OpenExpected(
@@ -409,17 +410,17 @@ internal static partial class Program
         AssertThrows<SecurityException>(() =>
             moduleSet.CaptureNextLoadedModule(
                 borrowed,
-                (nint)0x0005_0000,
+                (nint)0x0006_0000,
                 (nint)0x0001_0000,
                 NewArtifactDeadline(),
                 CancellationToken.None));
         AssertBorrowedStartupSystemModuleHandleReadable(
             borrowed,
-            "borrowed handle after fourth aggregate capture failure");
+            "borrowed handle after extra aggregate capture failure");
         AssertTerminalAggregateState(
             moduleSet,
             NativeStartupSystemModuleSetLease.RequiredModuleCount,
-            "fourth capture");
+            "extra capture");
     }
 
     private static void AssertLateTerminalAggregateCaptureFailure()
@@ -518,6 +519,7 @@ internal static partial class Program
             0 => (nint)0x0002_0000,
             1 => (nint)0x0003_0000,
             2 => (nint)0x0004_0000,
+            3 => (nint)0x0005_0000,
             _ => throw new ArgumentOutOfRangeException(nameof(ordinal)),
         };
     }
@@ -748,7 +750,7 @@ internal static partial class Program
             typeof(TimeoutException));
 
         AssertLateTerminalAggregateCaptureFailure();
-        AssertTerminalAggregateFourthCaptureFailure();
+        AssertTerminalAggregateExtraCaptureFailure();
         AssertTerminalAggregateSealFailure(
             "empty seal",
             0,
@@ -768,14 +770,20 @@ internal static partial class Program
             CancellationToken.None,
             typeof(SecurityException));
         AssertTerminalAggregateSealFailure(
-            "cancelled complete seal",
+            "three-member seal",
             3,
+            NewArtifactDeadline(),
+            CancellationToken.None,
+            typeof(SecurityException));
+        AssertTerminalAggregateSealFailure(
+            "cancelled complete seal",
+            NativeStartupSystemModuleSetLease.RequiredModuleCount,
             NewArtifactDeadline(),
             cancelled.Token,
             typeof(OperationCanceledException));
         AssertTerminalAggregateSealFailure(
             "expired complete seal",
-            3,
+            NativeStartupSystemModuleSetLease.RequiredModuleCount,
             expired,
             CancellationToken.None,
             typeof(TimeoutException));
@@ -790,6 +798,7 @@ internal static partial class Program
             0 => NativeStartupSystemModule.Ntdll,
             1 => NativeStartupSystemModule.Kernel32,
             2 => NativeStartupSystemModule.KernelBase,
+            3 => NativeStartupSystemModule.Apphelp,
             _ => throw new ArgumentOutOfRangeException(nameof(ordinal)),
         };
     }
@@ -802,6 +811,7 @@ internal static partial class Program
             NativeStartupSystemModule.Ntdll => "ntdll.dll",
             NativeStartupSystemModule.Kernel32 => "kernel32.dll",
             NativeStartupSystemModule.KernelBase => "KernelBase.dll",
+            NativeStartupSystemModule.Apphelp => "apphelp.dll",
             _ => throw new ArgumentOutOfRangeException(nameof(module)),
         };
     }
