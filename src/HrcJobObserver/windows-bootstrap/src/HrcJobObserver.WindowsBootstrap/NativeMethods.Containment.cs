@@ -26,6 +26,7 @@ internal static partial class NativeMethods
     internal const uint UnloadDllDebugEvent = 7;
     internal const uint OutputDebugStringEvent = 8;
     internal const uint RipEvent = 9;
+    internal const uint ExceptionBreakpoint = 0x80000003;
     internal const uint DbgContinue = 0x00010002;
     internal const int ErrorSemTimeout = 121;
     internal const ushort ImageFileMachineUnknown = 0;
@@ -225,20 +226,66 @@ internal static partial class NativeMethods
         internal uint ExitCode;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 152)]
+    internal unsafe struct ExceptionRecord
+    {
+        [FieldOffset(0)]
+        internal uint ExceptionCode;
+
+        [FieldOffset(4)]
+        internal uint ExceptionFlags;
+
+        [FieldOffset(8)]
+        internal nint NestedExceptionRecord;
+
+        [FieldOffset(16)]
+        internal nint ExceptionAddress;
+
+        [FieldOffset(24)]
+        internal uint NumberParameters;
+
+        [FieldOffset(32)]
+        internal fixed ulong ExceptionInformation[15];
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 160)]
+    internal struct ExceptionDebugInfo
+    {
+        [FieldOffset(0)]
+        internal ExceptionRecord ExceptionRecord;
+
+        [FieldOffset(152)]
+        internal uint FirstChance;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
     internal struct LoadDllDebugInfo
     {
+        [FieldOffset(0)]
         internal nint File;
+
+        [FieldOffset(8)]
         internal nint BaseOfDll;
+
+        [FieldOffset(16)]
         internal uint DebugInfoFileOffset;
+
+        [FieldOffset(20)]
         internal uint DebugInfoSize;
+
+        [FieldOffset(24)]
         internal nint ImageName;
+
+        [FieldOffset(32)]
         internal ushort Unicode;
     }
 
     [StructLayout(LayoutKind.Explicit, Size = 160)]
     internal struct DebugEventUnion
     {
+        [FieldOffset(0)]
+        internal ExceptionDebugInfo Exception;
+
         [FieldOffset(0)]
         internal CreateProcessDebugInfo CreateProcess;
 
