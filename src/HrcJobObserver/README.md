@@ -249,8 +249,16 @@ Checkpoint `fb9ba23` added 7 native-fixture tests for 95/95. Checkpoint
 checkpoint `70e0d77` adds 5 audited native-containment cases and passes
 107/107. Committed checkpoint `2512c6a` extends those 5 cases with real startup
 module-load evidence. Follow-up checkpoint `cc77b9b` closes the failed-launch
-pre-entry cleanup window. Release validation passes 110/110 on the exact
-`cc77b9b` snapshot, with no native-fixture child left running. The current
+pre-entry cleanup window. Checkpoint `8bd853a` adds the standalone initial
+three-member startup aggregate within the same 3 module tests. Integration
+falsified that profile: four containment cases rejected an unexpected fourth
+`LOAD_DLL` event before identity validation, producing 106/110. A separate
+bounded, read-only `Process.Modules` probe implicated System32 `apphelp.dll`.
+Checkpoint `445d02a` closes the host-observed profile over NTDLL, KERNEL32,
+KernelBase, and Apphelp. Its later runs directly bind the fourth debugger
+`hFile` to the current System32 `apphelp.dll`. Three consecutive direct Release
+runs pass 110/110 on that exact checkpoint, with no native-fixture child residue
+after any run. The current
 split is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
@@ -436,24 +444,44 @@ must match the retained executable's length, SHA-256, 128-bit `FILE_ID`, volume
 identity, and volume-GUID path. The process and thread handles must match the
 creation handles. That event file handle binds the main image only.
 
-Committed checkpoint `2512c6a` continues the create-process event and pumps
-real startup `LOAD_DLL` events. Every startup event must identify the exact
-created PID and initial TID. The pump admits at most 32 events. Exact initial-
-thread enforcement and the 32-event cap are fail-closed host and fixture
-compatibility policy. They are not general Windows loader contracts. Exactly
-one debugger-supplied `KERNEL32` `LOAD_DLL` file handle must match the
-contemporaneously retained native System32 `kernel32.dll`. The comparison
-covers file identity, length, volume identity, volume-GUID path, and SHA-256
-bytes. The launcher duplicates and retains the matching debug-event handle.
+Checkpoint `8bd853a` adds a standalone aggregate for the initially observed
+NTDLL, KERNEL32, and KernelBase order. Integration produced 106/110 because
+four real containment cases rejected an unexpected fourth `LOAD_DLL` event
+before identity validation. A separate bounded, read-only `Process.Modules`
+probe implicated System32 `apphelp.dll`. Checkpoint `445d02a` therefore closes
+the host/build/fixture profile over NTDLL, KERNEL32, KernelBase, and Apphelp.
+Its later runs directly bind the fourth debugger `hFile` to the current
+System32 `apphelp.dll`.
+
+After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
+launcher continues that event. It then accepts exactly four `LOAD_DLL` events
+in the stated order, followed by the exact initial first-chance breakpoint.
+Every event must use the exact created PID and initial TID. The pump admits at
+most five events. Each load must provide a valid `hFile` and nonzero base. The
+aggregate duplicates the borrowed handle and matches the next current
+System32 file by identity, length, volume identity, volume-GUID path, and
+SHA-256 bytes. Each module base must differ from the main-image base and all
+earlier module bases.
+
+The four expected System32 files use `FileShareRead`-only retained handles.
+They can defer replacement or Windows servicing for the aggregate lifetime.
+The current host observation for System32 `apphelp.dll` is 666,784 bytes,
+SHA-256
+`53E7D1ABA3FF4A0D0DEF2DF44777B4C0CA6BB352E8283E8B238E1881B45C8AFE`,
+and file version `10.0.26100.8457`. Two hard links were observed in System32
+and WinSxS. Authenticode was observed as valid for `Microsoft Windows`.
+Apphelp is host/build/fixture appcompat-loader policy, not a static fixture
+import. The primitive self-baselines the current System32 file. It proves no
+signer, Microsoft, build, freshness, rollback, or appcompat-policy provenance.
 
 The exact initial first-chance breakpoint is the startup barrier. While that
 event remains outstanding, `SuspendThread` must report prior count `0`. The
 launcher then continues the breakpoint, detaches, proves that no remote
-debugger remains, revalidates every retained identity, and requires
-`ResumeThread` to report prior count `1`. The expected System32 identity and
-loaded-module evidence remain retained through the wrapper and process
-lifetime. Failure cleanup and the detached process reaper also retain both
-until exact process exit when bounded cleanup cannot prove exit.
+debugger remains, revalidates the sealed aggregate, and requires `ResumeThread`
+to report prior count `1`. The full aggregate remains retained through the
+wrapper and process lifetime. Failure cleanup retains partial or full aggregate
+evidence until exact process exit. The detached reaper receives it when bounded
+cleanup cannot prove that exit.
 
 Follow-up checkpoint `cc77b9b` explicitly calls `TerminateJobObject` with the
 unique nonzero failed-launch code `0xE0435243` for every post-creation failed
@@ -472,22 +500,24 @@ authority remains until the exact handle signals. If
 records terminal uncertainty. The build wrapper places a separate 180-second
 outer watchdog around the .NET validation process.
 
-Checkpoint `2512c6a` extends the existing five cases; it adds no sixth
-containment case. They now cover the extended AMD64 debug ABI, exact startup
-order, all 13 injected launch stages, pre-resume and post-resume late deadlines,
-retained evidence revalidation, the forced pre-entry failure exit, and the
-prior containment and disposal behaviour. Baseline and final reaper assertions
+Checkpoint `445d02a` extends the same five cases; it adds no sixth
+registration. They now cover the extended AMD64 debug ABI, the exact 14-stage
+successful containment-hook sequence, all 16 injected launch stages, failure after
+each partial or full module capture, a late deadline after Apphelp capture while
+its load event remains owned, and a post-resume late deadline. They also cover
+aggregate revalidation and disposal, the forced pre-entry failure exit, and
+prior containment behaviour. Baseline and final reaper assertions
 show only that no retained or terminal reaper state remained at each assertion
 time. They do not prove that the reaper was never used. The overall Release
-result remains 110/110.
+count remains 110 through the same 3 system-module and 5 containment cases.
+Three consecutive direct Release runs pass 110/110 with no child residue.
 
 They do not directly terminate the parent. The initial breakpoint is not a
-direct entry sentinel. Neither debug-event file handle proves section, mapping,
-or executed-page identity. The evidence proves no KnownDLL, Microsoft, or
-signer provenance, no global System32 namespace closure, and no general loader
-or dependency closure. It does not establish trusted or production launch, a
-production role, private handoff, role-bound `READY`, Java integration, or HRC
-runtime evidence.
+direct entry sentinel. No debug-event file handle proves section, mapping, or
+executed-page identity. The evidence proves no KnownDLL provenance, no global
+System32 namespace closure, and no complete dependency or general loader
+closure. It does not establish trusted or production launch, a production role,
+private handoff, role-bound `READY`, Java integration, or HRC runtime evidence.
 
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
@@ -525,8 +555,9 @@ The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.
 
 Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Keep the current containment proof
-separate until dedicated production roles integrate it. Close the production
-namespace and complete production runtime-module, loader, and dependency
-closure before private handoff and role-bound `READY`. Pass those gates before
-any Java or HRC integration.
+bytes and independent pin provenance. Supply an out-of-band trusted OS and
+module policy; further self-baselined module enumeration does not provide that
+trust. Keep the current containment proof separate until dedicated production
+roles integrate it. Close the production namespace and complete production
+runtime-module, loader, and dependency closure before private handoff and role-
+bound `READY`. Pass those gates before any Java or HRC integration.
