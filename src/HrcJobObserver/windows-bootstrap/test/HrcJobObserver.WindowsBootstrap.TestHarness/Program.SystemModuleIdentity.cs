@@ -1,5 +1,7 @@
 using System;
+using System.Buffers.Binary;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Threading;
@@ -13,6 +15,8 @@ internal static partial class Program
 {
     private static Task TestNativeSystemModuleIdentityRoundTrip()
     {
+        AssertTrustedNativeSystemModulePolicyRoundTrip();
+
         NativeSystemModuleIdentityLease lease =
             NativeSystemModuleIdentityLease.OpenKernel32(
                 NewArtifactDeadline(),
@@ -787,7 +791,784 @@ internal static partial class Program
             expired,
             CancellationToken.None,
             typeof(TimeoutException));
+        AssertTrustedNativeSystemModulePolicyFailuresAndBounds();
         return Task.CompletedTask;
+    }
+
+    private static void AssertTrustedNativeSystemModulePolicyRoundTrip()
+    {
+        byte[] wire = CreateGoldenNativeSystemModulePolicy();
+        byte[] wireBackup = (byte[])wire.Clone();
+        byte[] expectedPin = Convert.FromHexString(
+            "DAEEEE90E6ADC4A7C6A2DBC8068395F14E4F86596546B75F898FD07EF76E8F0F");
+        byte[] pinBackup = (byte[])expectedPin.Clone();
+        byte[] actualPin = ComputeNativeSystemModulePolicyPin(wire);
+        TrustedNativeSystemModulePolicyV1? policy = null;
+        try
+        {
+            AssertEqual(250, wire.Length,
+                "golden native system-module policy length");
+            AssertEqual(
+                TrustedNativeSystemModulePolicyV1.EncodedLength,
+                wire.Length,
+                "native system-module policy encoded length");
+            Assert(actualPin.AsSpan().SequenceEqual(expectedPin),
+                "the independent golden native system-module policy pin changed");
+
+            TrustedNativeSystemModulePolicyV1 retained = policy =
+                TrustedNativeSystemModulePolicyV1.Authenticate(
+                    wire,
+                    expectedPin,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            Assert(wire.AsSpan().SequenceEqual(wireBackup),
+                "policy authentication must not mutate the caller's wire");
+            Assert(expectedPin.AsSpan().SequenceEqual(pinBackup),
+                "policy authentication must not mutate the caller's pin");
+
+            CryptographicOperations.ZeroMemory(wire);
+            CryptographicOperations.ZeroMemory(expectedPin);
+            AssertEqual(
+                TrustedNativeSystemModuleConsumerProfile.SyntheticNativeFixture,
+                retained.ConsumerProfile,
+                "native system-module policy consumer profile");
+            AssertEqual(
+                TrustedNativeSystemModulePolicyV1.Amd64Machine,
+                retained.Architecture,
+                "native system-module policy architecture");
+            AssertEqual(
+                TrustedNativeSystemModulePolicyV1.WindowsNtPlatformId,
+                retained.PlatformId,
+                "native system-module policy platform");
+            AssertEqual(10U, retained.OperatingSystemMajorVersion,
+                "native system-module policy operating-system major version");
+            AssertEqual(0U, retained.OperatingSystemMinorVersion,
+                "native system-module policy operating-system minor version");
+            AssertEqual(19_045U, retained.ExactWindowsBuild,
+                "native system-module policy exact build");
+            AssertEqual(4, retained.ModuleCount,
+                "native system-module policy module count");
+            Assert(!retained.IsEligibleForTrustedLaunch,
+                "an authenticated module policy must not imply trusted launch");
+
+            for (int ordinal = 0;
+                 ordinal < TrustedNativeSystemModulePolicyV1.RequiredModuleCount;
+                 ordinal++)
+            {
+                NativeStartupSystemModule module =
+                    GetExpectedStartupSystemModule(ordinal);
+                AssertEqual(module, retained.GetExpectedModule(ordinal),
+                    $"policy module ordinal {ordinal}");
+                AssertEqual(
+                    GetExpectedStartupSystemModuleFileName(module),
+                    retained.GetExpectedFileName(module),
+                    $"policy module {module} exact filename");
+                AssertEqual(
+                    GetGoldenNativeSystemModuleLength(module),
+                    retained.GetExpectedLength(module),
+                    $"policy module {module} exact length");
+
+                byte[] expectedDigest =
+                    CreateGoldenNativeSystemModuleDigest(ordinal);
+                byte[] digest = retained.CopyExpectedSha256Digest(module);
+                byte[]? freshDigest = null;
+                try
+                {
+                    Assert(digest.AsSpan().SequenceEqual(expectedDigest),
+                        $"policy module {module} exact SHA-256");
+                    digest[0] ^= 0xff;
+                    freshDigest = retained.CopyExpectedSha256Digest(module);
+                    Assert(freshDigest.AsSpan().SequenceEqual(expectedDigest),
+                        $"policy module {module} digest copies must be independent");
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(expectedDigest);
+                    CryptographicOperations.ZeroMemory(digest);
+                    if (freshDigest is not null)
+                    {
+                        CryptographicOperations.ZeroMemory(freshDigest);
+                    }
+                }
+            }
+
+            AssertThrows<ArgumentOutOfRangeException>(() =>
+                retained.GetExpectedModule(-1));
+            AssertThrows<ArgumentOutOfRangeException>(() =>
+                retained.GetExpectedModule(
+                    TrustedNativeSystemModulePolicyV1.RequiredModuleCount));
+            AssertThrows<ArgumentOutOfRangeException>(() =>
+                retained.GetExpectedFileName(
+                    (NativeStartupSystemModule)99));
+
+            byte[] retainedPin = retained.CopyPolicyPinSha256();
+            byte[]? freshPin = null;
+            try
+            {
+                Assert(retainedPin.AsSpan().SequenceEqual(pinBackup),
+                    "the policy must retain the authenticated pin after caller wipe");
+                retainedPin[0] ^= 0xff;
+                freshPin = retained.CopyPolicyPinSha256();
+                Assert(freshPin.AsSpan().SequenceEqual(pinBackup),
+                    "policy pin copies must be independent");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(retainedPin);
+                if (freshPin is not null)
+                {
+                    CryptographicOperations.ZeroMemory(freshPin);
+                }
+            }
+
+            retained.RevalidateExactHost(
+                CreateGoldenNativeSystemModuleHostFacts(),
+                NewArtifactDeadline(),
+                CancellationToken.None);
+            retained.Dispose();
+            retained.Dispose();
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.ConsumerProfile);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.Architecture);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.PlatformId);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.OperatingSystemMajorVersion);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.OperatingSystemMinorVersion);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.ExactWindowsBuild);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.ModuleCount);
+            AssertThrows<ObjectDisposedException>(() =>
+                _ = retained.IsEligibleForTrustedLaunch);
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.GetExpectedModule(0));
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.GetExpectedFileName(
+                    NativeStartupSystemModule.Ntdll));
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.GetExpectedLength(
+                    NativeStartupSystemModule.Ntdll));
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.CopyExpectedSha256Digest(
+                    NativeStartupSystemModule.Ntdll));
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.CopyPolicyPinSha256());
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.RevalidateExactHost(
+                    CreateGoldenNativeSystemModuleHostFacts(),
+                    NewArtifactDeadline(),
+                    CancellationToken.None));
+            AssertThrows<ObjectDisposedException>(() =>
+                retained.RevalidateExactHost(
+                    NewArtifactDeadline(),
+                    CancellationToken.None));
+        }
+        finally
+        {
+            policy?.Dispose();
+            CryptographicOperations.ZeroMemory(wire);
+            CryptographicOperations.ZeroMemory(wireBackup);
+            CryptographicOperations.ZeroMemory(expectedPin);
+            CryptographicOperations.ZeroMemory(pinBackup);
+            CryptographicOperations.ZeroMemory(actualPin);
+        }
+    }
+
+    private static void AssertTrustedNativeSystemModulePolicyFailuresAndBounds()
+    {
+        byte[] golden = CreateGoldenNativeSystemModulePolicy();
+        try
+        {
+            AssertNativeSystemModulePolicyAuthenticationPrecedesParsing();
+
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire[0] ^= 0x01,
+                "magic");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt16LittleEndian(
+                    wire.AsSpan(8, 2), 2),
+                "consumer profile");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt16LittleEndian(
+                    wire.AsSpan(10, 2), 0x014c),
+                "architecture");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt16LittleEndian(
+                    wire.AsSpan(12, 2), 1),
+                "platform");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire[14] = 1,
+                "first reserved field");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt32LittleEndian(
+                    wire.AsSpan(16, 4), 11),
+                "operating-system major version");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt32LittleEndian(
+                    wire.AsSpan(20, 4), 1),
+                "operating-system minor version");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt32LittleEndian(
+                    wire.AsSpan(24, 4), 16_298),
+                "minimum operating-system build");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt32LittleEndian(
+                    wire.AsSpan(28, 4), 3),
+                "module count");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire[32] = 1,
+                "second reserved field");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt16LittleEndian(
+                    wire.AsSpan(36, 2), 8),
+                "module filename length");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire[38] = (byte)'N',
+                "module filename case");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire.AsSpan(47, 8).Clear(),
+                "zero module length");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => BinaryPrimitives.WriteUInt64LittleEndian(
+                    wire.AsSpan(101, 8), 0x8000_0000_0000_0000UL),
+                "excessive module length");
+            AssertNativeSystemModulePolicyFormatMutation(
+                golden,
+                static wire => wire[143] = (byte)'k',
+                "later module filename case");
+
+            AssertNativeSystemModulePolicyFormatFailure(
+                ReorderGoldenNativeSystemModulePolicy(golden),
+                "module order");
+            AssertNativeSystemModulePolicyLengthBounds(golden);
+            AssertNativeSystemModulePolicyMinimumBuildBoundary(golden);
+            AssertNativeSystemModulePolicyExactHostBoundary(golden);
+            AssertNativeSystemModulePolicyOperationBounds(golden);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(golden);
+        }
+    }
+
+    private static byte[] CreateGoldenNativeSystemModulePolicy()
+    {
+        return Convert.FromHexString(
+            "4852434F534D303101006486020000000A00000000000000654A00000400000000000000" +
+            "09006E74646C6C2E646C6C1111000000000000000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F" +
+            "0C006B65726E656C33322E646C6C2222000000000000202122232425262728292A2B2C2D2E2F303132333435363738393A3B3C3D3E3F" +
+            "0E004B65726E656C426173652E646C6C3333000000000000404142434445464748494A4B4C4D4E4F505152535455565758595A5B5C5D5E5F" +
+            "0B0061707068656C702E646C6C4444000000000000606162636465666768696A6B6C6D6E6F707172737475767778797A7B7C7D7E7F");
+    }
+
+    private static byte[] ComputeNativeSystemModulePolicyPin(
+        ReadOnlySpan<byte> policy)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(
+            HashAlgorithmName.SHA256);
+        hash.AppendData(
+            "HRC-BETA-OBSERVER-NATIVE-SYSTEM-MODULE-POLICY-PIN-V1\0"u8);
+        hash.AppendData(policy);
+        return hash.GetHashAndReset();
+    }
+
+    private static long GetGoldenNativeSystemModuleLength(
+        NativeStartupSystemModule module)
+    {
+        return module switch
+        {
+            NativeStartupSystemModule.Ntdll => 0x1111,
+            NativeStartupSystemModule.Kernel32 => 0x2222,
+            NativeStartupSystemModule.KernelBase => 0x3333,
+            NativeStartupSystemModule.Apphelp => 0x4444,
+            _ => throw new ArgumentOutOfRangeException(nameof(module)),
+        };
+    }
+
+    private static byte[] CreateGoldenNativeSystemModuleDigest(int ordinal)
+    {
+        if ((uint)ordinal >=
+            TrustedNativeSystemModulePolicyV1.RequiredModuleCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ordinal));
+        }
+
+        byte[] digest = new byte[32];
+        for (int index = 0; index < digest.Length; index++)
+        {
+            digest[index] = checked((byte)((ordinal * digest.Length) + index));
+        }
+
+        return digest;
+    }
+
+    private static NativeSystemModuleHostFacts
+        CreateGoldenNativeSystemModuleHostFacts(uint build = 19_045)
+    {
+        return new NativeSystemModuleHostFacts(
+            8,
+            Architecture.X64,
+            Architecture.X64,
+            new NativeFixtureWindowsVersion(10, 0, build, 2));
+    }
+
+    private static void
+        AssertNativeSystemModulePolicyAuthenticationPrecedesParsing()
+    {
+        byte[] malformed = new byte[
+            TrustedNativeSystemModulePolicyV1.EncodedLength];
+        byte[] malformedBackup = (byte[])malformed.Clone();
+        byte[] correctPin = ComputeNativeSystemModulePolicyPin(malformed);
+        byte[] correctPinBackup = (byte[])correctPin.Clone();
+        byte[] wrongPin = (byte[])correctPin.Clone();
+        wrongPin[0] ^= 0xff;
+        byte[] wrongPinBackup = (byte[])wrongPin.Clone();
+        try
+        {
+            AssertThrows<SecurityException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        malformed,
+                        wrongPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            Assert(malformed.AsSpan().SequenceEqual(malformedBackup),
+                "wrong-pin rejection must not mutate the caller's malformed policy");
+            Assert(wrongPin.AsSpan().SequenceEqual(wrongPinBackup),
+                "wrong-pin rejection must not mutate the caller's pin");
+
+            AssertThrows<FormatException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        malformed,
+                        correctPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            Assert(malformed.AsSpan().SequenceEqual(malformedBackup),
+                "authenticated parse rejection must not mutate the caller's policy");
+            Assert(correctPin.AsSpan().SequenceEqual(correctPinBackup),
+                "authenticated parse rejection must not mutate the caller's pin");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(malformed);
+            CryptographicOperations.ZeroMemory(malformedBackup);
+            CryptographicOperations.ZeroMemory(correctPin);
+            CryptographicOperations.ZeroMemory(correctPinBackup);
+            CryptographicOperations.ZeroMemory(wrongPin);
+            CryptographicOperations.ZeroMemory(wrongPinBackup);
+        }
+    }
+
+    private static void AssertNativeSystemModulePolicyFormatMutation(
+        ReadOnlySpan<byte> golden,
+        Action<byte[]> mutation,
+        string description)
+    {
+        byte[] malformed = golden.ToArray();
+        mutation(malformed);
+        AssertNativeSystemModulePolicyFormatFailure(
+            malformed,
+            description);
+    }
+
+    private static void AssertNativeSystemModulePolicyFormatFailure(
+        byte[] malformed,
+        string description)
+    {
+        byte[] backup = (byte[])malformed.Clone();
+        byte[] pin = ComputeNativeSystemModulePolicyPin(malformed);
+        byte[] pinBackup = (byte[])pin.Clone();
+        try
+        {
+            AssertThrows<FormatException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        malformed,
+                        pin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            Assert(malformed.AsSpan().SequenceEqual(backup),
+                $"{description} rejection must not mutate the caller's policy");
+            Assert(pin.AsSpan().SequenceEqual(pinBackup),
+                $"{description} rejection must not mutate the caller's pin");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(malformed);
+            CryptographicOperations.ZeroMemory(backup);
+            CryptographicOperations.ZeroMemory(pin);
+            CryptographicOperations.ZeroMemory(pinBackup);
+        }
+    }
+
+    private static byte[] ReorderGoldenNativeSystemModulePolicy(
+        ReadOnlySpan<byte> golden)
+    {
+        byte[] reordered = new byte[
+            TrustedNativeSystemModulePolicyV1.EncodedLength];
+        golden[..36].CopyTo(reordered);
+        int destination = 36;
+        golden.Slice(87, 54).CopyTo(reordered.AsSpan(destination));
+        destination += 54;
+        golden.Slice(36, 51).CopyTo(reordered.AsSpan(destination));
+        destination += 51;
+        golden.Slice(141, 56).CopyTo(reordered.AsSpan(destination));
+        destination += 56;
+        golden.Slice(197, 53).CopyTo(reordered.AsSpan(destination));
+        AssertEqual(reordered.Length, destination + 53,
+            "reordered native system-module policy length");
+        return reordered;
+    }
+
+    private static void AssertNativeSystemModulePolicyLengthBounds(
+        byte[] golden)
+    {
+        byte[] pin = ComputeNativeSystemModulePolicyPin(golden);
+        byte[] truncated = golden.AsSpan(0, golden.Length - 1).ToArray();
+        byte[] trailing = new byte[golden.Length + 1];
+        golden.CopyTo(trailing, 0);
+        byte[] shortPin = pin.AsSpan(0, pin.Length - 1).ToArray();
+        byte[] longPin = new byte[pin.Length + 1];
+        pin.CopyTo(longPin, 0);
+        try
+        {
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        truncated,
+                        pin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        trailing,
+                        pin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        golden,
+                        shortPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        golden,
+                        longPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pin);
+            CryptographicOperations.ZeroMemory(truncated);
+            CryptographicOperations.ZeroMemory(trailing);
+            CryptographicOperations.ZeroMemory(shortPin);
+            CryptographicOperations.ZeroMemory(longPin);
+        }
+    }
+
+    private static void AssertNativeSystemModulePolicyMinimumBuildBoundary(
+        ReadOnlySpan<byte> golden)
+    {
+        byte[] minimum = golden.ToArray();
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            minimum.AsSpan(24, 4),
+            TrustedNativeSystemModulePolicyV1.MinimumWindowsBuild);
+        byte[] pin = ComputeNativeSystemModulePolicyPin(minimum);
+        try
+        {
+            using TrustedNativeSystemModulePolicyV1 policy =
+                TrustedNativeSystemModulePolicyV1.Authenticate(
+                    minimum,
+                    pin,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            AssertEqual(
+                TrustedNativeSystemModulePolicyV1.MinimumWindowsBuild,
+                policy.ExactWindowsBuild,
+                "minimum admitted native system-module policy build");
+            policy.RevalidateExactHost(
+                CreateGoldenNativeSystemModuleHostFacts(
+                    TrustedNativeSystemModulePolicyV1.MinimumWindowsBuild),
+                NewArtifactDeadline(),
+                CancellationToken.None);
+            AssertThrows<PlatformNotSupportedException>(() =>
+                policy.RevalidateExactHost(
+                    CreateGoldenNativeSystemModuleHostFacts(
+                        TrustedNativeSystemModulePolicyV1.MinimumWindowsBuild +
+                        1),
+                    NewArtifactDeadline(),
+                    CancellationToken.None));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(minimum);
+            CryptographicOperations.ZeroMemory(pin);
+        }
+    }
+
+    private static void AssertNativeSystemModulePolicyExactHostBoundary(
+        ReadOnlySpan<byte> golden)
+    {
+        byte[] pin = ComputeNativeSystemModulePolicyPin(golden);
+        try
+        {
+            using TrustedNativeSystemModulePolicyV1 policy =
+                TrustedNativeSystemModulePolicyV1.Authenticate(
+                    golden,
+                    pin,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            NativeSystemModuleHostFacts exact =
+                CreateGoldenNativeSystemModuleHostFacts();
+            policy.RevalidateExactHost(
+                exact,
+                NewArtifactDeadline(),
+                CancellationToken.None);
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with { PointerSize = 4 });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with { ProcessArchitecture = Architecture.X86 });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    OperatingSystemArchitecture = Architecture.Arm64,
+                });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    WindowsVersion = exact.WindowsVersion with
+                    {
+                        PlatformId = 1,
+                    },
+                });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    WindowsVersion = exact.WindowsVersion with { Major = 11 },
+                });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    WindowsVersion = exact.WindowsVersion with { Minor = 1 },
+                });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    WindowsVersion = exact.WindowsVersion with
+                    {
+                        Build = 19_044,
+                    },
+                });
+            AssertNativeSystemModulePolicyHostMismatch(
+                policy,
+                exact with
+                {
+                    WindowsVersion = exact.WindowsVersion with
+                    {
+                        Build = 19_046,
+                    },
+                });
+            policy.RevalidateExactHost(
+                exact,
+                NewArtifactDeadline(),
+                CancellationToken.None);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pin);
+        }
+    }
+
+    private static void AssertNativeSystemModulePolicyHostMismatch(
+        TrustedNativeSystemModulePolicyV1 policy,
+        NativeSystemModuleHostFacts mismatch)
+    {
+        AssertThrows<PlatformNotSupportedException>(() =>
+            policy.RevalidateExactHost(
+                mismatch,
+                NewArtifactDeadline(),
+                CancellationToken.None));
+    }
+
+    private static void AssertNativeSystemModulePolicyOperationBounds(
+        byte[] golden)
+    {
+        byte[] pin = ComputeNativeSystemModulePolicyPin(golden);
+        byte[] goldenBackup = (byte[])golden.Clone();
+        byte[] pinBackup = (byte[])pin.Clone();
+        using CancellationTokenSource cancelled = new();
+        cancelled.Cancel();
+        ManualTimeProvider expiredClock = new(CanonicalTestUtcNow());
+        MonotonicDeadline expired = MonotonicDeadline.Start(
+            expiredClock,
+            TestTimeout);
+        expiredClock.Advance(TestTimeout);
+        try
+        {
+            AssertThrows<OperationCanceledException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        golden,
+                        pin,
+                        NewArtifactDeadline(),
+                        cancelled.Token);
+            });
+            AssertThrows<TimeoutException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        golden,
+                        pin,
+                        expired,
+                        CancellationToken.None);
+            });
+
+            int successfulAuthenticationReads;
+            CaptureTimestampTimeProvider authenticationCalibration =
+                new(expireOnRead: null);
+            MonotonicDeadline authenticationDeadline =
+                MonotonicDeadline.Start(
+                    authenticationCalibration,
+                    TestTimeout);
+            using (TrustedNativeSystemModulePolicyV1 ignored =
+                   TrustedNativeSystemModulePolicyV1.Authenticate(
+                       golden,
+                       pin,
+                       authenticationDeadline,
+                       CancellationToken.None))
+            {
+                successfulAuthenticationReads =
+                    authenticationCalibration.TimestampReads;
+            }
+
+            Assert(successfulAuthenticationReads > 1,
+                "policy authentication must check its deadline after creation");
+            CaptureTimestampTimeProvider lateAuthentication =
+                new(successfulAuthenticationReads);
+            MonotonicDeadline lateAuthenticationDeadline =
+                MonotonicDeadline.Start(
+                    lateAuthentication,
+                    TestTimeout);
+            AssertThrows<TimeoutException>(() =>
+            {
+                using TrustedNativeSystemModulePolicyV1 ignored =
+                    TrustedNativeSystemModulePolicyV1.Authenticate(
+                        golden,
+                        pin,
+                        lateAuthenticationDeadline,
+                        CancellationToken.None);
+            });
+            AssertEqual(
+                successfulAuthenticationReads,
+                lateAuthentication.TimestampReads,
+                "late policy authentication deadline-check ordinal");
+
+            using TrustedNativeSystemModulePolicyV1 policy =
+                TrustedNativeSystemModulePolicyV1.Authenticate(
+                    golden,
+                    pin,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            NativeSystemModuleHostFacts exact =
+                CreateGoldenNativeSystemModuleHostFacts();
+            AssertThrows<OperationCanceledException>(() =>
+                policy.RevalidateExactHost(
+                    exact,
+                    NewArtifactDeadline(),
+                    cancelled.Token));
+            AssertThrows<TimeoutException>(() =>
+                policy.RevalidateExactHost(
+                    exact,
+                    expired,
+                    CancellationToken.None));
+
+            CaptureTimestampTimeProvider hostCalibration =
+                new(expireOnRead: null);
+            MonotonicDeadline hostDeadline = MonotonicDeadline.Start(
+                hostCalibration,
+                TestTimeout);
+            policy.RevalidateExactHost(
+                exact,
+                hostDeadline,
+                CancellationToken.None);
+            int successfulHostReads = hostCalibration.TimestampReads;
+            Assert(successfulHostReads > 1,
+                "host revalidation must check its deadline after creation");
+            CaptureTimestampTimeProvider lateHost =
+                new(successfulHostReads);
+            MonotonicDeadline lateHostDeadline = MonotonicDeadline.Start(
+                lateHost,
+                TestTimeout);
+            AssertThrows<TimeoutException>(() =>
+                policy.RevalidateExactHost(
+                    exact,
+                    lateHostDeadline,
+                    CancellationToken.None));
+            AssertEqual(
+                successfulHostReads,
+                lateHost.TimestampReads,
+                "late host revalidation deadline-check ordinal");
+            policy.RevalidateExactHost(
+                exact,
+                NewArtifactDeadline(),
+                CancellationToken.None);
+
+            Assert(golden.AsSpan().SequenceEqual(goldenBackup),
+                "bounded policy failures must not mutate the caller's wire");
+            Assert(pin.AsSpan().SequenceEqual(pinBackup),
+                "bounded policy failures must not mutate the caller's pin");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pin);
+            CryptographicOperations.ZeroMemory(goldenBackup);
+            CryptographicOperations.ZeroMemory(pinBackup);
+        }
     }
 
     private static NativeStartupSystemModule GetExpectedStartupSystemModule(

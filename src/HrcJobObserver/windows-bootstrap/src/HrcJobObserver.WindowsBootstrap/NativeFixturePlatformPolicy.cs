@@ -42,7 +42,7 @@ internal static class NativeFixturePlatformPolicy
         }
     }
 
-    private static unsafe NativeFixtureWindowsVersion ReadProductionVersion()
+    internal static unsafe NativeFixtureWindowsVersion ReadProductionVersion()
     {
         if (!OperatingSystem.IsWindows())
         {
