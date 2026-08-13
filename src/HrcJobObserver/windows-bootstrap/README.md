@@ -7,7 +7,8 @@ dependency-free console test harness. It is a source/test-only feasibility
 module. It contains an in-memory publication store, an offline guarded
 descriptor-file publication seam, an independent file reader, and a one-shot
 synthetic broker session. It also contains a one-file artefact-identity
-primitive. The file seam operates only in a caller-supplied,
+primitive and a protected app-local artefact-set primitive. The file seam
+operates only in a caller-supplied,
 already-existing protected directory. It is not production descriptor
 persistence, a production broker or controller, an installer, a standalone
 runner, a Java bridge, or HRC integration.
@@ -40,6 +41,26 @@ final handle path, volume serial number, and 128-bit `FILE_ID`.
 `TrustedArtifactLease.RevalidateCurrentPath` reopens the path and detects path,
 identity, length, or digest drift. It is detection-only. It does not make a
 later path-based process launch atomic.
+
+`TrustedArtifactSetLease` requires one caller-supplied canonical DOS directory
+on local NTFS. The root must have an exact protected DACL for the current
+process account and `SYSTEM`. The caller supplies 1 through 128 expected files.
+Each expected entry is one exact-case printable ASCII Windows filename with an
+expected default-stream length and SHA-256. Every directory entry must be an
+expected file. An extra PDB, `.runtimeconfig.dev.json`, or subdirectory fails
+the scan.
+
+The set retains every file through `TrustedArtifactLease`. Each lease pins its
+length, digest, volume serial number, and 128-bit `FILE_ID`. One caller-supplied
+absolute deadline covers enumeration, member validation, and manifest
+calculation. A domain-separated canonical digest binds the designated
+executable and the ordinally sorted exact names, lengths, and SHA-256 values.
+`RevalidateExactSet` scans the exact entry set before and after it revalidates
+every retained member.
+
+The retained root allows new child creation. The set is therefore a snapshot
+and detection control only. A race remains between the last revalidation and a
+later path-based loader action.
 
 `SecretBuffer` generates exactly 32 cryptographically random bytes, rejects the
 all-zero value, never converts the secret to a string, and wipes its owned
@@ -203,12 +224,13 @@ licence data, poker data, network client, registry access, or environment-secret
 input. The fixed file contains only the public canonical descriptor, not the
 bearer token.
 
-The artefact lease verifies only one file. It does not bind mutable siblings,
-including a framework-dependent apphost's DLL, `.deps.json`,
-`.runtimeconfig.json`, or selected .NET runtime. It proves no trusted release
-manifest, artefact provenance, file ACL, signature, launch atomicity, launched-
-process identity, production role executables, containment, private handoff,
-role-bound `READY`, Java integration, or HRC runtime behaviour.
+The protected set snapshot binds the caller-declared app-local files. It has no
+independently trusted release manifest that authenticates the complete
+production artefact set and its canonical digest. It also does not bind or
+select a shared .NET runtime. The proof does not include member file ACLs,
+signatures, launch atomicity, launched-process identity, production role
+executables, containment, private handoff, role-bound `READY`, Java integration,
+or HRC runtime behaviour.
 
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
@@ -313,16 +335,28 @@ Five artefact-identity cases cover exact identity and digest retention, invalid
 paths and content expectations, real reparse and multi-link rejection, a
 pre-existing writable mapping, and the mutable-sibling boundary.
 
-The current result is 71/71: 20 primitive tests, 8 descriptor and protocol
+Six protected app-local artefact-set cases cover exact retention and
+revalidation, incomplete and unexpected entry rejection, every member's
+identity expectations, canonical manifest binding, operation bounds, and
+protected-root guards.
+
+The current result is 77/77: 20 primitive tests, 8 descriptor and protocol
 tests, 27 broker and in-memory-store tests, 11 filesystem tests, and 5 artefact-
-identity tests. This is
-offline Windows model, codec, primitive, publication-seam, artefact-identity,
-and synthetic broker evidence only.
+identity tests, and 6 protected app-local artefact-set tests. This is offline
+Windows model, codec, primitive, publication-seam, artefact-identity,
+artefact-set, and synthetic broker evidence only.
+
+Next, prove that dedicated roles enter kill-on-close Job Object containment
+atomically at process creation. Keep this as a separate proof. The protected
+application namespace and shared-runtime trust remain unresolved. Complete
+those boundaries before private initial name handoff and role-bound `READY`.
 
 Still unvalidated: production observer, broker, and controller executables;
 secure pipe-name delivery; known-folder resolution; LocalAppData hierarchy
 provisioning and provenance; stale and crash recovery; production descriptor
-persistence; a trusted complete artefact-set manifest; atomic kill-on-close Job
-Object containment; private handoff and role-bound `READY`; Java
+persistence; an independently trusted release manifest that authenticates each
+complete production artefact set and its canonical digest; shared .NET runtime
+selection; atomic kill-on-close Job Object containment; private handoff and
+role-bound `READY`; Java
 integration; OSGi startup; installation; rollback; HRC runtime use; and every
 standalone-runner action.

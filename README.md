@@ -281,7 +281,9 @@ lease that coalesces exact removal. The module also contains an internal file
 publisher and an independent reader for a caller-supplied, already-existing
 protected local NTFS directory. This is an offline existing-directory seam, not
 production descriptor persistence. A separate artefact-identity primitive
-retains and verifies one caller-supplied local file. The broker executes all
+retains and verifies one caller-supplied local file. A protected app-local
+artefact-set primitive composes those retained identities into one exact
+directory snapshot. The broker executes all
 four exchanges,
 serialises claim and revoke, rejects an already-completed malformed loser, caps
 the publication budget by the remaining absolute session deadline, and wipes
@@ -294,10 +296,10 @@ still fails the session before terminal acknowledgement. The deadline checks
 are cooperative and do not hard-preempt an arbitrary blocking native call. The
 current suites pass 30 core tests,
 34 adapter tests, 25 transport tests, 10 joined-assembly tests, 14 lifecycle
-tests, 13 packaging tests, and 71 Windows bootstrap tests. The Windows total is
+tests, 13 packaging tests, and 77 Windows bootstrap tests. The Windows total is
 20 primitive tests, 8 descriptor and protocol tests, 27 broker and
-in-memory-store tests, 11 filesystem tests, and 5 artefact-identity tests. The
-start-level
+in-memory-store tests, 11 filesystem tests, 5 single-file artefact-identity
+tests, and 6 protected app-local artefact-set tests. The start-level
 fixture passes 12/12 prerequisite tests, 18/18 recorded-row tests, and 9/9
 observer-failure tests.
 
@@ -317,10 +319,11 @@ scans, startup callback admission, rollback, and ordered shutdown. Its public
 activator remains deliberately disabled. The project still does not implement
 Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 and provenance, stale or crash recovery, secure initial pipe-name delivery,
-dedicated production observer, broker, and controller executables, a trusted
-release manifest for their complete artefact sets, crash containment, an
-activatable manifest, controller
-ownership, Java-to-Windows integration, or persistence across restart.
+dedicated production observer, broker, and controller executables, an
+independently trusted release manifest that authenticates each complete
+production artefact set and its canonical digest, shared .NET runtime selection,
+crash containment, an activatable manifest, controller ownership, Java-to-
+Windows integration, or persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -369,29 +372,43 @@ junction rejection, ABA and identity replacement, namespace pinning, bounded
 multi-page enumeration, retained-root cross-directory rename, collision,
 deadline, cancellation, and late-removal cases.
 
-The five artefact-identity tests verify one default data stream through a
-caller-supplied canonical DOS path on a fixed local drive and Mount Manager
-volume. A retained read handle denies new data-write and delete access, but not
-attribute or extended-attribute access. The primitive checks expected length and
-SHA-256, a single link, reparse ancestors and leaf, final path, volume serial
-number, and 128-bit `FILE_ID`. Revalidation is detection-only; it does not make
-a later path-based process launch atomic.
+The five single-file artefact-identity tests verify one default data stream
+through a caller-supplied canonical DOS path on a fixed local drive and Mount
+Manager volume. A retained read handle denies new data-write and delete access,
+but not attribute or extended-attribute access. The primitive checks expected
+length and SHA-256, a single link, reparse ancestors and leaf, final path,
+volume serial number, and 128-bit `FILE_ID`. Revalidation is detection-only; it
+does not make a later path-based process launch atomic.
 
-One verified file does not bind mutable sibling files. In particular, it does
-not bind a framework-dependent apphost's DLL, `.deps.json`,
-`.runtimeconfig.json`, or selected .NET runtime. The slice proves no trusted
-release manifest, artefact provenance, file ACL, signature, launch atomicity,
-launched-process identity, role executables, containment, private handoff,
-role-bound `READY`, Java integration, or HRC runtime behaviour.
+The six protected app-local artefact-set tests require a caller-supplied
+canonical DOS directory on local NTFS. Its exact protected DACL admits only the
+current process account and `SYSTEM`. The set accepts 1 through 128 one-level,
+printable ASCII filenames and requires exact case. Every entry must be expected;
+an extra PDB, `.runtimeconfig.dev.json`, or subdirectory fails the scan. Each
+expected default stream is retained with its length, SHA-256, volume serial
+number, and 128-bit `FILE_ID` under one absolute deadline.
 
-Next, define and verify a trusted release manifest for each complete production
-artefact set. Add dedicated roles that enter kill-on-close Job Object
-containment atomically at process creation. Complete that boundary before
-private initial name handoff and role-bound `READY`. Then add guarded Windows
-known-folder resolution, protected LocalAppData hierarchy provisioning and
-provenance, and stale or crash recovery around the existing-directory seam. Do
-not connect this seam to Java or open the standalone-runner gate until those
-boundaries pass. Then enforce
+The domain-separated canonical manifest digest binds the designated executable
+and the ordinally sorted exact names, lengths, and SHA-256 values. Revalidation
+scans the exact entry set before and after it revalidates every retained member.
+The protected root still permits new child creation. This primitive is a
+snapshot and detection control, not namespace isolation. A race remains between
+the final revalidation and a later path-based loader action.
+
+This slice has no independently trusted release manifest that authenticates the
+complete production artefact set and its canonical digest. It proves no member
+file ACL, signature, shared .NET runtime selection, atomic launch, launched-
+process identity, role executables, containment, private handoff, role-bound
+`READY`, Java integration, or HRC runtime behaviour.
+
+Next, prove that dedicated roles enter kill-on-close Job Object containment
+atomically at process creation. Keep this as a separate proof. The protected
+application namespace and shared-runtime trust remain unresolved; complete
+those boundaries before private initial name handoff and role-bound `READY`.
+Then add guarded Windows known-folder resolution, protected LocalAppData
+hierarchy provisioning and provenance, and stale or crash recovery around the
+existing-directory seam. Do not connect this seam to Java or open the
+standalone-runner gate until those boundaries pass. Then enforce
 the recorded configuration, provider, class, and start-level gates in a
 deterministic JAR, manifest, guarded install, and rollback design. Extend the
 active-process runtime identity gate for all added providers before live use.

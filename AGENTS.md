@@ -151,10 +151,10 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 71/71
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 77/77
   harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
-  broker and in-memory-store tests, 11 filesystem tests, and 5 artefact-identity
-  tests. It proves exact
+  broker and in-memory-store tests, 11 filesystem tests, 5 single-file artefact-
+  identity tests, and 6 protected app-local artefact-set tests. It proves exact
   applied protected-DACL read-back, two-sided process identity, bounded one-shot
   frames, fixed public-frame exchange with a synthetic child, rejection of a
   wrong live child, a canonical HMAC-bound descriptor model, and eight phase-
@@ -205,26 +205,43 @@ unexpected source or target difference.
   final path, volume serial number, and 128-bit `FILE_ID`. Revalidation detects
   later path, identity, length, or digest drift. It does not make a later
   path-based process launch atomic.
-  One verified file does not bind mutable siblings, including a framework-
-  dependent apphost's DLL, `.deps.json`, `.runtimeconfig.json`, or selected .NET
-  runtime. This evidence does not prove a trusted release manifest, artefact
-  provenance, file ACL, signature, launch atomicity, launched-process identity,
-  dedicated role executables, containment, private handoff, role-bound `READY`,
-  known-folder resolution, protected
-  LocalAppData hierarchy provisioning or provenance, stale or crash recovery,
+  The protected app-local artefact-set primitive requires one caller-supplied
+  canonical DOS directory on local NTFS. The root must have an exact protected
+  DACL for the current process account and `SYSTEM`. It accepts 1 through 128
+  expected default-stream files. Each expectation uses one printable ASCII
+  Windows filename with exact case, an expected length, and an expected SHA-256.
+  Every directory entry must be expected. An unexpected PDB,
+  `.runtimeconfig.dev.json`, or subdirectory fails the scan. Every member is
+  pinned through the single-file lease, including its volume serial number and
+  128-bit `FILE_ID`, under one caller-supplied absolute deadline. A domain-
+  separated canonical manifest digest binds the designated executable and the
+  ordinally sorted exact names, lengths, and SHA-256 values. Revalidation scans
+  the exact entry set before and after it revalidates every retained member.
+  The retained root allows new child creation. The set is therefore a snapshot
+  and detection control only. A race remains between the last revalidation and
+  a later path-based loader action.
+  This evidence has no independently trusted release manifest that
+  authenticates the complete production artefact set and its canonical digest.
+  It does not prove member file ACLs, signatures, shared .NET runtime selection,
+  launch atomicity, launched-process identity, dedicated role executables,
+  containment, private handoff, role-bound `READY`, known-folder resolution,
+  protected LocalAppData hierarchy provisioning or provenance, stale or crash
+  recovery,
   production descriptor persistence, secure initial pipe-name delivery,
   Java integration, or HRC runtime use.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until a trusted release manifest binds each complete production artefact set,
+  until an independently trusted release manifest authenticates each complete
+  production artefact set and its canonical digest,
   dedicated roles enter validated kill-on-close Job Object containment at
   process creation, private initial name delivery and role-bound `READY` are
   validated, and known-folder resolution, protected LocalAppData hierarchy
   provisioning and provenance, stale and crash recovery, and Java lifecycle
-  integration are implemented and validated. Complete the artefact-set and
-  atomic-containment boundary before the private handoff and `READY` boundary.
+  integration are implemented and validated. Prove atomic containment as a
+  separate boundary. Resolve namespace and runtime trust before the private
+  handoff and `READY` boundary.
   The existing-directory seam, in-memory store, and synthetic broker do not
   prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
