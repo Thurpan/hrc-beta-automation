@@ -140,6 +140,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ReadOnlySpan<byte> canonicalReleaseManifest,
         ReadOnlySpan<byte> expectedReleaseManifestPinSha256,
         ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+        ReadOnlySpan<byte> canonicalNativeSystemModulePolicy,
+        ReadOnlySpan<byte> expectedNativeSystemModulePolicyPinSha256,
         ContainedNativeFixtureMode mode,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
@@ -149,6 +151,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             canonicalReleaseManifest,
             expectedReleaseManifestPinSha256,
             exactEmbeddedApplicationManifest,
+            canonicalNativeSystemModulePolicy,
+            expectedNativeSystemModulePolicyPinSha256,
             mode,
             deadline,
             cancellationToken,
@@ -160,6 +164,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ReadOnlySpan<byte> canonicalReleaseManifest,
         ReadOnlySpan<byte> expectedReleaseManifestPinSha256,
         ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+        ReadOnlySpan<byte> canonicalNativeSystemModulePolicy,
+        ReadOnlySpan<byte> expectedNativeSystemModulePolicyPinSha256,
         ContainedNativeFixtureMode mode,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken,
@@ -195,6 +201,21 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 nameof(exactEmbeddedApplicationManifest));
         }
 
+        if (canonicalNativeSystemModulePolicy.Length !=
+            TrustedNativeSystemModulePolicyV1.EncodedLength)
+        {
+            throw new ArgumentException(
+                "The native system-module policy byte length is invalid.",
+                nameof(canonicalNativeSystemModulePolicy));
+        }
+
+        if (expectedNativeSystemModulePolicyPinSha256.Length != Sha256Length)
+        {
+            throw new ArgumentException(
+                "The expected native system-module policy pin must contain exactly 32 bytes.",
+                nameof(expectedNativeSystemModulePolicyPinSha256));
+        }
+
         _ = mode switch
         {
             ContainedNativeFixtureMode.Exit => true,
@@ -205,14 +226,24 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         byte[]? ownedManifest = null;
         byte[]? ownedPin = null;
         byte[]? ownedEmbeddedManifest = null;
+        byte[]? ownedNativeSystemModulePolicy = null;
+        byte[]? ownedNativeSystemModulePolicyPin = null;
         try
         {
             ownedManifest = canonicalReleaseManifest.ToArray();
             ownedPin = expectedReleaseManifestPinSha256.ToArray();
             ownedEmbeddedManifest = exactEmbeddedApplicationManifest.ToArray();
+            ownedNativeSystemModulePolicy =
+                canonicalNativeSystemModulePolicy.ToArray();
+            ownedNativeSystemModulePolicyPin =
+                expectedNativeSystemModulePolicyPinSha256.ToArray();
             byte[] launchManifest = ownedManifest;
             byte[] launchPin = ownedPin;
             byte[] launchEmbeddedManifest = ownedEmbeddedManifest;
+            byte[] launchNativeSystemModulePolicy =
+                ownedNativeSystemModulePolicy;
+            byte[] launchNativeSystemModulePolicyPin =
+                ownedNativeSystemModulePolicyPin;
             LaunchThreadResult holder = new();
             Thread worker = new(() =>
             {
@@ -224,6 +255,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         launchManifest,
                         launchPin,
                         launchEmbeddedManifest,
+                        launchNativeSystemModulePolicy,
+                        launchNativeSystemModulePolicyPin,
                         mode,
                         deadline,
                         cancellationToken,
@@ -262,6 +295,18 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             {
                 CryptographicOperations.ZeroMemory(ownedEmbeddedManifest);
             }
+
+            if (ownedNativeSystemModulePolicy is not null)
+            {
+                CryptographicOperations.ZeroMemory(
+                    ownedNativeSystemModulePolicy);
+            }
+
+            if (ownedNativeSystemModulePolicyPin is not null)
+            {
+                CryptographicOperations.ZeroMemory(
+                    ownedNativeSystemModulePolicyPin);
+            }
         }
     }
 
@@ -270,6 +315,8 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         ReadOnlySpan<byte> canonicalReleaseManifest,
         ReadOnlySpan<byte> expectedReleaseManifestPinSha256,
         ReadOnlySpan<byte> exactEmbeddedApplicationManifest,
+        ReadOnlySpan<byte> canonicalNativeSystemModulePolicy,
+        ReadOnlySpan<byte> expectedNativeSystemModulePolicyPinSha256,
         ContainedNativeFixtureMode mode,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken,
@@ -277,9 +324,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         Stopwatch cleanupStopwatch,
         CleanupFailureLedger cleanupFailures)
     {
-        ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
-        NativeFixturePlatformPolicy.RequireWindows10Version1709OrLater();
-        RequireExactDebugAbi();
         ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
         string argument = mode switch
         {
@@ -308,6 +352,20 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         uint createdProcessId = 0;
         try
         {
+            moduleSet = NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                canonicalNativeSystemModulePolicy,
+                expectedNativeSystemModulePolicyPinSha256,
+                deadline,
+                cancellationToken);
+            if (!moduleSet.IsBoundToAuthenticatedPolicy ||
+                moduleSet.IsEligibleForTrustedLaunch)
+            {
+                throw new SecurityException(
+                    "The native startup System32 set was not bound to its authenticated ineligible policy.");
+            }
+
+            RequireExactDebugAbi();
+            ContainedHarnessProcess.CheckOperation(deadline, cancellationToken);
             audit = AuditedNativeFixtureReleaseLease.Open(
                 exactApplicationDirectory,
                 canonicalReleaseManifest,
@@ -336,15 +394,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 namespaceLease,
                 deadline,
                 cancellationToken);
-
-            moduleSet = NativeStartupSystemModuleSetLease.OpenExpected(
-                deadline,
-                cancellationToken);
-            if (moduleSet.IsEligibleForTrustedLaunch)
-            {
-                throw new SecurityException(
-                    "The native startup System32 set crossed its launch-eligibility boundary.");
-            }
 
             RevalidatePreCreate(
                 audit,
@@ -379,8 +428,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         moduleSet,
                         deadline,
                         cancellationToken);
-                    NativeFixturePlatformPolicy
-                        .RequireWindows10Version1709OrLater();
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
                         cancellationToken);
@@ -573,8 +620,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                         cancellationToken);
                     RequireExactAmd64Process(process);
                     RequireNoRemoteDebugger(process);
-                    NativeFixturePlatformPolicy
-                        .RequireWindows10Version1709OrLater();
                     identity.EnsureStillAlive();
                     ContainedHarnessProcess.CheckOperation(
                         deadline,
@@ -811,6 +856,18 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             ContainedHarnessProcess.CheckOperation(
                 deadline,
                 cancellationToken);
+        }
+    }
+
+    internal byte[] CopyStartupSystemModulePolicyPinSha256()
+    {
+        lock (gate)
+        {
+            NativeStartupSystemModuleSetLease moduleSet =
+                startupSystemModuleSet ??
+                throw new ObjectDisposedException(
+                    nameof(ContainedAuditedNativeFixtureProcess));
+            return moduleSet.CopyPolicyPinSha256();
         }
     }
 

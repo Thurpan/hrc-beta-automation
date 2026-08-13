@@ -124,6 +124,52 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
+        return OpenExpectedModuleCore(
+            module,
+            systemDirectory,
+            expectedLength: null,
+            expectedSha256Digest: default,
+            deadline,
+            cancellationToken);
+    }
+
+    internal static NativeSystemModuleIdentityLease OpenExpectedModule(
+        NativeStartupSystemModule module,
+        string systemDirectory,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256Digest,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        if (expectedLength <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(expectedLength));
+        }
+
+        if (expectedSha256Digest.Length != SHA256.HashSizeInBytes)
+        {
+            throw new ArgumentException(
+                "The expected native system-module SHA-256 must contain exactly 32 bytes.",
+                nameof(expectedSha256Digest));
+        }
+
+        return OpenExpectedModuleCore(
+            module,
+            systemDirectory,
+            expectedLength,
+            expectedSha256Digest,
+            deadline,
+            cancellationToken);
+    }
+
+    private static NativeSystemModuleIdentityLease OpenExpectedModuleCore(
+        NativeStartupSystemModule module,
+        string systemDirectory,
+        long? expectedLength,
+        ReadOnlySpan<byte> expectedSha256Digest,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrEmpty(systemDirectory);
         RequireSupportedPlatform(deadline, cancellationToken);
         string nativeSystemDirectory = ReadNativeSystemDirectory();
@@ -146,9 +192,24 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         {
             handle = OpenRetained(path);
             ModuleMetadata before = ValidateExpectedPath(handle, path);
+            if (expectedLength.HasValue && before.Length != expectedLength.Value)
+            {
+                throw new SecurityException(
+                    $"The native System32 {GetDisplayName(module)} length did not match the authenticated policy.");
+            }
+
             digest = HashExact(handle, before.Length, deadline, cancellationToken);
             ModuleMetadata after = ValidateExpectedPath(handle, path);
             RequireUnchanged(before, after);
+            if (expectedLength.HasValue &&
+                !CryptographicOperations.FixedTimeEquals(
+                    digest,
+                    expectedSha256Digest))
+            {
+                throw new SecurityException(
+                    $"The native System32 {GetDisplayName(module)} bytes did not match the authenticated policy.");
+            }
+
             CheckOperation(deadline, cancellationToken);
             NativeSystemModuleIdentityLease result = new(
                 module,
@@ -774,6 +835,7 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
 
     private readonly object gate = new();
     private readonly NativeSystemModuleIdentityLease?[] expectedModules;
+    private readonly TrustedNativeSystemModulePolicyV1 authenticatedPolicy;
     private readonly NativeSystemModuleLoadEvidence?[] loadedModules =
         new NativeSystemModuleLoadEvidence?[RequiredModuleCount];
     private readonly nint[] loadedBaseAddresses = new nint[RequiredModuleCount];
@@ -784,9 +846,11 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
     private bool disposed;
 
     private NativeStartupSystemModuleSetLease(
-        NativeSystemModuleIdentityLease?[] expectedModules)
+        NativeSystemModuleIdentityLease?[] expectedModules,
+        TrustedNativeSystemModulePolicyV1 authenticatedPolicy)
     {
         this.expectedModules = expectedModules;
+        this.authenticatedPolicy = authenticatedPolicy;
     }
 
     internal int CapturedCount
@@ -825,31 +889,73 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         }
     }
 
-    internal static NativeStartupSystemModuleSetLease OpenExpected(
+    internal bool IsBoundToAuthenticatedPolicy
+    {
+        get
+        {
+            lock (gate)
+            {
+                ThrowIfDisposed();
+                return true;
+            }
+        }
+    }
+
+    internal static NativeStartupSystemModuleSetLease OpenExpectedPinned(
+        ReadOnlySpan<byte> canonicalPolicy,
+        ReadOnlySpan<byte> expectedPolicyPinSha256,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
-        NativeSystemModuleIdentityLease.RequireSupportedPlatform(
-            deadline,
-            cancellationToken);
-        string systemDirectory =
-            NativeSystemModuleIdentityLease.ReadNativeSystemDirectory();
+        TrustedNativeSystemModulePolicyV1? policy = null;
         NativeSystemModuleIdentityLease?[] expected =
             new NativeSystemModuleIdentityLease?[RequiredModuleCount];
         bool transferred = false;
         try
         {
+            policy = TrustedNativeSystemModulePolicyV1.Authenticate(
+                canonicalPolicy,
+                expectedPolicyPinSha256,
+                deadline,
+                cancellationToken);
+            policy.RevalidateExactHost(deadline, cancellationToken);
+            if (policy.ModuleCount != RequiredModuleCount ||
+                policy.IsEligibleForTrustedLaunch)
+            {
+                throw new SecurityException(
+                    "The authenticated native system-module policy was not the exact ineligible four-member profile.");
+            }
+
+            string systemDirectory =
+                NativeSystemModuleIdentityLease.ReadNativeSystemDirectory();
             for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
             {
                 NativeSystemModuleIdentityLease.CheckOperation(
                     deadline,
                     cancellationToken);
-                expected[ordinal] =
-                    NativeSystemModuleIdentityLease.OpenExpectedModule(
-                        GetModuleAtOrdinal(ordinal),
-                        systemDirectory,
-                        deadline,
-                        cancellationToken);
+                NativeStartupSystemModule module = GetModuleAtOrdinal(ordinal);
+                if (policy.GetExpectedModule(ordinal) != module)
+                {
+                    throw new SecurityException(
+                        "The authenticated native system-module policy order changed.");
+                }
+
+                byte[] expectedDigest = policy.CopyExpectedSha256Digest(module);
+                try
+                {
+                    expected[ordinal] =
+                        NativeSystemModuleIdentityLease.OpenExpectedModule(
+                            module,
+                            systemDirectory,
+                            policy.GetExpectedLength(module),
+                            expectedDigest,
+                            deadline,
+                            cancellationToken);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(expectedDigest);
+                }
 
                 NativeSystemModuleIdentityLease current = expected[ordinal] ??
                     throw new InvalidOperationException(
@@ -875,11 +981,13 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
                 expected[ordinal]!.Revalidate(deadline, cancellationToken);
             }
 
+            policy.RevalidateExactHost(deadline, cancellationToken);
             NativeSystemModuleIdentityLease.CheckOperation(
                 deadline,
                 cancellationToken);
-            NativeStartupSystemModuleSetLease result = new(expected);
+            NativeStartupSystemModuleSetLease result = new(expected, policy);
             transferred = true;
+            policy = null;
             try
             {
                 NativeSystemModuleIdentityLease.CheckOperation(
@@ -902,7 +1010,18 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
                     expected[ordinal]?.Dispose();
                     expected[ordinal] = null;
                 }
+
+                policy?.Dispose();
             }
+        }
+    }
+
+    internal byte[] CopyPolicyPinSha256()
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return authenticatedPolicy.CopyPolicyPinSha256();
         }
     }
 
@@ -978,6 +1097,9 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         {
             ThrowIfDisposed();
             ThrowIfFaulted();
+            RequireAuthenticatedPolicy().RevalidateExactHost(
+                deadline,
+                cancellationToken);
             for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
             {
                 NativeSystemModuleIdentityLease.CheckOperation(
@@ -988,6 +1110,9 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
                     cancellationToken);
             }
 
+            RequireAuthenticatedPolicy().RevalidateExactHost(
+                deadline,
+                cancellationToken);
             NativeSystemModuleIdentityLease.CheckOperation(
                 deadline,
                 cancellationToken);
@@ -1176,6 +1301,8 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
                 expectedModules[ordinal] = null;
             }
 
+            authenticatedPolicy.Dispose();
+
             mainImageBaseAddress = 0;
             capturedCount = 0;
             sealedAtInitialBreakpoint = false;
@@ -1187,6 +1314,9 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
+        RequireAuthenticatedPolicy().RevalidateExactHost(
+            deadline,
+            cancellationToken);
         for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
         {
             NativeSystemModuleIdentityLease.CheckOperation(
@@ -1208,6 +1338,9 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         }
 
         RequireStoredBaseAddresses();
+        RequireAuthenticatedPolicy().RevalidateExactHost(
+            deadline,
+            cancellationToken);
         NativeSystemModuleIdentityLease.CheckOperation(
             deadline,
             cancellationToken);
@@ -1290,6 +1423,9 @@ internal sealed class NativeStartupSystemModuleSetLease : IDisposable
         return expectedModules[ordinal] ?? throw new ObjectDisposedException(
             nameof(NativeStartupSystemModuleSetLease));
     }
+
+    private TrustedNativeSystemModulePolicyV1 RequireAuthenticatedPolicy() =>
+        authenticatedPolicy;
 
     private static NativeStartupSystemModule GetModuleAtOrdinal(int ordinal) =>
         ordinal switch

@@ -1,7 +1,10 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -114,22 +117,158 @@ internal static partial class Program
         AssertEqual(32, Marshal.OffsetOf<NativeMethods.LoadDllDebugInfo>(
             nameof(NativeMethods.LoadDllDebugInfo.Unicode)).ToInt32(),
             "LOAD_DLL_DEBUG_INFO Unicode offset");
+        AssertAuditedNativeFixturePolicyRejectedBeforeCreate(
+            reaperBefore);
         AssertNativeFixtureReaperUnchanged(reaperBefore);
         return Task.CompletedTask;
+    }
+
+    private static void AssertAuditedNativeFixturePolicyRejectedBeforeCreate(
+        NativeFixtureReaperSnapshot reaperBefore)
+    {
+        using NativeReleaseFixture fixture = NativeReleaseFixture.Create();
+        using CurrentHostNativeSystemModulePolicyInputs inputs =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        byte[] malformed = (byte[])inputs.Policy.Clone();
+        malformed[0] ^= 0x01;
+        byte[] malformedPin = ComputeNativeSystemModulePolicyPin(malformed);
+        byte[] wrongPin = (byte[])inputs.Pin.Clone();
+        wrongPin[0] ^= 0xff;
+        byte[] wrongLength = (byte[])inputs.Policy.Clone();
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            wrongLength.AsSpan(47, sizeof(ulong)),
+            checked(BinaryPrimitives.ReadUInt64LittleEndian(
+                wrongLength.AsSpan(47, sizeof(ulong))) + 1));
+        byte[] wrongLengthPin =
+            ComputeNativeSystemModulePolicyPin(wrongLength);
+        byte[] wrongApphelpDigest = (byte[])inputs.Policy.Clone();
+        wrongApphelpDigest[218] ^= 0xff;
+        byte[] wrongApphelpDigestPin =
+            ComputeNativeSystemModulePolicyPin(wrongApphelpDigest);
+        byte[] shortPolicy = inputs.Policy
+            .AsSpan(0, inputs.Policy.Length - 1)
+            .ToArray();
+        byte[] shortPin = inputs.Pin
+            .AsSpan(0, inputs.Pin.Length - 1)
+            .ToArray();
+        try
+        {
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<SecurityException>(
+                fixture,
+                malformed,
+                wrongPin,
+                reaperBefore,
+                "wrong pin before malformed parse");
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<FormatException>(
+                fixture,
+                malformed,
+                malformedPin,
+                reaperBefore,
+                "authenticated malformed policy");
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<ArgumentException>(
+                fixture,
+                shortPolicy,
+                inputs.Pin,
+                reaperBefore,
+                "short policy");
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<ArgumentException>(
+                fixture,
+                inputs.Policy,
+                shortPin,
+                reaperBefore,
+                "short policy pin");
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<SecurityException>(
+                fixture,
+                wrongLength,
+                wrongLengthPin,
+                reaperBefore,
+                "authenticated wrong NTDLL length");
+            AssertAuditedNativeFixturePolicyFailureBeforeCreate<SecurityException>(
+                fixture,
+                wrongApphelpDigest,
+                wrongApphelpDigestPin,
+                reaperBefore,
+                "authenticated wrong Apphelp digest");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(malformed);
+            CryptographicOperations.ZeroMemory(malformedPin);
+            CryptographicOperations.ZeroMemory(wrongPin);
+            CryptographicOperations.ZeroMemory(wrongLength);
+            CryptographicOperations.ZeroMemory(wrongLengthPin);
+            CryptographicOperations.ZeroMemory(wrongApphelpDigest);
+            CryptographicOperations.ZeroMemory(wrongApphelpDigestPin);
+            CryptographicOperations.ZeroMemory(shortPolicy);
+            CryptographicOperations.ZeroMemory(shortPin);
+        }
+    }
+
+    private static void
+        AssertAuditedNativeFixturePolicyFailureBeforeCreate<TException>(
+            NativeReleaseFixture fixture,
+            byte[] policy,
+            byte[] pin,
+            NativeFixtureReaperSnapshot reaperBefore,
+            string description)
+        where TException : Exception
+    {
+        byte[] policyBackup = (byte[])policy.Clone();
+        byte[] pinBackup = (byte[])pin.Clone();
+        using NativeContainmentFaultProbe createSentinel = new(
+            NativeContainmentFaultStage.AfterCreateProcessHandlesAdopted);
+        try
+        {
+            AssertThrows<TException>(() =>
+                ContainedAuditedNativeFixtureProcess.OpenAndLaunch(
+                    fixture.Directory.Path,
+                    fixture.ReleaseManifest,
+                    fixture.ReleasePin,
+                    fixture.EmbeddedManifest,
+                    policy,
+                    pin,
+                    ContainedNativeFixtureMode.Block,
+                    NewNativeContainmentDeadline(),
+                    CancellationToken.None,
+                    createSentinel));
+            Assert(policy.AsSpan().SequenceEqual(policyBackup),
+                $"{description} must not mutate the caller's policy");
+            Assert(pin.AsSpan().SequenceEqual(pinBackup),
+                $"{description} must not mutate the caller's pin");
+            AssertEqual(0, createSentinel.Calls,
+                $"{description} must precede the CreateProcess sentinel");
+            AssertEqual(0U, createSentinel.ProcessId,
+                $"{description} must create no process");
+            Assert(createSentinel.ExactProcess is null,
+                $"{description} must retain no process handle");
+            AssertNativeFixtureDirectoryRenameable(fixture);
+            AssertNativeFixtureReaperUnchanged(reaperBefore);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(policyBackup);
+            CryptographicOperations.ZeroMemory(pinBackup);
+        }
     }
 
     private static async Task TestAuditedNativeFixtureContainmentExit()
     {
         NativeFixtureReaperSnapshot reaperBefore = CaptureNativeFixtureReaper();
         using NativeReleaseFixture fixture = NativeReleaseFixture.Create();
+        using CurrentHostNativeSystemModulePolicyInputs policy =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        byte[] expectedPolicyPin = (byte[])policy.Pin.Clone();
         NativeContainmentSequenceProbe sequence = new();
         ContainedAuditedNativeFixtureProcess child = LaunchAuditedNativeFixture(
             fixture,
+            policy,
             ContainedNativeFixtureMode.Exit,
             NewNativeContainmentDeadline(),
             sequence);
         try
         {
+            CryptographicOperations.ZeroMemory(policy.Policy);
+            CryptographicOperations.ZeroMemory(policy.Pin);
             sequence.AssertExactSuccessfulOrder();
             Assert(child.ProcessId != 0 &&
                     child.ProcessId != checked((uint)Environment.ProcessId),
@@ -143,6 +282,9 @@ internal static partial class Program
                 "the canonical-DOS launch must report the exact DOS image path");
             Assert(!child.IsEligibleForTrustedLaunch,
                 "synthetic native containment must remain ineligible for trusted launch");
+            AssertContainedNativeFixturePolicyPin(
+                child,
+                expectedPolicyPin);
             uint exitCode = await child.WaitForExitAsync(
                     NewNativeContainmentDeadline())
                 .ConfigureAwait(false);
@@ -157,6 +299,7 @@ internal static partial class Program
         finally
         {
             await child.DisposeAsync().ConfigureAwait(false);
+            CryptographicOperations.ZeroMemory(expectedPolicyPin);
         }
 
         AssertNativeFixtureDirectoryRenameable(fixture);
@@ -164,6 +307,8 @@ internal static partial class Program
             child.RevalidateStartupSystemModuleSet(
                 NewNativeContainmentDeadline(),
                 CancellationToken.None));
+        AssertThrows<ObjectDisposedException>(() =>
+            child.CopyStartupSystemModulePolicyPinSha256());
         AssertNativeFixtureReaperUnchanged(reaperBefore);
     }
 
@@ -261,6 +406,31 @@ internal static partial class Program
 
         AssertNativeFixtureReaperUnchanged(reaperBefore);
         return Task.CompletedTask;
+    }
+
+    private static void AssertContainedNativeFixturePolicyPin(
+        ContainedAuditedNativeFixtureProcess child,
+        ReadOnlySpan<byte> expectedPolicyPin)
+    {
+        byte[] first = child.CopyStartupSystemModulePolicyPinSha256();
+        byte[]? second = null;
+        try
+        {
+            Assert(first.AsSpan().SequenceEqual(expectedPolicyPin),
+                "the contained wrapper must retain the exact native system-module policy pin");
+            first[0] ^= 0xff;
+            second = child.CopyStartupSystemModulePolicyPinSha256();
+            Assert(second.AsSpan().SequenceEqual(expectedPolicyPin),
+                "contained native system-module policy-pin copies must be independent");
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(first);
+            if (second is not null)
+            {
+                CryptographicOperations.ZeroMemory(second);
+            }
+        }
     }
 
     private static async Task TestAuditedNativeFixtureContainmentDeadlineAndDisposal()
@@ -368,11 +538,30 @@ internal static partial class Program
         MonotonicDeadline deadline,
         INativeFixtureContainmentTestFaults? faults = null)
     {
+        using CurrentHostNativeSystemModulePolicyInputs policy =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        return LaunchAuditedNativeFixture(
+            fixture,
+            policy,
+            mode,
+            deadline,
+            faults);
+    }
+
+    private static ContainedAuditedNativeFixtureProcess LaunchAuditedNativeFixture(
+        NativeReleaseFixture fixture,
+        CurrentHostNativeSystemModulePolicyInputs policy,
+        ContainedNativeFixtureMode mode,
+        MonotonicDeadline deadline,
+        INativeFixtureContainmentTestFaults? faults = null)
+    {
         return ContainedAuditedNativeFixtureProcess.OpenAndLaunch(
             fixture.Directory.Path,
             fixture.ReleaseManifest,
             fixture.ReleasePin,
             fixture.EmbeddedManifest,
+            policy.Policy,
+            policy.Pin,
             mode,
             deadline,
             CancellationToken.None,

@@ -62,10 +62,16 @@ internal static partial class Program
         AssertThrows<ObjectDisposedException>(() => lease.Revalidate(
             NewArtifactDeadline(), CancellationToken.None));
 
+        using CurrentHostNativeSystemModulePolicyInputs policyInputs =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        byte[] expectedPolicyPin = (byte[])policyInputs.Pin.Clone();
         NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
+                policyInputs,
                 NewArtifactDeadline(),
                 CancellationToken.None);
+        CryptographicOperations.ZeroMemory(policyInputs.Policy);
+        CryptographicOperations.ZeroMemory(policyInputs.Pin);
         try
         {
             AssertEqual(4, NativeStartupSystemModuleSetLease.RequiredModuleCount,
@@ -76,6 +82,29 @@ internal static partial class Program
                 "a new startup system-module set must not be sealed");
             Assert(!moduleSet.IsEligibleForTrustedLaunch,
                 "a closed local module set must not imply trusted launch");
+            Assert(moduleSet.IsBoundToAuthenticatedPolicy,
+                "the startup system-module set must retain its authenticated policy");
+            byte[] retainedPolicyPin = moduleSet.CopyPolicyPinSha256();
+            byte[]? freshPolicyPin = null;
+            try
+            {
+                Assert(retainedPolicyPin.AsSpan().SequenceEqual(
+                        expectedPolicyPin),
+                    "the startup system-module set must retain the exact authenticated pin");
+                retainedPolicyPin[0] ^= 0xff;
+                freshPolicyPin = moduleSet.CopyPolicyPinSha256();
+                Assert(freshPolicyPin.AsSpan().SequenceEqual(
+                        expectedPolicyPin),
+                    "startup system-module policy-pin copies must be independent");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(retainedPolicyPin);
+                if (freshPolicyPin is not null)
+                {
+                    CryptographicOperations.ZeroMemory(freshPolicyPin);
+                }
+            }
 
             for (int ordinal = 0;
                  ordinal < NativeStartupSystemModuleSetLease.RequiredModuleCount;
@@ -150,6 +179,7 @@ internal static partial class Program
         finally
         {
             moduleSet.Dispose();
+            CryptographicOperations.ZeroMemory(expectedPolicyPin);
         }
 
         moduleSet.Dispose();
@@ -158,6 +188,10 @@ internal static partial class Program
         AssertThrows<ObjectDisposedException>(() => _ = moduleSet.IsSealed);
         AssertThrows<ObjectDisposedException>(() =>
             _ = moduleSet.IsEligibleForTrustedLaunch);
+        AssertThrows<ObjectDisposedException>(() =>
+            _ = moduleSet.IsBoundToAuthenticatedPolicy);
+        AssertThrows<ObjectDisposedException>(() =>
+            moduleSet.CopyPolicyPinSha256());
         AssertThrows<ObjectDisposedException>(() =>
             moduleSet.GetExpectedModule(0));
         AssertThrows<ObjectDisposedException>(() =>
@@ -241,8 +275,11 @@ internal static partial class Program
         AssertThrows<ObjectDisposedException>(() =>
             ownedEvidence.CopySha256Digest());
 
+        using CurrentHostNativeSystemModulePolicyInputs policyInputs =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
         NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
+                policyInputs,
                 NewArtifactDeadline(),
                 CancellationToken.None);
         nint mainImageBase = (nint)0x0001_0000;
@@ -352,7 +389,7 @@ internal static partial class Program
         Type expectedException)
     {
         using NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 NewArtifactDeadline(),
                 CancellationToken.None);
         CaptureStartupSystemModulePrefix(moduleSet, prefixCount);
@@ -387,7 +424,7 @@ internal static partial class Program
         Type expectedException)
     {
         using NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 NewArtifactDeadline(),
                 CancellationToken.None);
         CaptureStartupSystemModulePrefix(moduleSet, prefixCount);
@@ -402,7 +439,7 @@ internal static partial class Program
     private static void AssertTerminalAggregateExtraCaptureFailure()
     {
         using NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 NewArtifactDeadline(),
                 CancellationToken.None);
         CaptureStartupSystemModulePrefix(
@@ -431,7 +468,7 @@ internal static partial class Program
     {
         int successfulTimestampReads;
         using (NativeStartupSystemModuleSetLease calibration =
-                   NativeStartupSystemModuleSetLease.OpenExpected(
+                   OpenExpectedStartupSystemModuleSet(
                        NewArtifactDeadline(),
                        CancellationToken.None))
         using (SafeFileHandle borrowed = OpenExpectedStartupSystemModule(
@@ -457,7 +494,7 @@ internal static partial class Program
         }
 
         using NativeStartupSystemModuleSetLease moduleSet =
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 NewArtifactDeadline(),
                 CancellationToken.None);
         using SafeFileHandle target = OpenExpectedStartupSystemModule(
@@ -650,11 +687,11 @@ internal static partial class Program
             "failed evidence operations must leave the borrowed handle usable");
 
         AssertThrows<OperationCanceledException>(() =>
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 NewArtifactDeadline(),
                 cancelled.Token));
         AssertThrows<TimeoutException>(() =>
-            NativeStartupSystemModuleSetLease.OpenExpected(
+            OpenExpectedStartupSystemModuleSet(
                 expired,
                 CancellationToken.None));
 
@@ -791,8 +828,117 @@ internal static partial class Program
             expired,
             CancellationToken.None,
             typeof(TimeoutException));
+        AssertPinnedStartupSystemModuleSetPolicyFailures();
         AssertTrustedNativeSystemModulePolicyFailuresAndBounds();
         return Task.CompletedTask;
+    }
+
+    private static void AssertPinnedStartupSystemModuleSetPolicyFailures()
+    {
+        using CurrentHostNativeSystemModulePolicyInputs inputs =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        byte[] malformed = (byte[])inputs.Policy.Clone();
+        malformed[0] ^= 0x01;
+        byte[] malformedPin = ComputeNativeSystemModulePolicyPin(malformed);
+        byte[] wrongPin = (byte[])inputs.Pin.Clone();
+        wrongPin[0] ^= 0xff;
+        byte[] wrongLength = (byte[])inputs.Policy.Clone();
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            wrongLength.AsSpan(47, sizeof(ulong)),
+            checked(BinaryPrimitives.ReadUInt64LittleEndian(
+                wrongLength.AsSpan(47, sizeof(ulong))) + 1));
+        byte[] wrongLengthPin =
+            ComputeNativeSystemModulePolicyPin(wrongLength);
+        byte[] wrongApphelpDigest = (byte[])inputs.Policy.Clone();
+        wrongApphelpDigest[218] ^= 0xff;
+        byte[] wrongApphelpDigestPin =
+            ComputeNativeSystemModulePolicyPin(wrongApphelpDigest);
+        byte[] policyBackup = (byte[])inputs.Policy.Clone();
+        byte[] pinBackup = (byte[])inputs.Pin.Clone();
+        try
+        {
+            AssertThrows<SecurityException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        malformed,
+                        wrongPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<FormatException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        malformed,
+                        malformedPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        inputs.Policy.AsSpan(0, inputs.Policy.Length - 1),
+                        inputs.Pin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<ArgumentException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        inputs.Policy,
+                        inputs.Pin.AsSpan(0, inputs.Pin.Length - 1),
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        wrongLength,
+                        wrongLengthPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            AssertThrows<SecurityException>(() =>
+            {
+                using NativeStartupSystemModuleSetLease ignored =
+                    NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+                        wrongApphelpDigest,
+                        wrongApphelpDigestPin,
+                        NewArtifactDeadline(),
+                        CancellationToken.None);
+            });
+            Assert(inputs.Policy.AsSpan().SequenceEqual(policyBackup),
+                "failed aggregate policy opens must not mutate the caller's policy");
+            Assert(inputs.Pin.AsSpan().SequenceEqual(pinBackup),
+                "failed aggregate policy opens must not mutate the caller's pin");
+
+            using NativeStartupSystemModuleSetLease clean =
+                OpenExpectedStartupSystemModuleSet(
+                    inputs,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            Assert(clean.IsBoundToAuthenticatedPolicy,
+                "a clean aggregate open must remain possible after policy failures");
+            clean.RevalidateExpectedSet(
+                NewArtifactDeadline(),
+                CancellationToken.None);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(malformed);
+            CryptographicOperations.ZeroMemory(malformedPin);
+            CryptographicOperations.ZeroMemory(wrongPin);
+            CryptographicOperations.ZeroMemory(wrongLength);
+            CryptographicOperations.ZeroMemory(wrongLengthPin);
+            CryptographicOperations.ZeroMemory(wrongApphelpDigest);
+            CryptographicOperations.ZeroMemory(wrongApphelpDigestPin);
+            CryptographicOperations.ZeroMemory(policyBackup);
+            CryptographicOperations.ZeroMemory(pinBackup);
+        }
     }
 
     private static void AssertTrustedNativeSystemModulePolicyRoundTrip()
@@ -1584,6 +1730,32 @@ internal static partial class Program
         };
     }
 
+    private static NativeStartupSystemModuleSetLease
+        OpenExpectedStartupSystemModuleSet(
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+    {
+        using CurrentHostNativeSystemModulePolicyInputs inputs =
+            CurrentHostNativeSystemModulePolicyInputs.Create();
+        return OpenExpectedStartupSystemModuleSet(
+            inputs,
+            deadline,
+            cancellationToken);
+    }
+
+    private static NativeStartupSystemModuleSetLease
+        OpenExpectedStartupSystemModuleSet(
+            CurrentHostNativeSystemModulePolicyInputs inputs,
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+    {
+        return NativeStartupSystemModuleSetLease.OpenExpectedPinned(
+            inputs.Policy,
+            inputs.Pin,
+            deadline,
+            cancellationToken);
+    }
+
     private static string GetExpectedStartupSystemModuleFileName(
         NativeStartupSystemModule module)
     {
@@ -1595,6 +1767,176 @@ internal static partial class Program
             NativeStartupSystemModule.Apphelp => "apphelp.dll",
             _ => throw new ArgumentOutOfRangeException(nameof(module)),
         };
+    }
+
+    private sealed class CurrentHostNativeSystemModulePolicyInputs : IDisposable
+    {
+        private CurrentHostNativeSystemModulePolicyInputs(
+            byte[] policy,
+            byte[] pin)
+        {
+            Policy = policy;
+            Pin = pin;
+        }
+
+        internal byte[] Policy { get; }
+
+        internal byte[] Pin { get; }
+
+        internal static CurrentHostNativeSystemModulePolicyInputs Create()
+        {
+            byte[] policy = new byte[
+                TrustedNativeSystemModulePolicyV1.EncodedLength];
+            byte[]? pin = null;
+            int offset = 0;
+            try
+            {
+                "HRCOSM01"u8.CopyTo(policy);
+                offset += 8;
+                WriteNativeSystemModulePolicyUInt16(
+                    policy,
+                    ref offset,
+                    (ushort)TrustedNativeSystemModuleConsumerProfile
+                        .SyntheticNativeFixture);
+                WriteNativeSystemModulePolicyUInt16(
+                    policy,
+                    ref offset,
+                    TrustedNativeSystemModulePolicyV1.Amd64Machine);
+                WriteNativeSystemModulePolicyUInt16(
+                    policy,
+                    ref offset,
+                    TrustedNativeSystemModulePolicyV1.WindowsNtPlatformId);
+                WriteNativeSystemModulePolicyUInt16(policy, ref offset, 0);
+
+                NativeFixtureWindowsVersion version =
+                    NativeFixturePlatformPolicy.ReadProductionVersion();
+                WriteNativeSystemModulePolicyUInt32(
+                    policy,
+                    ref offset,
+                    version.Major);
+                WriteNativeSystemModulePolicyUInt32(
+                    policy,
+                    ref offset,
+                    version.Minor);
+                WriteNativeSystemModulePolicyUInt32(
+                    policy,
+                    ref offset,
+                    version.Build);
+                WriteNativeSystemModulePolicyUInt32(
+                    policy,
+                    ref offset,
+                    checked((uint)NativeStartupSystemModuleSetLease
+                        .RequiredModuleCount));
+                WriteNativeSystemModulePolicyUInt32(policy, ref offset, 0);
+
+                string systemDirectory =
+                    NativeSystemModuleIdentityLease.ReadNativeSystemDirectory();
+                for (int ordinal = 0;
+                     ordinal <
+                        NativeStartupSystemModuleSetLease.RequiredModuleCount;
+                     ordinal++)
+                {
+                    NativeStartupSystemModule module =
+                        GetExpectedStartupSystemModule(ordinal);
+                    using NativeSystemModuleIdentityLease expected =
+                        NativeSystemModuleIdentityLease.OpenExpectedModule(
+                            module,
+                            systemDirectory,
+                            NewArtifactDeadline(),
+                            CancellationToken.None);
+                    ReadOnlySpan<byte> name =
+                        GetExpectedStartupSystemModuleFileName(module) switch
+                        {
+                            "ntdll.dll" => "ntdll.dll"u8,
+                            "kernel32.dll" => "kernel32.dll"u8,
+                            "KernelBase.dll" => "KernelBase.dll"u8,
+                            "apphelp.dll" => "apphelp.dll"u8,
+                            _ => throw new InvalidOperationException(
+                                "The native system-module policy filename was unsupported."),
+                        };
+                    WriteNativeSystemModulePolicyUInt16(
+                        policy,
+                        ref offset,
+                        checked((ushort)name.Length));
+                    name.CopyTo(policy.AsSpan(offset));
+                    offset += name.Length;
+                    WriteNativeSystemModulePolicyUInt64(
+                        policy,
+                        ref offset,
+                        checked((ulong)expected.Length));
+                    byte[] digest = expected.CopySha256Digest();
+                    try
+                    {
+                        digest.CopyTo(policy, offset);
+                        offset += digest.Length;
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(digest);
+                    }
+                }
+
+                AssertEqual(policy.Length, offset,
+                    "current-host native system-module policy length");
+                pin = ComputeNativeSystemModulePolicyPin(policy);
+                CurrentHostNativeSystemModulePolicyInputs result =
+                    new(policy, pin);
+                policy = null!;
+                pin = null;
+                return result;
+            }
+            finally
+            {
+                if (policy is not null)
+                {
+                    CryptographicOperations.ZeroMemory(policy);
+                }
+
+                if (pin is not null)
+                {
+                    CryptographicOperations.ZeroMemory(pin);
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            CryptographicOperations.ZeroMemory(Policy);
+            CryptographicOperations.ZeroMemory(Pin);
+        }
+    }
+
+    private static void WriteNativeSystemModulePolicyUInt16(
+        Span<byte> destination,
+        ref int offset,
+        ushort value)
+    {
+        BinaryPrimitives.WriteUInt16LittleEndian(
+            destination.Slice(offset, sizeof(ushort)),
+            value);
+        offset += sizeof(ushort);
+    }
+
+    private static void WriteNativeSystemModulePolicyUInt32(
+        Span<byte> destination,
+        ref int offset,
+        uint value)
+    {
+        BinaryPrimitives.WriteUInt32LittleEndian(
+            destination.Slice(offset, sizeof(uint)),
+            value);
+        offset += sizeof(uint);
+    }
+
+    private static void WriteNativeSystemModulePolicyUInt64(
+        Span<byte> destination,
+        ref int offset,
+        ulong value)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            destination.Slice(offset, sizeof(ulong)),
+            value);
+        offset += sizeof(ulong);
     }
 
     private static SafeFileHandle OpenExpectedStartupSystemModule(
