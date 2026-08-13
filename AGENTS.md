@@ -151,14 +151,15 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 77/77
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 82/82
   harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
   broker and in-memory-store tests, 11 filesystem tests, 5 single-file artefact-
-  identity tests, and 6 protected app-local artefact-set tests. It proves exact
-  applied protected-DACL read-back, two-sided process identity, bounded one-shot
-  frames, fixed public-frame exchange with a synthetic child, rejection of a
-  wrong live child, a canonical HMAC-bound descriptor model, and eight phase-
-  and role-bound message codecs. It also proves a capacity-one asynchronous
+  identity tests, 6 protected app-local artefact-set tests, and 5 containment
+  tests. It proves exact applied protected-DACL read-back, two-sided process
+  identity, bounded one-shot frames, fixed public-frame exchange with a
+  synthetic child, rejection of a wrong live child, a canonical HMAC-bound
+  descriptor model, and eight phase- and role-bound message codecs. It also
+  proves a capacity-one asynchronous
   in-memory publisher with independent wipeable snapshots and a store-affine,
   coalesced exact-removal lease. The lease provides cross-store and ABA defence.
   A one-shot broker runs all four exchanges across the broker harness process
@@ -223,12 +224,40 @@ unexpected source or target difference.
   This evidence has no independently trusted release manifest that
   authenticates the complete production artefact set and its canonical digest.
   It does not prove member file ACLs, signatures, shared .NET runtime selection,
-  launch atomicity, launched-process identity, dedicated role executables,
-  containment, private handoff, role-bound `READY`, known-folder resolution,
-  protected LocalAppData hierarchy provisioning or provenance, stale or crash
-  recovery,
+  artefact-to-loader atomicity, integration with launched-process identity,
+  dedicated role executables, production-role containment, private handoff,
+  role-bound `READY`, known-folder resolution, protected LocalAppData hierarchy
+  provisioning or provenance, stale or crash recovery,
   production descriptor persistence, secure initial pipe-name delivery,
   Java integration, or HRC runtime use.
+  The internal test-harness-only `ContainedHarnessProcess` launches exactly the
+  current generated apphost in one of two fixed public `Exit` or `Block` modes.
+  These join three legacy IPC child modes, for five fixed public child modes in
+  total. The build guard rejects managed `ProcessStartInfo` or `Process.Start`
+  launch outside the legacy harness `Program.cs`. The native `CreateProcessW`
+  containment path is an explicit isolated source exception.
+  It supplies an exact non-null `lpApplicationName` and fixed command line, an
+  empty Unicode environment, the current executable directory, no inherited
+  handles, and no standard I/O handles. It creates an unnamed, non-inheritable
+  Job Object and reads back only `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. It uses
+  `PROC_THREAD_ATTRIBUTE_JOB_LIST` with suspended process creation. Before the
+  exact `ResumeThread`, it requires one exact Job PID and checks a retained
+  `ProcessIdentityLease` plus the image path. One absolute monotonic deadline
+  and caller cancellation govern cooperative checks around synchronous native launch
+  calls, including late-success rejection after resume. They do not hard-
+  preempt those calls. Start failure and disposal close the last held Job handle
+  before they wait for the exact retained process under a separate fixed five-
+  second cleanup bound. Concurrent disposal coalesces.
+  Five tests cover normal exit, explicit last-Job-handle closure that kills a
+  blocking child, no managed entry before a pre-resume fault, late post-resume
+  deadline cleanup, and concurrent disposal with an admitted exact-process
+  exit wait.
+  The suite does not terminate its parent abruptly. Kill-on-close semantics
+  support cleanup when the final Job handle closes, but direct abrupt-parent-
+  death and crash behaviour remain unexercised. This proof has no artefact-set
+  trust integration, release provenance, shared-runtime or loader trust,
+  production roles, private handoff, role-bound `READY`, token transfer, Java
+  integration, HRC integration, sandbox, or same-user hostile-process defence.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
@@ -239,17 +268,17 @@ unexpected source or target difference.
   process creation, private initial name delivery and role-bound `READY` are
   validated, and known-folder resolution, protected LocalAppData hierarchy
   provisioning and provenance, stale and crash recovery, and Java lifecycle
-  integration are implemented and validated. Prove atomic containment as a
-  separate boundary. Resolve namespace and runtime trust before the private
-  handoff and `READY` boundary.
+  integration are implemented and validated. Keep the atomic containment proof
+  as a separate boundary until dedicated production roles integrate it. Resolve
+  independently trusted release provenance, application namespace, shared-
+  runtime, and loader trust before the private handoff and `READY` boundary.
   The existing-directory seam, in-memory store, and synthetic broker do not
   prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
   system-wide HRC-control lease.
-- Do not treat the test harness's kill-and-bounded-wait cleanup as crash
-  containment.
-  Require a validated kill-on-close Job Object or equivalent before relying on
-  cleanup after abrupt parent termination.
+- Do not treat the explicit Job-handle-close test as a direct abrupt-parent-
+  death or crash test. Require a separate production-role validation before
+  relying on containment after abrupt parent termination.
 - Treat public Job names and staging filenames as sensitive local plaintext.
   Base64URL encoding does not protect them.
 - Do not activate the transport until the offline-tested ordered mailbox

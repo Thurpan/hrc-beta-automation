@@ -31,9 +31,9 @@ A protected app-local artefact-set primitive composes retained identities into
 one exact directory snapshot. The module has no independently trusted release
 manifest that authenticates each complete production artefact set and its
 canonical digest. It also has no shared .NET runtime selection, secure initial
-pipe-name handoff, dedicated production role executables, crash containment, or
-connection to the Java layers. This component is not the standalone runner or
-an installable HRC plug-in. It has no
+pipe-name handoff, dedicated production role executables, production-role
+containment integration, or connection to the Java layers. This component is
+not the standalone runner or an installable HRC plug-in. It has no
 OSGi manifest, enabled activator, live listener registration, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
 an HRC installation path solely to resolve and hash public API provider JARs.
@@ -233,10 +233,11 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The Windows bootstrap result is 77/77: 20 primitive tests, 8 descriptor
-and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
-5 single-file artefact-identity tests, and 6 protected app-local artefact-set
-tests. The broker and in-memory-store tests cover
+tests. The prior Windows bootstrap result was 77/77: 20 primitive tests, 8
+descriptor and protocol tests, 27 broker and in-memory-store tests, 11
+filesystem tests, 5 single-file artefact-identity tests, and 6 protected app-
+local artefact-set tests. Checkpoint `2a56de1` adds 5 containment tests, so the
+current Windows result is 82/82. The broker and in-memory-store tests cover
 asynchronous publication,
 store-affine coalesced removal, cross-store and ABA defence, exact role context,
 all four cross-process exchanges, and
@@ -282,6 +283,38 @@ file ACL, signature, shared .NET runtime selection, atomic launch, launched-
 process identity, production role executables, containment, private handoff,
 role-bound `READY`, Java integration, or HRC runtime behaviour.
 
+The containment tests use internal `ContainedHarnessProcess` code to launch
+exactly the current generated harness apphost in one of two fixed public modes:
+`Exit` or `Block`. These join three legacy IPC child modes, for five fixed public
+child modes in total. The build guard rejects managed `ProcessStartInfo` or
+`Process.Start` launch outside the legacy harness `Program.cs`. The native
+`CreateProcessW` containment path is an explicit isolated source exception.
+The native launch supplies an exact non-null `lpApplicationName`, a fixed
+command line, an empty Unicode environment, the current executable directory,
+no inherited handles, and no standard I/O handles. An unnamed, non-
+inheritable Job Object retains exactly `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+`PROC_THREAD_ATTRIBUTE_JOB_LIST` assigns the child before its suspended initial
+thread can run. Before exact `ResumeThread`, the launcher requires a singleton
+Job PID and checks the retained process identity and image path.
+
+One absolute monotonic deadline and caller cancellation govern cooperative
+checks around synchronous native launch calls. They do not hard-preempt them.
+The launcher rejects a late success after resume. Start failure and disposal
+close the last held Job handle, then wait for the retained exact process under
+a separate fixed five-second cleanup bound. Concurrent disposal coalesces. The
+tests cover normal exit, explicit last-Job-
+handle closure that kills a blocking child, no managed entry before a pre-
+resume fault, late-deadline cleanup, and concurrent disposal with an admitted
+exact-process wait.
+
+The suite does not directly terminate its parent. Kill-on-close semantics
+support cleanup when the final Job handle closes, but abrupt-parent-death and
+crash behaviour remain unexercised. The proof has no artefact-set trust
+integration, release provenance, shared-runtime or loader trust, production
+roles, private handoff, role-bound `READY`, token transfer, Java or HRC
+integration, sandbox, or same-user hostile-process defence. The protected set
+still allows new child creation and remains snapshot and detection only.
+
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
 fresh framework storage and hash-pinned installed providers. In the recorded
@@ -308,15 +341,17 @@ provisioning and provenance, stale and crash recovery, production descriptor
 persistence, secure initial pipe-name delivery, dedicated production bootstrap
 executables, an independently trusted release manifest that authenticates each
 complete production artefact set and its canonical digest, shared .NET runtime
-selection, atomic kill-on-close containment, private handoff, role-bound
-`READY`, Java-to-Windows
+selection, artefact-to-loader atomicity, production-role containment
+integration, a direct abrupt-parent-death containment test, private handoff,
+role-bound `READY`, Java-to-Windows
 integration, packaging, startup, installation, rollback, safe final shutdown,
 runtime correlation, and every standalone-runner operation.
 The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.
 
-Next, prove that dedicated Windows roles enter kill-on-close Job Object
-containment atomically at process creation. Keep this as a separate proof. The
-protected application namespace and shared-runtime trust remain unresolved.
-Complete those boundaries before private initial name handoff and role-bound
-`READY`.
+Next, require an independently trusted release manifest to authenticate each
+complete production artefact set and its canonical digest. Resolve the
+protected application namespace, shared-runtime selection, and loader-integrity
+gaps. Keep the containment proof separate until dedicated production roles
+integrate it. Complete these boundaries before private initial name handoff and
+role-bound `READY`.

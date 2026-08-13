@@ -285,10 +285,11 @@ Checkpoint `efc399a` adds retained artefact identity and passes 71/71 tests: 20
 primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
 tests, 11 filesystem tests, and 5 artefact-identity tests.
 Checkpoint `c38bf29` adds the protected app-local artefact-set primitive and
-passes 77/77 tests. The current total is 20 primitive tests, 8 descriptor and
-protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests, 5
-single-file artefact-identity tests, and 6 protected app-local artefact-set
-tests.
+passes 77/77 tests. Checkpoint `2a56de1` adds test-harness-only atomic Job Object
+containment and passes 82/82 tests. The current total is 20 primitive tests, 8
+descriptor and protocol tests, 27 broker and in-memory-store tests, 11
+filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
+artefact-set tests, and 5 containment tests.
 None of these builds installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -431,8 +432,44 @@ provenance or bind the selected shared .NET runtime. It has no independently
 trusted release manifest that authenticates the complete production artefact
 set and its canonical digest. It also proves no member file ACL, signature,
 launch atomicity, launched-process identity, production role executables,
-containment, private handoff, role-bound `READY`, Java integration, or HRC
-runtime behaviour.
+production-role containment integration, private handoff, role-bound `READY`,
+Java integration, or HRC runtime behaviour.
+
+Five containment cases exercise the internal test-harness-only
+`ContainedHarnessProcess`. It launches exactly the current generated harness
+apphost in one of two fixed public modes: `Exit` or `Block`. It supplies an exact non-
+null `lpApplicationName`, a fixed command line, an empty Unicode environment,
+the current executable directory, no inherited handles, and no standard I/O
+handles. These two modes join three legacy IPC child modes, for five fixed
+public child modes in total. The build guard rejects managed `ProcessStartInfo`
+or `Process.Start` launch outside the legacy harness `Program.cs`. The native
+`CreateProcessW` containment path is an explicit isolated source exception.
+The launcher creates an unnamed, non-inheritable Job Object, applies
+and reads back exactly `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and passes it in
+`PROC_THREAD_ATTRIBUTE_JOB_LIST` during suspended `CreateProcessW`.
+
+Before exact `ResumeThread`, the launcher requires a singleton Job PID. It also
+checks the exact retained `ProcessIdentityLease` and image path. One absolute
+monotonic deadline and caller cancellation govern cooperative checks around
+synchronous native launch calls. They do not hard-preempt them. A post-resume
+check rejects late success. Start failure and disposal close the last held Job
+handle, then wait for the exact retained process under a separate fixed five-
+second cleanup bound. Concurrent disposal coalesces.
+
+The cases prove normal exit, explicit last-Job-handle closure that kills a
+blocking child, no managed child-entry event before an injected pre-resume
+fault, cleanup of a post-resume deadline failure, and coalesced concurrent
+disposal with an admitted exact-process exit wait. The suite does not terminate
+its parent abruptly. Windows kill-on-close semantics support cleanup when the
+final Job handle closes, but direct abrupt-parent-death and crash behaviour
+remain unexercised.
+
+This containment proof is not integrated with the artefact-set lease, broker
+roles, or token transport. It has no independently trusted release provenance,
+shared-runtime or loader trust, production roles, private handoff, role-bound
+`READY`, token transfer, Java or HRC integration, sandbox, or same-user hostile-
+process defence. The protected artefact-set root still permits new child
+creation. It remains a snapshot and detection control only.
 
 The one-shot broker runs in the main harness process. Long-lived synthetic
 observer and controller child modes run in two child processes. All three roles
@@ -493,10 +530,11 @@ set, asynchronous in-memory publisher, and synthetic three-process broker
 evidence only. The module has no Windows known-folder resolution, protected
 LocalAppData hierarchy provisioning or provenance, stale or crash recovery,
 secure initial pipe-name handoff, independently trusted release manifest,
-dedicated production role executables, atomic kill-on-close containment,
-role-bound `READY`, Java bridge, controller integration, or HRC entry point. The
-harness's kill-and-bounded-wait failure cleanup is not crash containment. The
-module adds no HRC runtime observation. `Feasibility` remains `TO CONFIRM`.
+dedicated production role executables, production-role containment integration,
+a direct abrupt-parent-death containment test, role-bound `READY`, Java bridge,
+controller integration, or HRC entry point. The legacy harness failure cleanup
+is not crash containment. The module adds no HRC runtime observation.
+`Feasibility` remains `TO CONFIRM`.
 
 The runner must first identify the one active HRC process and resolve the
 `plugins` directory from that process's own `hrc.exe` installation. It must
@@ -1768,14 +1806,15 @@ disabled OSGi lifecycle owner, in-memory simpleconfigurator planner, isolated
 Equinox start-level fixture, and source/test-only Windows bootstrap module with
 an asynchronous in-memory publisher, a guarded existing-directory file seam,
 an independent file reader, a protected app-local artefact-set primitive, and a
-synthetic broker under `src/HrcJobObserver/`.
+synthetic broker under `src/HrcJobObserver/`. The Windows module also contains a
+test-harness-only atomic Job Object containment primitive.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 77
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 82
 Windows bootstrap tests. The Windows total is 20 primitive tests, 8 descriptor
 and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
-5 single-file artefact-identity tests, and 6 protected app-local artefact-set
-tests. The start-level fixture passes 12/12 prerequisite, 18/18 recorded-row,
-and 9/9 observer-failure tests. The assembly
+5 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
+and 5 containment tests. The start-level fixture passes 12/12 prerequisite,
+18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1845,15 +1884,43 @@ action. The primitive has no independently trusted release manifest that
 authenticates the complete production artefact set and its canonical digest. It
 does not bind shared .NET runtime selection or prove member file ACLs,
 signatures, atomic launch, launched-process identity, production roles,
-containment, private handoff, role-bound `READY`, Java integration, or HRC
-runtime use.
+production-role containment integration, private handoff, role-bound `READY`,
+Java integration, or HRC runtime use.
 
-Next, prove that dedicated roles enter kill-on-close Job Object containment
-atomically at process creation. Keep this as a separate proof. The protected
-application namespace and shared-runtime trust remain unresolved. Require an
-independently trusted release manifest to authenticate each complete production
-artefact set and its canonical digest. Complete those boundaries before private
-initial name handoff and role-bound `READY`. Then add guarded Windows known-
+The containment primitive launches exactly the current generated apphost with
+one of two fixed public arguments: `Exit` or `Block`. These join three legacy IPC
+child modes, for five fixed public child modes in total. The build guard rejects
+managed `ProcessStartInfo` or `Process.Start` launch outside the legacy harness
+`Program.cs`. The native `CreateProcessW` containment path is an explicit
+isolated source exception. An exact non-null application name, fixed command
+line, empty Unicode environment, current executable directory, no inherited
+handles, and no standard I/O handles constrain process creation. An
+unnamed, non-inheritable Job Object retains exactly the kill-on-close policy.
+The Job-list process attribute assigns it during suspended creation. Before the
+initial thread resumes, the launcher requires one exact Job PID and checks a
+retained process identity plus the image path.
+
+One absolute monotonic deadline and caller cancellation govern cooperative
+checks around synchronous native launch calls. They do not hard-preempt them.
+Start failure, late post-resume success, and disposal close the final held Job
+handle, then wait for the retained exact process under a separate fixed five-
+second cleanup bound. Concurrent disposal coalesces. The five cases cover
+normal exit, explicit Job-close termination of a blocking child, pre-resume
+failure with no managed entry, late-deadline cleanup, and concurrent disposal
+with an exact-process exit wait.
+
+The tests do not terminate their parent abruptly. Direct abrupt-parent-death
+and crash behaviour remain unexercised. The primitive has no artefact-set trust
+integration, trusted release provenance, shared-runtime or loader trust,
+production roles, private handoff, role-bound `READY`, token transfer, Java or
+HRC integration, sandbox, or same-user hostile-process defence.
+
+Next, require an independently trusted release manifest to authenticate each
+complete production artefact set and its canonical digest. Resolve the
+protected application namespace, shared-runtime selection, and loader-integrity
+gaps. Keep containment separate until dedicated production roles integrate it.
+Complete these boundaries before private initial name handoff and role-bound
+`READY`. Then add guarded Windows known-
 folder resolution, protected LocalAppData hierarchy provisioning and provenance,
 and stale or crash recovery around the existing-directory seam. Do not integrate
 this seam with Java or open the standalone-runner gate until those boundaries
