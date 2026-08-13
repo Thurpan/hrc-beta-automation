@@ -36,12 +36,14 @@ that exact synthetic fixture through atomic Job assignment and a pre-user-mode
 debug-event image-handle check. The native module aggregate and audited launcher
 now require policy bytes and a pin authenticated through a standalone
 `HRCOSM01` seam. A pure `HRCNLP01` seam authenticates one closed synthetic
-native release manifest and one module policy under an outer pin. Each layer
-remains ineligible for trusted launch. The module has no independently
-provisioned outer-pin issuer or rotation policy, protected selector, trusted
-installer or updater, secure initial pipe-name handoff, dedicated production role
-executables, production-role containment integration, or connection to the
-Java layers.
+native release manifest and one module policy under an outer pin. A retained,
+read-only fixed-leaf selector authenticates that package from an already-
+existing protected local NTFS directory. Each layer remains ineligible for
+trusted launch. The module has no independently provisioned outer-pin issuer or
+rotation policy, trusted provisioning of the selector root and leaf, trusted
+writer, installer or updater, secure initial pipe-name handoff, dedicated
+production role executables, production-role containment integration, or
+connection to the Java layers.
 This component is not the standalone runner or an installable HRC plug-in. It
 has no
 OSGi manifest, enabled activator, live listener registration, installer, or HRC
@@ -500,6 +502,39 @@ nonzero metadata only; it supplies no freshness or rollback rule. The seam is
 pure and performs no filesystem or live-host access. It owns and wipes its byte
 and pin copies and exposes `IsEligibleForTrustedLaunch` as `false`.
 
+Checkpoint `a4e1a9d` adds the offline, read-only
+`NativeLaunchPolicyPackageFileLease`. It accepts one caller-supplied, already-
+existing canonical DOS root, an expected owner SID that must equal the current
+process user, and the external outer package pin. It selects only the exact-
+case fixed leaf `native-launch-policy-v1.bin`. The non-reparse root must be on a
+fixed-drive, local NTFS Mount Manager volume that reports
+`FILE_SUPPORTS_POSIX_UNLINK_RENAME`, with the exact protected owner and DACL for
+that user and `SYSTEM`. Its retained handle allows read and write sharing but
+denies delete sharing, pinning the root namespace. Canonical root
+spelling is compared ordinally without case sensitivity; this does not establish
+the on-disk case of each root component. Unrelated sibling entries are allowed
+and remain outside the fixed-leaf boundary; a case-colliding fixed-leaf name is
+rejected.
+
+The leaf must repeat that exact protected owner and DACL and be a non-reparse
+regular default-stream file with one link, stable bounded metadata, the same
+volume and final path, and the enumerated 128-bit `FILE_ID`. One caller-supplied
+absolute monotonic deadline and cancellation token govern cooperative checks;
+they do not hard-preempt a blocking native call. The selector copies the
+external pin before filesystem work,
+reads 440 through 38,667 exact bytes, authenticates the domain-separated outer
+pin before package parsing, and retains the root and leaf handles, authenticated
+package, exact bytes, and pin. Revalidation binds the exact leaf case, identity,
+metadata, bytes, and domain authentication. The leaf handle requests read and
+security-control access and shares only reads. Successful admission therefore
+rejects an ordinary pre-existing writable handle or writable mapping and denies
+ordinary new data-write and delete opens while retained; it does not block
+attribute, extended-attribute, or security-descriptor changes. Revalidation
+detects relevant ACL or attribute drift rather than relying on the share mode to
+prevent it. These controls make no guarantee against privileged, kernel, or
+raw-volume modification. The selector remains ineligible for trusted launch and
+does not launch either nested policy.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continues that event. It then accepts exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -574,7 +609,16 @@ cancellation, deadlines, and clean recovery after failure. The checkpoint also
 preserves, through the existing release-manifest case, standalone release-
 manifest authentication and two-way owned artefact-copy disposal. The overall
 Release count is 114. Direct Release validation of
-`9d947ce` passes 114/114 with no child residue.
+`9d947ce` passes 114/114 with no child residue. Checkpoint `a4e1a9d` adds 4
+focused file-selector cases. They cover the independent fixed leaf and golden
+package, pin ownership before filesystem or caller mutation, retained
+authentication and revalidation, canonical-root/path guards, exact leaf case,
+ACL, identity, metadata, byte, and domain-pin checks, allowed siblings, read-
+only sharing,
+authentication precedence, bounds, replacement and reparse rejection,
+cancellation and deadline rollback, borrowed-snapshot wiping, recovery, and
+disposal release. Direct Release validation of `a4e1a9d` passes 118/118 with no
+native-fixture child residue. The overall Release count is 118.
 
 They do not directly terminate the parent. The initial breakpoint is not a
 direct entry sentinel. No debug-event file handle proves section, mapping, or
@@ -619,10 +663,15 @@ The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.
 
 Define an independently provisioned outer-pin issuer and rotation policy. Add
-protected package selection, a freshness and rollback floor, trusted installer
-and updater transactions with crash recovery, and servicing coordination. The
-package implements no selector, writer, update mechanism, audited-launcher
-integration, production role, HRC integration, or runner integration. The
+trusted provisioning of the canonical selector root and exact fixed leaf, a
+freshness and rollback floor, trusted writer, installer, and updater transactions
+with crash recovery, and servicing coordination. Checkpoint `a4e1a9d` supplies
+only an offline, read-only fixed-leaf selector around the pure package
+authenticator. It does not provision its root, leaf, owner SID, or external pin;
+write or update the package; compose the package into the existing audited
+launcher; launch either nested policy; or provide production, HRC, or runner
+integration. Its exact ACL does not isolate hostile processes running as the
+same user. The
 synthetic current-host test policy and
 further self-baselined enumeration do not provide that trust. Keep
 the current containment proof separate until dedicated production

@@ -676,6 +676,39 @@ nonzero metadata only; it supplied no freshness or rollback rule. Authentication
 performed no filesystem or live-host access. The package owned and wiped its
 byte and pin copies and exposed `IsEligibleForTrustedLaunch` as `false`.
 
+Checkpoint `a4e1a9d` added the offline, read-only
+`NativeLaunchPolicyPackageFileLease`. It accepted one caller-supplied, already-
+existing canonical DOS root, an expected owner SID that had to equal the
+current process user, and the external outer package pin. It selected only the
+exact-case fixed leaf `native-launch-policy-v1.bin`. The non-reparse root had to
+be on a fixed-drive, local NTFS Mount Manager volume that reported
+`FILE_SUPPORTS_POSIX_UNLINK_RENAME`, with the exact protected owner and DACL for
+that user and `SYSTEM`. Its retained handle allowed read and write sharing but
+denied delete sharing, pinning the root namespace. Canonical
+root spelling was compared ordinally without case sensitivity; this did not
+establish the on-disk case of each root component. Unrelated sibling entries
+were allowed and remained outside the fixed-leaf boundary; a case-colliding
+fixed-leaf name was rejected.
+
+The leaf had to repeat that exact protected owner and DACL and be a non-reparse
+regular default-stream file with one link, stable bounded metadata, the same
+volume and final path, and the enumerated 128-bit `FILE_ID`. One caller-supplied
+absolute monotonic deadline and cancellation token governed cooperative checks;
+they did not hard-preempt a blocking native call. The selector copied the
+external pin before
+filesystem work, read 440 through 38,667 exact bytes, authenticated the domain-
+separated outer pin before package parsing, and retained the root and leaf
+handles, authenticated package, exact bytes, and pin. Revalidation bound the
+exact leaf case, identity, metadata, bytes, and domain authentication. The leaf
+handle requested read and security-control access and shared only reads.
+Successful admission therefore rejected an ordinary pre-existing writable
+handle or writable mapping and denied ordinary new data-write and delete opens
+while retained; it did not block attribute, extended-attribute, or security-
+descriptor changes. Revalidation detected relevant ACL or attribute drift
+rather than relying on the share mode to prevent it. These controls made no
+guarantee against privileged, kernel, or raw-volume modification. The selector
+remained ineligible for trusted launch and did not launch either nested policy.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continued that event. It then received exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -756,7 +789,16 @@ and disposal behaviour, cancellation, deadlines, and clean recovery after
 failure. The checkpoint also preserves, through the existing release-manifest
 case, standalone release-manifest authentication and two-way owned artefact-
 copy disposal. Direct Release validation of `9d947ce`
-passes 114/114 with no child residue.
+passes 114/114 with no child residue. Checkpoint `a4e1a9d` added 4 focused file-
+selector cases. They covered the independent fixed leaf and golden package, pin
+ownership before filesystem or caller mutation, retained authentication and
+revalidation, canonical-root/path guards, exact leaf case, ACL, identity,
+metadata, byte, and domain-pin checks, allowed siblings, read-only sharing,
+authentication
+precedence, bounds, replacement and reparse rejection, cancellation and
+deadline rollback, borrowed-snapshot wiping, recovery, and disposal release.
+Direct Release validation of `a4e1a9d` passed 118/118 with no native-fixture
+child residue.
 
 No test directly terminated the parent. The initial breakpoint is not a direct
 entry sentinel. No debug-event file handle proves section, mapping, or executed-
@@ -2116,9 +2158,11 @@ Checkpoint `4d7781b` authenticates the exact 250-byte `HRCOSM01` policy.
 Checkpoint `66c6e87` makes the policy and pin mandatory before process creation.
 Checkpoint `9d947ce` authenticates the pure `HRCNLP01` package that binds one
 closed synthetic native release manifest to one module policy. It does not
-select or launch either nested policy.
+launch either nested policy. Checkpoint `a4e1a9d` selects and retains that
+package only from the fixed leaf `native-launch-policy-v1.bin` under an external
+protected root; it does not compose the package into the audited launcher.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 114
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 118
 Windows bootstrap tests. Committed checkpoint `64043e5` passes 102/102.
 Committed checkpoint `70e0d77` adds 5 audited native-containment cases and
 passes 107/107. Committed checkpoint `2512c6a` extends those cases with real
@@ -2131,14 +2175,15 @@ probe implicated System32 `apphelp.dll`. Checkpoint `445d02a` closes the four-
 member profile, and its later debugger `hFile` checks directly bind Apphelp.
 Direct Release validation of `66c6e87` passes 110/110 with no native-fixture
 child residue. Direct Release validation of `9d947ce` passes 114/114 with no
-native-fixture child residue. The
+native-fixture child residue. Direct Release validation of `a4e1a9d` passes
+118/118 with no native-fixture child residue. The
 Windows total is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
 artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture tests, 7
 audited native-release binding tests, 5 harness-containment tests, 3 native
 system-module identity tests, 5 audited native-containment tests, and 4 native
-launch-policy package tests. The
+launch-policy package tests, and 4 native launch-policy file-selector tests. The
 start-level fixture passes 12/12
 prerequisite, 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
@@ -2262,7 +2307,9 @@ rejection for correctly re-pinned wrong first-member length and fourth-member
 digest values. The same 3 system-module cases kept the overall count at 110
 through `66c6e87`. Checkpoint `9d947ce` adds 4 pure package cases, bringing the
 overall count to 114. Direct Release validation of `9d947ce` passes 114/114 with
-no child residue.
+no child residue. Checkpoint `a4e1a9d` adds 4 file-selector cases, bringing the
+overall count to 118. Direct Release validation of `a4e1a9d` passes 118/118 with
+no native-fixture child residue.
 Baseline and final reaper assertions show only that no retained or terminal
 reaper state remained at each assertion time.
 
@@ -2298,10 +2345,15 @@ production roles, private handoff, role-bound `READY`, token transfer, Java or
 HRC integration, sandbox, or same-user hostile-process defence.
 
 Define an independently provisioned outer-pin issuer and rotation policy. Add
-protected package selection, a freshness and rollback floor, trusted installer
-and updater transactions with crash recovery, and servicing coordination. The
-package implements no selector, writer, update mechanism, audited-launcher
-integration, production role, HRC integration, or runner integration. The
+trusted provisioning of the canonical selector root and exact fixed leaf, a
+freshness and rollback floor, trusted writer, installer, and updater transactions
+with crash recovery, and servicing coordination. Checkpoint `a4e1a9d` supplies
+only an offline, read-only fixed-leaf selector around the pure package
+authenticator. It does not provision its root, leaf, owner SID, or external pin;
+write or update the package; compose the package into the existing audited
+launcher; launch either nested policy; or provide production, HRC, or runner
+integration. Its exact ACL does not isolate hostile processes running as the
+same user. The
 synthetic current-host test policy and
 further self-baselined enumeration cannot supply that trust. Keep
 the current containment proof separate until dedicated production
