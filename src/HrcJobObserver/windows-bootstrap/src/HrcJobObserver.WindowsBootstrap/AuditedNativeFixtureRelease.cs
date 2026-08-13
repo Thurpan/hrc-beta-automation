@@ -191,6 +191,44 @@ internal sealed class AuditedNativeFixtureReleaseLease : IDisposable
         }
     }
 
+    internal TrustedArtifactLaunchNamespaceLease OpenLaunchNamespaceLease(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            if (!peAudit.RequiresNoDynamicIndirectControlFlow ||
+                peAudit.HasGuardCfInstrumentation ||
+                peAudit.ProvesMachineCodeSemantics ||
+                peAudit.IsEligibleForTrustedLaunch ||
+                IsEligibleForTrustedLaunch)
+            {
+                throw new SecurityException(
+                    "The native fixture PE audit crossed its narrow launch-namespace boundary.");
+            }
+
+            pinnedRelease.RevalidateExactSet(deadline, cancellationToken);
+            TrustedArtifactLaunchNamespaceLease launchNamespace =
+                pinnedRelease.OpenExecutableLaunchNamespaceLease(
+                    deadline,
+                    cancellationToken);
+            try
+            {
+                pinnedRelease.RevalidateExactSet(deadline, cancellationToken);
+                CheckOperation(deadline, cancellationToken);
+                TrustedArtifactLaunchNamespaceLease result = launchNamespace;
+                launchNamespace = null!;
+                return result;
+            }
+            finally
+            {
+                launchNamespace?.Dispose();
+            }
+        }
+    }
+
     internal void RevalidateExactSet(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)

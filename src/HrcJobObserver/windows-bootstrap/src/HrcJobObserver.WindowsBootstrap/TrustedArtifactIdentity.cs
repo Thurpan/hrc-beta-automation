@@ -155,6 +155,70 @@ internal static class TrustedArtifactIdentity
             cancellationToken);
     }
 
+    /// <summary>
+    /// Authenticates one already-open candidate handle directly against the
+    /// expected retained-file identity and bytes. No path lookup is used by
+    /// this check.
+    /// </summary>
+    internal static void ValidateExactHandle(
+        SafeFileHandle candidate,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256,
+        TrustedArtifactFileIdentity expectedIdentity,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        CheckOperation(deadline, cancellationToken);
+        ArgumentNullException.ThrowIfNull(candidate);
+        if (candidate.IsClosed || candidate.IsInvalid)
+        {
+            throw new ArgumentException(
+                "The trusted-artifact candidate handle is invalid.",
+                nameof(candidate));
+        }
+
+        if (expectedLength < 0 || expectedSha256.Length != Sha256Length)
+        {
+            throw new ArgumentException(
+                "The trusted-artifact candidate expectation is invalid.");
+        }
+
+        ArtifactMetadata initial = ValidateMetadataWithoutPath(candidate);
+        RequireIdentity(
+            expectedIdentity,
+            initial.Identity,
+            "The trusted-artifact candidate identity did not match.");
+        RequireExpectedLength(initial, expectedLength);
+        byte[] digest = HashExact(
+            candidate,
+            expectedLength,
+            deadline,
+            cancellationToken);
+        try
+        {
+            CheckOperation(deadline, cancellationToken);
+            ArtifactMetadata final = ValidateMetadataWithoutPath(candidate);
+            RequireUnchanged(initial, final, expectedLength);
+            RequireIdentity(
+                expectedIdentity,
+                final.Identity,
+                "The trusted-artifact candidate identity changed.");
+            if (!CryptographicOperations.FixedTimeEquals(
+                    digest,
+                    expectedSha256))
+            {
+                throw new SecurityException(
+                    "The trusted-artifact candidate digest did not match.");
+            }
+
+            CheckOperation(deadline, cancellationToken);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(digest);
+        }
+    }
+
     private static void RevalidateCore(
         SafeFileHandle retained,
         string exactPath,
@@ -348,6 +412,14 @@ internal static class TrustedArtifactIdentity
         SafeFileHandle file,
         string expectedPath)
     {
+        ArtifactMetadata result = ValidateMetadataWithoutPath(file);
+        RequireFinalPath(file, expectedPath);
+        return result;
+    }
+
+    private static ArtifactMetadata ValidateMetadataWithoutPath(
+        SafeFileHandle file)
+    {
         if (NativeMethods.GetFileType(file) != NativeMethods.FileTypeDisk)
         {
             throw new SecurityException(
@@ -370,7 +442,6 @@ internal static class TrustedArtifactIdentity
                 "The trusted artifact is not a single-link, non-reparse regular file.");
         }
 
-        RequireFinalPath(file, expectedPath);
         RequireLocalVolume(file);
         if (NativeMethods.GetFileSizeEx(file, out long fileSize) == 0)
         {
@@ -715,6 +786,25 @@ internal sealed class TrustedArtifactLease : IDisposable
         {
             ThrowIfDisposed();
             return (byte[])sha256Digest.Clone();
+        }
+    }
+
+    internal TrustedArtifactLaunchNamespaceLease OpenLaunchNamespaceLease(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            return TrustedArtifactLaunchNamespaceLease.Open(
+                handle,
+                Path,
+                Length,
+                sha256Digest,
+                Identity,
+                deadline,
+                cancellationToken);
         }
     }
 

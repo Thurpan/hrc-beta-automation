@@ -96,6 +96,86 @@ function Invoke-ClosedNativeTool {
     }
 }
 
+function Invoke-BoundedValidation {
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+        [Parameter(Mandatory)]
+        [string[]]$ArgumentList,
+        [Parameter(Mandatory)]
+        [string]$WorkingDirectory,
+        [Parameter(Mandatory)]
+        [int]$TimeoutMilliseconds
+    )
+
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $FilePath
+    $start.WorkingDirectory = $WorkingDirectory
+    $start.UseShellExecute = $false
+    foreach ($argument in $ArgumentList) {
+        $start.ArgumentList.Add($argument)
+    }
+
+    $process = [Diagnostics.Process]::Start($start)
+    if ($null -eq $process) {
+        throw "Starting the Windows bootstrap validation failed: $FilePath"
+    }
+
+    try {
+        $waitFailure = $null
+        try {
+            $exited = $process.WaitForExit($TimeoutMilliseconds)
+        } catch {
+            $waitFailure = $_.Exception
+            $exited = $false
+        }
+        if ($exited) {
+            return $process.ExitCode
+        }
+
+        $primaryFailure = if ($null -ne $waitFailure) {
+            $waitFailure
+        } else {
+            [TimeoutException]::new(
+                "Windows bootstrap validation exceeded its process-level limit.")
+        }
+        $killFailure = $null
+        try {
+            $process.Kill($true)
+        } catch {
+            $killFailure = $_.Exception
+        }
+
+        $cleanupFailure = $null
+        try {
+            if (-not $process.WaitForExit(10000)) {
+                $cleanupFailure = [TimeoutException]::new(
+                    'The timed-out validation process tree did not terminate within 10 seconds.')
+            }
+        } catch {
+            $cleanupFailure = $_.Exception
+        }
+
+        if ($null -ne $killFailure -or $null -ne $cleanupFailure) {
+            $failures = [Collections.Generic.List[Exception]]::new()
+            $failures.Add($primaryFailure)
+            if ($null -ne $killFailure) {
+                $failures.Add($killFailure)
+            }
+            if ($null -ne $cleanupFailure) {
+                $failures.Add($cleanupFailure)
+            }
+            throw [AggregateException]::new(
+                'Windows bootstrap validation timed out and cleanup was indeterminate.',
+                $failures)
+        }
+
+        throw $primaryFailure
+    } finally {
+        $process.Dispose()
+    }
+}
+
 $buildMutex = [Threading.Mutex]::new(
     $false, 'Local\HrcBetaAutomation-WindowsBootstrap-Build-v1')
 $lockTaken = $false
@@ -346,6 +426,49 @@ try {
         'System\.Net\.|HttpClient|Environment\.GetEnvironmentVariable|Console\.(Write|Error)|Microsoft\.Win32\.Registry|HRC Beta|HoldemResources'
     $productionLaunch = $productionSources | Select-String -Pattern `
         'ProcessStartInfo|Process\.Start'
+    $nativeCreateProcessCalls = @($productionSources | Select-String -Pattern `
+        'NativeMethods\.CreateProcess\(')
+    $expectedNativeCreateProcessSources = @(
+        [IO.Path]::GetFullPath((Join-Path $moduleRoot `
+            'src\HrcJobObserver.WindowsBootstrap\ContainedHarnessProcess.cs')),
+        [IO.Path]::GetFullPath((Join-Path $moduleRoot `
+            'src\HrcJobObserver.WindowsBootstrap\ContainedAuditedNativeFixtureProcess.cs')))
+    $nativeCreateProcessPerFileInvalid = $false
+    foreach ($expectedSource in $expectedNativeCreateProcessSources) {
+        $matchingCalls = @($nativeCreateProcessCalls | Where-Object {
+            [IO.Path]::GetFullPath($_.Path).Equals(
+                $expectedSource,
+                [StringComparison]::OrdinalIgnoreCase)
+        })
+        if ($matchingCalls.Count -ne 1) {
+            $nativeCreateProcessPerFileInvalid = $true
+        }
+    }
+    $actualNativeCreateProcessSources = @(
+        $nativeCreateProcessCalls | ForEach-Object {
+            [IO.Path]::GetFullPath($_.Path)
+        })
+    $nativeMethodsContainmentSource = [IO.Path]::GetFullPath((Join-Path `
+        $moduleRoot `
+        'src\HrcJobObserver.WindowsBootstrap\NativeMethods.Containment.cs'))
+    $nativeCreateProcessImports = @($productionSources | Select-String `
+        -Pattern '^\s*EntryPoint = "CreateProcessW",$')
+    $nativeCreateProcessDeclarations = @(Select-String -LiteralPath `
+        $nativeMethodsContainmentSource -Pattern `
+        'internal static unsafe partial int CreateProcess\(')
+    $nativeCreateProcessShapeInvalid =
+        $actualNativeCreateProcessSources.Count -ne 2 -or
+        $nativeCreateProcessPerFileInvalid -or
+        (Compare-Object $expectedNativeCreateProcessSources `
+            $actualNativeCreateProcessSources) -or
+        $nativeCreateProcessImports.Count -ne 1 -or
+        -not [IO.Path]::GetFullPath(
+            $nativeCreateProcessImports[0].Path).Equals(
+                $nativeMethodsContainmentSource,
+                [StringComparison]::OrdinalIgnoreCase) -or
+        $nativeCreateProcessImports[0].Line.Trim() -ne `
+            'EntryPoint = "CreateProcessW",' -or
+        $nativeCreateProcessDeclarations.Count -ne 1
     $nativeFixtureTestSource = Join-Path $moduleRoot `
         'test\HrcJobObserver.WindowsBootstrap.TestHarness\Program.NativeFixture.cs'
     $testLaunch = $sources | Where-Object {
@@ -362,7 +485,8 @@ try {
         'ProcessStartInfo start,')
     $actualNativeFixtureLaunchShape = @(
         $nativeFixtureTestLaunches.Line.Trim())
-    if ($forbidden -or $productionLaunch -or $testLaunch -or
+    if ($forbidden -or $productionLaunch -or
+        $nativeCreateProcessShapeInvalid -or $testLaunch -or
         $actualNativeFixtureLaunchShape.Count -ne 3 -or
         (Compare-Object $expectedNativeFixtureLaunchShape `
             $actualNativeFixtureLaunchShape)) {
@@ -376,10 +500,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Windows bootstrap restore failed with exit code $LASTEXITCODE"
     }
-    & $DotnetPath run --project $project -c Release `
-        --no-restore
-    if ($LASTEXITCODE -ne 0) {
-        throw "Windows bootstrap validation failed with exit code $LASTEXITCODE"
+    $validationExitCode = Invoke-BoundedValidation `
+        -FilePath $DotnetPath `
+        -ArgumentList @('run', '--project', $project, '-c', 'Release',
+            '--no-restore') `
+        -WorkingDirectory $moduleRoot `
+        -TimeoutMilliseconds 180000
+    if ($validationExitCode -ne 0) {
+        throw "Windows bootstrap validation failed with exit code $validationExitCode"
     }
 
     $assets = Get-ChildItem -LiteralPath (Join-Path $buildRoot 'obj') `

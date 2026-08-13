@@ -395,7 +395,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         }
     }
 
-    private static NativeMethods.SafeJobHandle CreateConfiguredJob()
+    internal static NativeMethods.SafeJobHandle CreateConfiguredJob()
     {
         nint rawJob = NativeMethods.CreateJobObject(0, null);
         NativeMethods.SafeJobHandle? job = null;
@@ -501,7 +501,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         }
     }
 
-    private static nint CreateJobAttributeList(
+    internal static nint CreateJobAttributeList(
         NativeMethods.SafeJobHandle job,
         out nint jobValue,
         out bool initialized)
@@ -573,7 +573,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         }
     }
 
-    private static unsafe void RequireProcessInExactJob(
+    internal static unsafe void RequireProcessInExactJob(
         NativeMethods.SafeJobHandle job,
         NativeMethods.SafeProcessHandle process,
         uint processId)
@@ -636,7 +636,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         }
     }
 
-    private static Exception? CleanupFailedStart(
+    internal static Exception? CleanupFailedStart(
         NativeMethods.SafeJobHandle? job,
         NativeMethods.SafeProcessHandle? process,
         MonotonicDeadline deadline)
@@ -672,7 +672,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         }
     }
 
-    private static async Task WaitForSignalAsync(
+    internal static async Task WaitForSignalAsync(
         NativeMethods.SafeProcessHandle process,
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
@@ -705,7 +705,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
             Math.Max(1u, checked((uint)value));
     }
 
-    private static void CheckOperation(
+    internal static void CheckOperation(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
@@ -757,7 +757,7 @@ internal sealed class ContainedHarnessProcess : IAsyncDisposable
         return value;
     }
 
-    private static string QuoteCommandPart(string value)
+    internal static string QuoteCommandPart(string value)
     {
         if (value.Contains('"'))
         {

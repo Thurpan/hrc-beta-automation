@@ -120,10 +120,26 @@ internal static partial class NativeMethods
 
     internal sealed class SafeProcessHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
+        internal SafeProcessHandle()
+            : base(true)
+        {
+        }
+
         internal SafeProcessHandle(nint handle)
             : base(true)
         {
             SetHandle(handle);
+        }
+
+        internal void Initialize(nint value)
+        {
+            if (!IsInvalid || IsClosed || value == 0 || value == -1)
+            {
+                throw new InvalidOperationException(
+                    "The process handle cannot be initialized twice or from an invalid value.");
+            }
+
+            SetHandle(value);
         }
 
         protected override bool ReleaseHandle()

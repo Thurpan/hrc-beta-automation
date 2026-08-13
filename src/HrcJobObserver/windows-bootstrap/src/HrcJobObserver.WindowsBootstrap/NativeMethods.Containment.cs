@@ -7,6 +7,7 @@ namespace HrcJobObserver.WindowsBootstrap;
 internal static partial class NativeMethods
 {
     internal const uint CreateSuspended = 0x00000004;
+    internal const uint DebugOnlyThisProcess = 0x00000002;
     internal const uint CreateDefaultErrorMode = 0x04000000;
     internal const uint CreateNoWindow = 0x08000000;
     internal const uint CreateUnicodeEnvironment = 0x00000400;
@@ -16,6 +17,19 @@ internal static partial class NativeMethods
     internal const int JobObjectExtendedLimitInformation = 9;
     internal const nuint ProcThreadAttributeJobList = 0x0002000D;
     internal const uint StillActive = 259;
+    internal const uint ExceptionDebugEvent = 1;
+    internal const uint CreateThreadDebugEvent = 2;
+    internal const uint CreateProcessDebugEvent = 3;
+    internal const uint ExitThreadDebugEvent = 4;
+    internal const uint ExitProcessDebugEvent = 5;
+    internal const uint LoadDllDebugEvent = 6;
+    internal const uint UnloadDllDebugEvent = 7;
+    internal const uint OutputDebugStringEvent = 8;
+    internal const uint RipEvent = 9;
+    internal const uint DbgContinue = 0x00010002;
+    internal const int ErrorSemTimeout = 121;
+    internal const ushort ImageFileMachineUnknown = 0;
+    internal const ushort ImageFileMachineAmd64 = 0x8664;
 
     [LibraryImport(
         "kernel32.dll",
@@ -86,6 +100,9 @@ internal static partial class NativeMethods
         out ProcessInformation processInformation);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial uint SuspendThread(SafeThreadHandle thread);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial uint ResumeThread(SafeThreadHandle thread);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
@@ -97,6 +114,40 @@ internal static partial class NativeMethods
     internal static partial int GetHandleInformation(
         SafeJobHandle handle,
         out uint flags);
+
+    [LibraryImport("ntdll.dll")]
+    internal static unsafe partial int RtlGetVersion(
+        OsVersionInfoEx* versionInformation);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static unsafe partial int WaitForDebugEvent(
+        DebugEvent* debugEvent,
+        uint milliseconds);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int ContinueDebugEvent(
+        uint processId,
+        uint threadId,
+        uint continueStatus);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int DebugActiveProcessStop(uint processId);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int CheckRemoteDebuggerPresent(
+        SafeProcessHandle process,
+        out int debuggerPresent);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int IsWow64Process2(
+        SafeProcessHandle process,
+        out ushort processMachine,
+        out ushort nativeMachine);
+
+    [LibraryImport("kernelbase.dll")]
+    internal static partial int CompareObjectHandles(
+        nint firstObjectHandle,
+        nint secondObjectHandle);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct StartupInfo
@@ -135,6 +186,76 @@ internal static partial class NativeMethods
         internal nint Thread;
         internal uint ProcessId;
         internal uint ThreadId;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct OsVersionInfoEx
+    {
+        internal uint Size;
+        internal uint MajorVersion;
+        internal uint MinorVersion;
+        internal uint BuildNumber;
+        internal uint PlatformId;
+        internal fixed char ServicePack[128];
+        internal ushort ServicePackMajor;
+        internal ushort ServicePackMinor;
+        internal ushort SuiteMask;
+        internal byte ProductType;
+        internal byte Reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CreateProcessDebugInfo
+    {
+        internal nint File;
+        internal nint Process;
+        internal nint Thread;
+        internal nint BaseOfImage;
+        internal uint DebugInfoFileOffset;
+        internal uint DebugInfoSize;
+        internal nint ThreadLocalBase;
+        internal nint StartAddress;
+        internal nint ImageName;
+        internal ushort Unicode;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct ExitProcessDebugInfo
+    {
+        internal uint ExitCode;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LoadDllDebugInfo
+    {
+        internal nint File;
+        internal nint BaseOfDll;
+        internal uint DebugInfoFileOffset;
+        internal uint DebugInfoSize;
+        internal nint ImageName;
+        internal ushort Unicode;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 160)]
+    internal struct DebugEventUnion
+    {
+        [FieldOffset(0)]
+        internal CreateProcessDebugInfo CreateProcess;
+
+        [FieldOffset(0)]
+        internal ExitProcessDebugInfo ExitProcess;
+
+        [FieldOffset(0)]
+        internal LoadDllDebugInfo LoadDll;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct DebugEvent
+    {
+        internal uint Code;
+        internal uint ProcessId;
+        internal uint ThreadId;
+        internal DebugEventUnion Union;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -189,10 +310,26 @@ internal static partial class NativeMethods
 
     internal sealed class SafeThreadHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
+        internal SafeThreadHandle()
+            : base(true)
+        {
+        }
+
         internal SafeThreadHandle(nint handle)
             : base(true)
         {
             SetHandle(handle);
+        }
+
+        internal void Initialize(nint value)
+        {
+            if (!IsInvalid || IsClosed || value == 0 || value == -1)
+            {
+                throw new InvalidOperationException(
+                    "The thread handle cannot be initialized twice or from an invalid value.");
+            }
+
+            SetHandle(value);
         }
 
         protected override bool ReleaseHandle()

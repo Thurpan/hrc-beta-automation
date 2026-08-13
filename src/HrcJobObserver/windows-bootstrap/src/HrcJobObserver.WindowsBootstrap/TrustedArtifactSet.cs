@@ -259,6 +259,40 @@ internal sealed class TrustedArtifactSetLease : IDisposable
         }
     }
 
+    internal TrustedArtifactLaunchNamespaceLease
+        OpenExecutableLaunchNamespaceLease(
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            RevalidateExactSet(deadline, cancellationToken);
+            ArtifactSetMember executable = members.Single(member =>
+                string.Equals(
+                    member.RelativeFileName,
+                    ExecutableRelativeFileName,
+                    StringComparison.Ordinal));
+            TrustedArtifactLaunchNamespaceLease? launchNamespace = null;
+            try
+            {
+                launchNamespace = executable.Artifact.OpenLaunchNamespaceLease(
+                    deadline,
+                    cancellationToken);
+                RevalidateExactSet(deadline, cancellationToken);
+                CheckOperation(deadline, cancellationToken);
+                TrustedArtifactLaunchNamespaceLease result = launchNamespace;
+                launchNamespace = null;
+                return result;
+            }
+            finally
+            {
+                launchNamespace?.Dispose();
+            }
+        }
+    }
+
     internal void RevalidateExactSet(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)

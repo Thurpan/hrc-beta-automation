@@ -391,6 +391,21 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
         }
     }
 
+    internal TrustedArtifactLaunchNamespaceLease
+        OpenExecutableLaunchNamespaceLease(
+            MonotonicDeadline deadline,
+            CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            return artifactSet.OpenExecutableLaunchNamespaceLease(
+                deadline,
+                cancellationToken);
+        }
+    }
+
     internal static PinnedReleaseArtifactSetLease Open(
         string exactApplicationDirectory,
         ReadOnlySpan<byte> canonicalManifest,
