@@ -301,8 +301,12 @@ unexpected fourth `LOAD_DLL` event before identity validation, producing
 System32 `apphelp.dll`. Checkpoint `445d02a` closes the host-observed profile
 over NTDLL, KERNEL32, KernelBase, and Apphelp. Its later runs directly bind the
 fourth debugger `hFile` to the current System32 `apphelp.dll`. Three consecutive
-direct Release runs pass 110/110 on that exact checkpoint, with no native-
-fixture child residue after any run. The
+exact Release runs of `445d02a` each passed 110/110 and left no native-fixture
+child residue. Checkpoint `4d7781b` adds the standalone authenticated
+`HRCOSM01` policy. Checkpoint
+`66c6e87` makes that policy and its independently supplied pin mandatory for
+the aggregate and launcher. Direct Release validation of `66c6e87` passes
+110/110 with no native-fixture child residue. The
 current total is 20
 primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
 tests, 11 filesystem tests, 5 single-file artefact-identity tests, 6 protected
@@ -629,6 +633,30 @@ the observed host/build/fixture profile over NTDLL, KERNEL32, KernelBase, and
 Apphelp. Its later runs directly bound the fourth debugger `hFile` to the
 current System32 `apphelp.dll`.
 
+Checkpoint `4d7781b` added a fixed 250-byte, little-endian `HRCOSM01` policy.
+It records the `SyntheticNativeFixture` profile, AMD64, Win32NT, exact Windows
+10.0 build, and the four ordered exact-case filenames, lengths, and SHA-256
+digests. Its domain-separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-SYSTEM-MODULE-POLICY-PIN-V1\0`. The primitive owns
+and wipes copies of the supplied policy and expected pin. It authenticates
+before structural parsing and rejects unknown values, nonzero reserved fields,
+wrong order or case, invalid lengths, and trailing or truncated data. Exact
+host revalidation requires x64 process and operating-system architectures and
+the policy's exact Windows build. These properties establish authenticated
+policy structure only.
+They do not establish an issuer, signature, freshness, rollback protection, or
+servicing authority.
+
+Checkpoint `66c6e87` removed policy-free aggregate and launcher creation. The
+aggregate authenticates and revalidates the policy before reading System32. It
+requires each current module to match the authenticated length and digest and
+retains the validated pin. The policy and aggregate both expose
+`IsEligibleForTrustedLaunch` as `false`. The launcher requires the policy and
+pin, owns and wipes copies for its dedicated thread, and opens the bound
+aggregate before `CreateProcessW`. Pre-create checks revalidate the expected
+set. The wrapper, failed-launch cleanup, and detached reaper retain the
+policy-bound aggregate with the other launch authority.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continued that event. It then received exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -647,9 +675,10 @@ bytes, SHA-256
 and file version `10.0.26100.8457`. Two hard links were observed in System32
 and WinSxS. Authenticode was observed as valid for `Microsoft Windows`.
 Apphelp is observed host/build/fixture appcompat-loader policy, not a static
-fixture import. The primitive self-baselines the current System32 file. It
-establishes no signer, Microsoft, build, freshness, rollback, or appcompat-
-policy provenance.
+fixture import. At checkpoint `445d02a`, the primitive self-baselined the
+current System32 file. Checkpoint `66c6e87` instead requires that current file
+to match the authenticated policy. Neither checkpoint establishes signer,
+Microsoft, build, freshness, rollback, or appcompat-policy provenance.
 
 The exact initial first-chance breakpoint supplied the startup barrier. While
 that event remained outstanding, `SuspendThread` returned prior count `0`.
@@ -682,8 +711,17 @@ fails, the reaper retains that authority indefinitely and records terminal
 uncertainty. The build wrapper
 applied a separate 180-second watchdog to the .NET validation process.
 
-Checkpoint `445d02a` extends the same five containment cases; it adds no sixth
-registration. They now cover the extended AMD64 debug ABI, the exact 14-stage
+Checkpoints `4d7781b` and `66c6e87` extend the same 3 system-module and 5
+containment cases without new registrations. Tests build a synthetic policy
+from the current host's four lengths and digests and derive its pin in the
+harness. This does not establish independent trust. They cover a fixed 250-byte
+golden policy and pin, authentication before parsing, strict canonical
+rejection, owned copies, exact host facts, deadlines, aggregate and wrapper pin
+retention, and retention after caller-side input wiping. Correctly re-pinned
+wrong NTDLL length and wrong Apphelp digest policies fail before
+`CreateProcessW`; the Apphelp case
+also exercises cleanup after three expected members opened. The containment
+cases continue to cover the extended AMD64 debug ABI, the exact 14-stage
 successful containment-hook sequence, all 16 injected launch stages, failure after
 each partial or full module capture, a late deadline after Apphelp capture while
 its load event remained owned, and a post-resume late deadline. They also cover
@@ -691,8 +729,8 @@ aggregate revalidation and disposal, the forced pre-entry failure exit, and
 prior containment behaviour. Baseline and final reaper assertions
 showed only that no retained or terminal reaper state remained at each
 assertion time. They do not prove that the reaper was never used. The same 3
-system-module and 5 containment cases keep the total at 110. Three consecutive
-direct Release runs pass 110/110 with no child residue.
+system-module and 5 containment cases keep the total at 110. Direct Release
+validation of `66c6e87` passes 110/110 with no child residue.
 
 No test directly terminated the parent. The initial breakpoint is not a direct
 entry sentinel. No debug-event file handle proves section, mapping, or executed-
@@ -2048,6 +2086,8 @@ fixture through atomic Job assignment and pre-user-mode debug-event image
 authentication. Checkpoint `445d02a` binds the host-observed NTDLL, KERNEL32,
 KernelBase, and Apphelp `LOAD_DLL` `hFile` values, bases, and order to four
 current System32 files before the initial first-chance breakpoint barrier.
+Checkpoint `4d7781b` authenticates the exact 250-byte `HRCOSM01` policy.
+Checkpoint `66c6e87` makes the policy and pin mandatory before process creation.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
 10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 110
 Windows bootstrap tests. Committed checkpoint `64043e5` passes 102/102.
@@ -2060,8 +2100,8 @@ because four containment cases rejected an unexpected fourth `LOAD_DLL` event
 before identity validation. A separate bounded, read-only `Process.Modules`
 probe implicated System32 `apphelp.dll`. Checkpoint `445d02a` closes the four-
 member profile, and its later debugger `hFile` checks directly bind Apphelp.
-Three consecutive direct Release runs pass 110/110 on that exact checkpoint,
-with no native-fixture child residue after any run. The
+Direct Release validation of `66c6e87` passes 110/110 with no native-fixture
+child residue. The
 Windows total is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
@@ -2184,12 +2224,14 @@ with the immediate directory pinned, the exact 14-stage successful containment-
 hook sequence, all 16 injected launch stages, and failure after each partial or full
 module capture. They also cover the full-set late deadline while the Apphelp
 event remains owned, the post-resume late deadline, aggregate revalidation and
-disposal, concurrent disposal, and the forced pre-entry failure exit. Checkpoint
-`445d02a` extends these same five cases without adding a registration. The same
-3 system-module cases keep the overall count at 110. Three consecutive direct
-Release runs pass 110/110 with no child residue. Baseline and final reaper
-assertions show only that no retained or terminal reaper state remained at each
-assertion time.
+disposal, concurrent disposal, and the forced pre-entry failure exit.
+Checkpoints `4d7781b` and `66c6e87` extend these same registered cases with
+policy authentication and mandatory composition. They cover pre-create
+rejection for correctly re-pinned wrong first-member length and fourth-member
+digest values. The same 3 system-module cases keep the overall count at 110.
+Direct Release validation of `66c6e87` passes 110/110 with no child residue.
+Baseline and final reaper assertions show only that no retained or terminal
+reaper state remained at each assertion time.
 
 Legacy harness-containment checkpoint `2a56de1` launches exactly the current
 generated apphost through `ContainedHarnessProcess` with one of two fixed
@@ -2223,9 +2265,11 @@ production roles, private handoff, role-bound `READY`, token transfer, Java or
 HRC integration, sandbox, or same-user hostile-process defence.
 
 Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Supply an out-of-band trusted OS and
-module policy; further self-baselined module enumeration cannot supply that
-trust. Keep the current containment proof separate until dedicated production
+bytes and independent pin provenance. Add independent native module-policy and
+pin issuance, protected policy selection, freshness and rollback rules, and a
+fail-closed servicing and update transaction. The synthetic current-host test
+policy and further self-baselined enumeration cannot supply that trust. Keep
+the current containment proof separate until dedicated production
 roles integrate it. Close the production namespace and complete production
 runtime-module, loader, and dependency closure before private initial name
 handoff and role-bound `READY`. Then add

@@ -288,8 +288,10 @@ synthetic framework-dependent and one-file no-CRT native `win-x64` profiles.
 An audited composite binds the native profile, retained executable bytes, and
 strict PE audit. A dedicated containment primitive launches only that exact
 synthetic fixture through atomic kill-on-close Job assignment and a pre-user-
-mode debug-event image-handle check. Every layer remains ineligible for trusted
-launch. The existing internal test-harness containment primitive remains
+mode debug-event image-handle check. The native module aggregate and audited
+launcher now require policy bytes and a pin authenticated through a standalone
+`HRCOSM01` seam. Every layer remains ineligible for trusted launch. The existing
+internal test-harness containment primitive remains
 separate. The
 broker executes all four exchanges, serialises claim and revoke, rejects an
 already-completed malformed loser, caps
@@ -315,8 +317,12 @@ fourth `LOAD_DLL` event before identity validation, so the Release result was
 System32 `apphelp.dll`. Checkpoint `445d02a` closes the host-observed profile
 over NTDLL, KERNEL32, KernelBase, and Apphelp. Its later runs directly bind the
 fourth debugger `hFile` to the current System32 `apphelp.dll`. Three consecutive
-direct Release runs pass 110/110 on that exact checkpoint, with no native-
-fixture child residue after any run. The Windows
+exact Release runs of `445d02a` each passed 110/110 and left no native-fixture
+child residue. Checkpoint
+`4d7781b` adds the standalone authenticated `HRCOSM01` policy. Checkpoint
+`66c6e87` makes that policy and its independently supplied pin mandatory for
+the aggregate and native launcher. Direct Release validation of `66c6e87`
+passes 110/110 with no native-fixture child residue. The Windows
 total is 20 primitive tests, 8 descriptor and
 protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests, 5
 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
@@ -575,6 +581,27 @@ this host/build/fixture profile over NTDLL, KERNEL32, KernelBase, and Apphelp.
 Its later runs directly bind the fourth debugger `hFile` to the current
 System32 `apphelp.dll`.
 
+Checkpoint `4d7781b` adds a fixed 250-byte, little-endian `HRCOSM01` policy.
+It contains the `SyntheticNativeFixture` profile, AMD64, Win32NT, exact Windows
+10.0 build, and the four ordered exact-case names, lengths, and SHA-256 digests.
+The domain-separated SHA-256 pin uses
+`HRC-BETA-OBSERVER-NATIVE-SYSTEM-MODULE-POLICY-PIN-V1\0`. The primitive owns
+and wipes its policy and pin copies. It authenticates before structural parsing
+and rejects unknown fields, nonzero reserved fields, wrong order, noncanonical
+names, invalid lengths, and trailing or truncated bytes. Exact host
+revalidation requires x64 process and operating-system architectures and the
+policy's exact Windows build. This supplies no trusted issuer, signature,
+freshness, rollback protection, or servicing policy.
+
+Checkpoint `66c6e87` removes policy-free aggregate and launcher creation. The
+aggregate authenticates and revalidates the policy before it reads System32.
+Each current module must match the authenticated length and SHA-256. The
+aggregate retains the validated pin. The policy and aggregate both expose
+`IsEligibleForTrustedLaunch` as `false`. The launcher requires policy and pin
+inputs, owns and wipes dedicated-thread copies, and opens the policy-bound
+aggregate before `CreateProcessW`. The wrapper, cleanup, and detached reaper
+retain the bound aggregate with the other launch authority.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continues that event. It then accepts exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -593,9 +620,10 @@ bytes, SHA-256
 and file version `10.0.26100.8457`. Two hard links were observed in System32
 and WinSxS. Authenticode was observed as valid for `Microsoft Windows`.
 Apphelp is host/build/fixture appcompat-loader policy, not a static fixture
-import. The primitive self-baselines the current System32 file. It establishes
-no signer, Microsoft, build, freshness, rollback, or appcompat-policy
-provenance.
+import. At checkpoint `445d02a`, the primitive self-baselined the current
+System32 file. Checkpoint `66c6e87` instead requires that current file to match
+the authenticated policy. Neither checkpoint establishes signer, Microsoft,
+build, freshness, rollback, or appcompat-policy provenance.
 
 The exact initial first-chance breakpoint is the startup barrier. While that
 event remains outstanding, `SuspendThread` must report prior count `0`. The
@@ -625,8 +653,16 @@ records terminal uncertainty.
 The build wrapper independently bounds the complete .NET validation process to
 180 seconds.
 
-Checkpoint `445d02a` extends the same five real containment cases; it does not
-add another registration. They now cover the extended AMD64 debug ABI, the
+Checkpoints `4d7781b` and `66c6e87` extend the same 3 system-module and 5 real
+containment cases without new registrations. They use a synthetic current-host
+test policy built from the four observed lengths and digests. Its test-derived
+pin is not independent trust. The tests cover the fixed 250-byte golden policy,
+authentication before parsing, canonical rejection, owned copies, exact host
+facts, deadlines, aggregate and wrapper pin retention, and retention after
+caller-side input wiping. Correctly re-pinned policies with a wrong NTDLL
+length or wrong Apphelp digest fail before `CreateProcessW`; the Apphelp case
+also exercises cleanup after three members opened. The containment cases
+continue to cover the extended AMD64 debug ABI, the
 exact 14-stage successful containment-hook sequence, all 16 injected launch stages,
 failure after each partial or full module capture, a late deadline after the
 Apphelp capture while its load event remains owned, and a post-resume late
@@ -634,8 +670,8 @@ deadline. They also cover aggregate revalidation and disposal, the forced
 pre-entry failure exit, and prior containment behaviour. Baseline and final
 reaper assertions show only that no retained or terminal reaper state remained
 at each assertion time. They do not prove that the reaper was never used. The
-3 system-module cases and same 5 containment cases keep the total at 110.
-Three consecutive direct Release runs pass 110/110 with no child residue.
+total remains 110. Direct Release validation of `66c6e87` passes 110/110 with
+no child residue.
 
 The tests do not terminate the parent abruptly. The initial breakpoint is not
 a direct entry sentinel. No debug-event file handle proves section, mapping,
@@ -646,9 +682,11 @@ launch, a production role, private handoff, role-bound `READY`, Java
 integration, or HRC runtime behaviour.
 
 Define a trusted installer or release policy that supplies canonical manifest
-bytes and independent pin provenance. Supply an out-of-band trusted OS and
-module policy; further self-baselined module enumeration cannot provide that
-trust. Close the production namespace and complete runtime-module, loader, and
+bytes and independent pin provenance. Add independent native module-policy and
+pin issuance, protected policy selection, freshness and rollback rules, and a
+fail-closed servicing and update transaction. The synthetic current-host test
+policy and further self-baselined enumeration cannot provide that trust. Close
+the production namespace and complete runtime-module, loader, and
 dependency closure before using the synthetic proof in dedicated roles. Keep
 the current containment proof separate until those roles integrate it. Complete
 that runtime loader boundary before private initial handoff and role-bound
