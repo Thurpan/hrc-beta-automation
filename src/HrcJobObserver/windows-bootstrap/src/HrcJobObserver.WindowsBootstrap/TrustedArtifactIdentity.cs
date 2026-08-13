@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Security;
 using System.Security.Cryptography;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace HrcJobObserver.WindowsBootstrap;
@@ -22,6 +23,37 @@ internal static class TrustedArtifactIdentity
         long expectedLength,
         ReadOnlySpan<byte> expectedSha256)
     {
+        return OpenCore(
+            exactPath,
+            expectedLength,
+            expectedSha256,
+            deadline: null,
+            CancellationToken.None);
+    }
+
+    internal static TrustedArtifactLease Open(
+        string exactPath,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        return OpenCore(
+            exactPath,
+            expectedLength,
+            expectedSha256,
+            deadline,
+            cancellationToken);
+    }
+
+    private static TrustedArtifactLease OpenCore(
+        string exactPath,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256,
+        MonotonicDeadline? deadline,
+        CancellationToken cancellationToken)
+    {
+        CheckOperation(deadline, cancellationToken);
         if (expectedLength < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(expectedLength));
@@ -39,15 +71,25 @@ internal static class TrustedArtifactIdentity
         byte[]? actualDigest = null;
         try
         {
+            CheckOperation(deadline, cancellationToken);
             RequireNoReparseAncestors(path);
+            CheckOperation(deadline, cancellationToken);
             file = OpenRetained(path);
+            CheckOperation(deadline, cancellationToken);
             ArtifactMetadata initial = ValidateMetadata(file, path);
             RequireExpectedLength(initial, expectedLength);
 
-            actualDigest = HashExact(file, expectedLength);
+            actualDigest = HashExact(
+                file,
+                expectedLength,
+                deadline,
+                cancellationToken);
+            CheckOperation(deadline, cancellationToken);
             ArtifactMetadata final = ValidateMetadata(file, path);
             RequireUnchanged(initial, final, expectedLength);
+            CheckOperation(deadline, cancellationToken);
             RequireNoReparseAncestors(path);
+            CheckOperation(deadline, cancellationToken);
 
             if (!CryptographicOperations.FixedTimeEquals(
                     actualDigest,
@@ -84,6 +126,45 @@ internal static class TrustedArtifactIdentity
         ReadOnlySpan<byte> expectedSha256,
         TrustedArtifactFileIdentity expectedIdentity)
     {
+        RevalidateCore(
+            retained,
+            exactPath,
+            expectedLength,
+            expectedSha256,
+            expectedIdentity,
+            deadline: null,
+            CancellationToken.None);
+    }
+
+    internal static void Revalidate(
+        SafeFileHandle retained,
+        string exactPath,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256,
+        TrustedArtifactFileIdentity expectedIdentity,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        RevalidateCore(
+            retained,
+            exactPath,
+            expectedLength,
+            expectedSha256,
+            expectedIdentity,
+            deadline,
+            cancellationToken);
+    }
+
+    private static void RevalidateCore(
+        SafeFileHandle retained,
+        string exactPath,
+        long expectedLength,
+        ReadOnlySpan<byte> expectedSha256,
+        TrustedArtifactFileIdentity expectedIdentity,
+        MonotonicDeadline? deadline,
+        CancellationToken cancellationToken)
+    {
+        CheckOperation(deadline, cancellationToken);
         ArgumentNullException.ThrowIfNull(retained);
         if (retained.IsClosed || retained.IsInvalid)
         {
@@ -99,8 +180,11 @@ internal static class TrustedArtifactIdentity
             "The retained trusted artifact identity changed.");
         RequireExpectedLength(retainedBefore, expectedLength);
 
+        CheckOperation(deadline, cancellationToken);
         RequireNoReparseAncestors(exactPath);
+        CheckOperation(deadline, cancellationToken);
         using SafeFileHandle current = OpenRetained(exactPath);
+        CheckOperation(deadline, cancellationToken);
         ArtifactMetadata currentBefore = ValidateMetadata(current, exactPath);
         RequireIdentity(
             expectedIdentity,
@@ -108,16 +192,23 @@ internal static class TrustedArtifactIdentity
             "The trusted artifact path no longer names the retained file.");
         RequireExpectedLength(currentBefore, expectedLength);
 
-        byte[] digest = HashExact(current, expectedLength);
+        byte[] digest = HashExact(
+            current,
+            expectedLength,
+            deadline,
+            cancellationToken);
         try
         {
+            CheckOperation(deadline, cancellationToken);
             ArtifactMetadata currentAfter = ValidateMetadata(current, exactPath);
             RequireUnchanged(currentBefore, currentAfter, expectedLength);
             RequireIdentity(
                 expectedIdentity,
                 currentAfter.Identity,
                 "The trusted artifact path identity changed during revalidation.");
+            CheckOperation(deadline, cancellationToken);
             RequireNoReparseAncestors(exactPath);
+            CheckOperation(deadline, cancellationToken);
             if (!CryptographicOperations.FixedTimeEquals(
                     digest,
                     expectedSha256))
@@ -469,7 +560,11 @@ internal static class TrustedArtifactIdentity
         }
     }
 
-    private static byte[] HashExact(SafeFileHandle file, long expectedLength)
+    private static byte[] HashExact(
+        SafeFileHandle file,
+        long expectedLength,
+        MonotonicDeadline? deadline,
+        CancellationToken cancellationToken)
     {
         const int BufferLength = 64 * 1024;
         byte[] buffer = new byte[BufferLength];
@@ -480,6 +575,7 @@ internal static class TrustedArtifactIdentity
             long offset = 0;
             while (offset < expectedLength)
             {
+                CheckOperation(deadline, cancellationToken);
                 int requested = checked((int)Math.Min(
                     buffer.Length,
                     expectedLength - offset));
@@ -495,8 +591,10 @@ internal static class TrustedArtifactIdentity
 
                 hash.AppendData(buffer, 0, read);
                 offset += read;
+                CheckOperation(deadline, cancellationToken);
             }
 
+            CheckOperation(deadline, cancellationToken);
             Span<byte> trailing = stackalloc byte[1];
             if (RandomAccess.Read(file, trailing, expectedLength) != 0)
             {
@@ -504,11 +602,23 @@ internal static class TrustedArtifactIdentity
                     "The trusted artifact exceeded its expected length.");
             }
 
+            CheckOperation(deadline, cancellationToken);
             return hash.GetHashAndReset();
         }
         finally
         {
             CryptographicOperations.ZeroMemory(buffer);
+        }
+    }
+
+    private static void CheckOperation(
+        MonotonicDeadline? deadline,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (deadline is MonotonicDeadline activeDeadline)
+        {
+            _ = activeDeadline.GetRemaining();
         }
     }
 
@@ -619,6 +729,25 @@ internal sealed class TrustedArtifactLease : IDisposable
                 Length,
                 sha256Digest,
                 Identity);
+        }
+    }
+
+
+    internal void RevalidateCurrentPath(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            TrustedArtifactIdentity.Revalidate(
+                handle,
+                Path,
+                Length,
+                sha256Digest,
+                Identity,
+                deadline,
+                cancellationToken);
         }
     }
 

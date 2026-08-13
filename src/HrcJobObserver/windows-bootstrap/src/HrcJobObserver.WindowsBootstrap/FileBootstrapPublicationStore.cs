@@ -528,6 +528,11 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         testHook?.Invoke(stage);
     }
 
+    internal void RevalidateDirectory()
+    {
+        RequireDirectoryUnchanged();
+    }
+
     internal SafeFileHandle? TryCreateTemp(string name)
     {
         RequireDirectoryUnchanged();
