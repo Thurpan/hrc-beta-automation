@@ -287,7 +287,10 @@ directory snapshot. An out-of-band pinned release-manifest seam binds one
 canonical synthetic framework-dependent `win-x64` policy manifest to that exact
 set. It remains ineligible for trusted launch. An internal test-harness-only
 containment primitive atomically assigns the current generated harness apphost
-to an unnamed kill-on-close Job Object before its initial thread runs. The
+to an unnamed kill-on-close Job Object before its initial thread runs. A
+separate no-CRT native fixture now supplies reproducible, structurally audited
+PE and closed-environment runtime evidence. It is not connected to the pinned
+release manifest or containment primitive. The
 broker executes all four exchanges, serialises claim and revoke, rejects an
 already-completed malformed loser, caps
 the publication budget by the remaining absolute session deadline, and wipes
@@ -299,12 +302,14 @@ unknown removal cannot claim absence. Removal verified only after its deadline
 still fails the session before terminal acknowledgement. The deadline checks
 are cooperative and do not hard-preempt an arbitrary blocking native call. The
 current suites pass 30 core tests, 34 adapter tests, 25 transport tests, 10
-joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 88 Windows
+joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 95 Windows
 bootstrap tests. The Windows total is
 20 primitive tests, 8 descriptor and protocol tests, 27 broker and
 in-memory-store tests, 11 filesystem tests, 5 single-file artefact-identity
-tests, 6 protected app-local artefact-set tests, 6 pinned release-manifest tests,
-and 5 containment tests. The start-level fixture passes 12/12 prerequisite
+tests, 6 protected app-local artefact-set tests, 6 pinned release-manifest
+tests, 7 native-fixture tests, and 5 containment tests. The start-level fixture
+passes
+12/12 prerequisite
 tests, 18/18 recorded-row tests, and 9/9 observer-failure tests.
 
 The transport implements bounded protocol version `1`, validates cursor-bound
@@ -322,13 +327,13 @@ baseline scans, startup callback admission, rollback, and ordered shutdown. Its 
 activator remains deliberately disabled. The project still does not implement
 Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 and provenance, stale or crash recovery, secure initial pipe-name delivery,
-dedicated production observer, broker, and controller executables, an
+dedicated production observer, broker, and controller executables, a
 trusted installer or release policy that independently supplies canonical
 manifest bytes and pin provenance for each complete production artefact set,
-shared .NET runtime selection, artefact-to-loader atomicity, production-role
-containment integration, a direct abrupt-parent-death containment test, an
-activatable manifest, controller ownership, Java-to-Windows integration, or
-persistence across restart.
+native release-manifest and retained-handle PE-audit binding, atomic native
+Job containment and runtime evidence, a direct abrupt-parent-death containment
+test, an activatable manifest, controller ownership, Java-to-Windows
+integration, or persistence across restart.
 The offline adapter, runtime, and lifecycle builds read and hash public provider
 JARs from the HRC installation. A separate read-only inspection supplied the
 configuration facts to the in-memory planner. None of these layers has
@@ -470,13 +475,51 @@ Java or HRC integration, sandbox, or same-user hostile-process defence. The
 protected artefact-set root still permits new child creation and remains a
 snapshot and detection control only.
 
-Next, investigate a dedicated native test-only fixture with `System32` loader
-closure, or an equivalent loader-closure design. Use it to close the protected
-application namespace, shared-runtime selection, and loader-integrity gaps.
-Define a trusted installer or release policy that supplies the canonical
-manifest bytes and independent pin provenance. Keep the containment proof
-separate until dedicated production roles integrate it. Complete these
-boundaries before private initial name handoff and role-bound `READY`.
+Checkpoint `fb9ba23` adds a project-owned no-CRT AMD64 PE fixture. Its only
+imports are `GetCommandLineW`, `ExitProcess`, and `Sleep` from `KERNEL32.dll`.
+The source defines `--native-exit`, `--native-block`, and an invalid-argument
+exit code of `87`. Its exact 510-byte neutral-language embedded Windows
+manifest declares one `amd64` `win32` identity, `asInvoker`, and
+`uiAccess=false`. It declares no dependent assembly or file.
+
+The build invokes the recorded MSVC `14.44.35207` and Windows SDK
+`10.0.26100.0` paths with a cleared environment. It uses separate temporary and
+output directories for two builds and requires their 4,096-byte executables to
+be byte-identical. The PE uses subsystem version `6.02` and
+`DependentLoadFlags=0x0800`. That load flag requires Windows 10 RS1 or later,
+so the subsystem value does not lower the effective runtime floor below RS1.
+
+The strict structural audit authenticates the caller-supplied file SHA-256
+before parsing. It then requires the exact PE32+ headers, four fixed sections,
+data directories, import descriptor, matching import lookup and address slots,
+load configuration, three debug records, neutral manifest resource, exception
+record, checksum, contiguous raw layout, and absence of certificates,
+relocations, gaps, and overlays. The observed pinned-host golden SHA-256 is
+`3c9bee49acfffaea7f3fae2692900b47eef0e41e61e4ae7b14e2b1884a05fe34`.
+This is exact checkpoint evidence, not toolchain or signer provenance or a
+cross-machine rebuild guarantee.
+
+The bounded runtime test launches Exit and the invalid argument with a cleared
+five-variable environment, no shell, and no redirected standard handles. It
+confirms exit codes `0` and `87` and performs bounded kill-and-wait cleanup on a
+timeout. The source-defined Block role is not launched before native Job
+containment exists. The structural audit does not prove machine-code semantics.
+The fixture has no Control Flow Guard instrumentation, and `/CETCOMPAT` does
+not prove Control-flow Enforcement Technology enforcement. The evidence does
+not prove System32 or KnownDLL trust, toolchain or signer provenance, or
+cross-machine reproducibility.
+
+The embedded Windows manifest is not a native `HRCREL01` release-manifest
+binding. The fixture remains ineligible for trusted launch and has no native
+Job containment, production role, private handoff, Java integration, or HRC
+runtime evidence. Next, add an explicit native synthetic release-manifest
+profile. Bind it to the retained native file identity and strict PE audit, then
+integrate atomic Job assignment and bounded runtime evidence. Keep this gate
+before private initial name handoff and role-bound `READY`.
+
+Define a trusted installer or release policy that supplies canonical manifest
+bytes and independent pin provenance. Keep the current containment proof
+separate until dedicated production roles integrate it.
 Then add guarded Windows known-folder resolution, protected LocalAppData
 hierarchy provisioning and provenance, and stale or crash recovery around the
 existing-directory seam. Do not connect this seam to Java or open the

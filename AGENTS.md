@@ -151,12 +151,13 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 88/88
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 95/95
   harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
   broker and in-memory-store tests, 11 filesystem tests, 5 single-file artefact-
   identity tests, 6 protected app-local artefact-set tests, 6 pinned release-
-  manifest tests, and 5 containment tests. It proves exact applied protected-
-  DACL read-back, two-sided process identity, bounded one-shot frames, fixed
+  manifest tests, 7 native-fixture tests, and 5 containment tests. It proves
+  exact applied protected-DACL read-back, two-sided process identity, bounded
+  one-shot frames, fixed
   public-frame exchange with a synthetic child, rejection of a wrong live
   child, a canonical HMAC-bound descriptor model, and eight phase- and role-
   bound message codecs. It also proves a capacity-one asynchronous in-memory
@@ -284,6 +285,37 @@ unexpected source or target difference.
   trust integration, release provenance, shared-runtime or loader trust,
   production roles, private handoff, role-bound `READY`, token transfer, Java
   integration, HRC integration, sandbox, or same-user hostile-process defence.
+  Checkpoint `fb9ba23` adds a project-owned, test-only AMD64 PE fixture with no
+  C runtime. It imports exactly `GetCommandLineW`, `ExitProcess`, and `Sleep`
+  from `KERNEL32.dll`. Its exact embedded neutral-language Windows manifest
+  declares one `amd64` `win32` identity and `asInvoker` with `uiAccess=false`.
+  It declares no dependent assembly or file. The build uses the recorded MSVC
+  `14.44.35207` and Windows SDK `10.0.26100.0` paths in a cleared environment,
+  gives each of two builds a separate temporary directory, and requires their
+  4,096-byte outputs to be byte-identical. The PE records subsystem version
+  `6.02`. `DependentLoadFlags=0x0800` requires Windows 10 RS1 or later, so
+  `6.02` is not the effective runtime floor for this fixture.
+  The strict structural audit authenticates a caller-supplied SHA-256 before
+  parsing. On this pinned host, the observed golden SHA-256 is
+  `3c9bee49acfffaea7f3fae2692900b47eef0e41e61e4ae7b14e2b1884a05fe34`.
+  Treat that value as exact checkpoint evidence only. It is not signer or
+  toolchain provenance and does not guarantee a cross-machine rebuild.
+  The audit requires the exact PE32+ headers, four non-writable-executable
+  sections, complete directory table, import descriptor and matching lookup
+  and address slots, load configuration, debug records, neutral manifest
+  resource, exception record, checksum, contiguous raw layout, and no
+  certificate, relocation, gap, or overlay. The fixture defines fixed
+  `--native-exit` and `--native-block` arguments; any other argument exits with
+  code `87`. Bounded closed-environment runtime checks exercise Exit and the
+  invalid-argument result. They do not launch Block before native Job
+  containment exists.
+  The embedded Windows manifest is not a native `HRCREL01` release-manifest
+  binding. This fixture is ineligible for trusted launch. The evidence supplies
+  no retained-handle PE-audit binding, native Job containment, machine-code
+  proof, Control Flow Guard instrumentation, Control-flow Enforcement
+  Technology enforcement, toolchain or signer provenance, System32 or KnownDLL
+  trust proof, production role, private handoff, Java integration, or HRC
+  runtime evidence.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
@@ -297,10 +329,12 @@ unexpected source or target difference.
   provisioning and provenance, stale and crash recovery, and Java lifecycle
   integration are implemented and validated. Keep the atomic containment proof
   as a separate boundary until dedicated production roles integrate it. Resolve
-  trusted installer policy and pin provenance, application namespace, shared-
-  runtime, and loader trust before the private handoff and `READY` boundary.
-  Investigate a dedicated native test-only fixture with `System32` loader
-  closure, or an equivalent loader-closure design, before that handoff.
+  trusted installer policy and pin provenance, application namespace, runtime,
+  and loader trust before the private handoff and `READY` boundary. Extend the
+  release-manifest policy with an explicit native synthetic profile. Bind the
+  authenticated native image to its retained file identity and strict PE audit,
+  then integrate atomic Job assignment and bounded runtime evidence. Complete
+  that gate before private handoff or role-bound `READY` work.
   The existing-directory seam, in-memory store, and synthetic broker do not
   prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the

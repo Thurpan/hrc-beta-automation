@@ -287,11 +287,13 @@ tests, 11 filesystem tests, and 5 artefact-identity tests.
 Checkpoint `c38bf29` adds the protected app-local artefact-set primitive and
 passes 77/77 tests. Checkpoint `2a56de1` adds test-harness-only atomic Job Object
 containment and passes 82/82 tests. Checkpoint `d4cd474` adds the out-of-band
-pinned release-manifest seam and passes 88/88 tests. The current total is 20
-primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
+pinned release-manifest seam and passes 88/88 tests. Checkpoint `fb9ba23` adds
+the no-CRT native fixture and strict structural PE audit and passes 95/95 tests.
+The current total is 20 primitive tests, 8 descriptor and protocol tests, 27
+broker and in-memory-store
 tests, 11 filesystem tests, 5 single-file artefact-identity tests, 6 protected
-app-local artefact-set tests, 6 pinned release-manifest tests, and 5 containment
-tests.
+app-local artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture
+tests, and 5 containment tests.
 None of these builds installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -491,6 +493,69 @@ shared-runtime or loader trust, production roles, private handoff, role-bound
 `READY`, token transfer, Java or HRC integration, sandbox, or same-user hostile-
 process defence. The protected artefact-set root still permits new child
 creation. It remains a snapshot and detection control only.
+
+Seven native-fixture cases at checkpoint `fb9ba23` use only project-owned
+source and generated files. The build produced a 4,096-byte AMD64 PE twice in
+separate output and temporary directories. The two files were byte-identical.
+The build invoked the recorded MSVC `14.44.35207` and Windows SDK
+`10.0.26100.0` paths in a cleared environment. It supplied only `SystemRoot`,
+`WINDIR`, a closed tool `PATH`, and build-local `TEMP` and `TMP`. Native tool
+execution and cleanup were bounded. LF line endings were pinned for the C, RC,
+and manifest inputs.
+
+The C source uses no header or C runtime. The resulting image imports exactly
+`GetCommandLineW`, `ExitProcess`, and `Sleep` from `KERNEL32.dll`. It defines
+`--native-exit`, `--native-block`, and an invalid-argument result of `87`. Its
+exact 510-byte neutral-language embedded Windows manifest declares one
+`amd64` `win32` identity named `HrcBetaAutomation.NativeFixture`, version
+`1.0.0.0`. It requests `asInvoker` with `uiAccess=false` and declares no
+dependent assembly or file.
+
+The linker used `/NODEFAULTLIB`, an explicit entry point, `/Brepro`,
+`/CETCOMPAT`, and `/DEPENDENTLOADFLAG:0x800`. The PE header records Windows GUI
+subsystem version `6.02`. `DependentLoadFlags` is supported only from Windows
+10 RS1. The subsystem field therefore does not lower this fixture's effective
+runtime floor below RS1. The licensed Windows 11 host satisfies that condition;
+no other machine was tested.
+
+`NativeFixturePeAudit` authenticated the caller-supplied image SHA-256 before
+structural parsing. The observed pinned-host golden SHA-256 was
+`3c9bee49acfffaea7f3fae2692900b47eef0e41e61e4ae7b14e2b1884a05fe34`.
+The exact REPRO identity was
+`3ba123e6d4167f80d4f2e48f9e4eb33f2e58547e66f7ac1ac9da2692de334c5b`.
+These are exact observations for checkpoint `fb9ba23` on this host. They are
+not signer or toolchain provenance and do not guarantee an identical rebuild
+on another machine.
+
+The strict audit required PE32+ AMD64 headers and exact `.text`, `.rdata`,
+`.pdata`, and `.rsrc` sections. It rejected a writable-executable section. It
+required every data-directory entry; exact `KERNEL32.dll` descriptor, names,
+hints, and matching import lookup and address slots; and no ordinal import. The
+0x148-byte load configuration contained only
+`DependentLoadFlags=0x0800`; `GuardFlags` and all other audited fields were
+zero. The audit required exact COFFGRP, REPRO, and extended-DLL-
+characteristics debug records, the neutral manifest resource and bytes, the
+exception and unwind record, and a valid PE checksum. Raw section ranges were
+contiguous through end of file. The certificate and base-relocation directories
+were empty, and no raw gap or overlay was present.
+
+The bounded runtime case launched Exit and an invalid argument with no shell or
+redirected standard handles. Its environment contained only `SystemRoot`,
+`WINDIR`, a System32-only `PATH`, and build-local `TEMP` and `TMP`. Exit
+returned `0`; the invalid argument returned `87`. Timeout cleanup killed the
+retained exact process and waited for it under a separate bound. The source-
+defined Block role was not launched because native Job containment is not
+integrated.
+
+The embedded Windows manifest is not a native `HRCREL01` release-manifest
+binding. The structural audit does not prove machine-code semantics. The image
+has no Control Flow Guard instrumentation. `/CETCOMPAT` is present but does not
+prove Control-flow Enforcement Technology enforcement. The build records tool
+paths but does not prove toolchain or signer provenance. The import and load-
+policy checks do not prove System32 or KnownDLL trust. No retained file lease is
+bound to the PE audit, and no native fixture launch uses the atomic containment
+primitive. The fixture is ineligible for trusted launch and supplies no
+production role, private handoff, Java integration, or HRC runtime evidence.
 
 The one-shot broker runs in the main harness process. Long-lived synthetic
 observer and controller child modes run in two child processes. All three roles
@@ -1830,15 +1895,17 @@ an asynchronous in-memory publisher, a guarded existing-directory file seam,
 an independent file reader, a protected app-local artefact-set primitive, and a
 synthetic broker under `src/HrcJobObserver/`. The Windows module also contains
 an out-of-band pinned release-manifest seam and a test-harness-only atomic Job
-Object containment primitive.
+Object containment primitive. A separate no-CRT native fixture supplies
+reproducible, structurally audited PE evidence and bounded Exit and invalid-
+argument runtime evidence.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 88
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 95
 Windows bootstrap tests. The Windows total is 20 primitive tests, 8 descriptor
 and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
 5 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
-6 pinned release-manifest tests, and 5 containment tests. The start-level
-fixture passes 12/12 prerequisite, 18/18 recorded-row, and 9/9 observer-failure
-tests. The assembly
+6 pinned release-manifest tests, 7 native-fixture tests, and 5 containment
+tests. The start-level fixture passes 12/12 prerequisite, 18/18 recorded-row,
+and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1971,17 +2038,17 @@ integration, trusted release provenance, shared-runtime or loader trust,
 production roles, private handoff, role-bound `READY`, token transfer, Java or
 HRC integration, sandbox, or same-user hostile-process defence.
 
-Next, investigate a dedicated native test-only fixture with `System32` loader
-closure, or an equivalent loader-closure design. Resolve the protected
-application namespace, shared-runtime selection, and loader-integrity gaps.
-Define a trusted installer or release policy that supplies the canonical
-manifest bytes and independent pin provenance. Keep containment separate until
-dedicated production roles integrate it. Complete these boundaries before
-private initial name handoff and role-bound `READY`. Then add guarded Windows
-known-folder resolution, protected LocalAppData hierarchy provisioning and
-provenance, and stale or crash recovery around the existing-directory seam. Do
-not integrate this seam with Java or open the standalone-runner gate until those
-boundaries pass.
+Next, add an explicit native synthetic profile to the release-manifest policy.
+Bind the authenticated native image to its retained file identity and strict PE
+audit. Then integrate atomic Job assignment and bounded native runtime evidence.
+Define a trusted installer or release policy that supplies canonical manifest
+bytes and independent pin provenance. Keep the current containment proof
+separate until dedicated production roles integrate it. Complete this gate
+before private initial name handoff and role-bound `READY`. Then add guarded
+Windows known-folder resolution, protected LocalAppData hierarchy provisioning
+and provenance, and stale or crash recovery around the existing-directory
+seam. Do not integrate this seam with Java or open the standalone-runner gate
+until those boundaries pass.
 
 Before creating an installable Bundle, enforce the exact clean-launch
 configuration, provider rows, provider hashes, Job-class hashes, and normal
