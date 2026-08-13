@@ -188,8 +188,15 @@ internal static partial class Program
             {
                 using (entered)
                 {
-                    Assert(entered.WaitOne(0),
-                        "the contained entry event must be signalled");
+                    TimeSpan remaining = deadline.GetRemaining();
+                    if (!entered.WaitOne(remaining))
+                    {
+                        throw new TimeoutException(
+                            "The contained entry event was not signalled " +
+                            "before its deadline.");
+                    }
+
+                    _ = deadline.GetRemaining();
                     return;
                 }
             }
