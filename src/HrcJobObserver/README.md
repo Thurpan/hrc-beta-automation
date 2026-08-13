@@ -247,12 +247,17 @@ for 82/82. Checkpoint `d4cd474` added 6 pinned release-manifest tests for 88/88.
 Checkpoint `fb9ba23` added 7 native-fixture tests for 95/95. Checkpoint
 `64043e5` added 7 audited native-release binding tests for 102/102. Committed
 checkpoint `70e0d77` adds 5 audited native-containment cases and passes
-107/107. The current split is 20 primitive tests, 8
+107/107. Committed checkpoint `2512c6a` extends those 5 cases with real startup
+module-load evidence. Follow-up checkpoint `cc77b9b` closes the failed-launch
+pre-entry cleanup window. Release validation passes 110/110 on the exact
+`cc77b9b` snapshot, with no native-fixture child left running. The current
+split is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
 artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture tests, 7
-audited native-release binding tests, 5 harness-containment tests, and 5
-audited native-containment tests. The broker and in-memory-store tests cover
+audited native-release binding tests, 5 harness-containment tests, 3 native
+system-module identity tests, and 5 audited native-containment tests. The
+broker and in-memory-store tests cover
 asynchronous publication,
 store-affine coalesced removal, cross-store and ABA defence, exact role context,
 all four cross-process exchanges, and
@@ -429,10 +434,33 @@ retained.
 `CREATE_PROCESS_DEBUG_EVENT` before user mode. Its direct image-file handle
 must match the retained executable's length, SHA-256, 128-bit `FILE_ID`, volume
 identity, and volume-GUID path. The process and thread handles must match the
-creation handles. `SuspendThread` must report prior count `0`. The launcher
-then continues the event, detaches, proves that no remote debugger remains,
-revalidates every identity, and requires `ResumeThread` to report prior count
-`1`.
+creation handles. That event file handle binds the main image only.
+
+Committed checkpoint `2512c6a` continues the create-process event and pumps
+real startup `LOAD_DLL` events. Every startup event must identify the exact
+created PID and initial TID. The pump admits at most 32 events. Exact initial-
+thread enforcement and the 32-event cap are fail-closed host and fixture
+compatibility policy. They are not general Windows loader contracts. Exactly
+one debugger-supplied `KERNEL32` `LOAD_DLL` file handle must match the
+contemporaneously retained native System32 `kernel32.dll`. The comparison
+covers file identity, length, volume identity, volume-GUID path, and SHA-256
+bytes. The launcher duplicates and retains the matching debug-event handle.
+
+The exact initial first-chance breakpoint is the startup barrier. While that
+event remains outstanding, `SuspendThread` must report prior count `0`. The
+launcher then continues the breakpoint, detaches, proves that no remote
+debugger remains, revalidates every retained identity, and requires
+`ResumeThread` to report prior count `1`. The expected System32 identity and
+loaded-module evidence remain retained through the wrapper and process
+lifetime. Failure cleanup and the detached process reaper also retain both
+until exact process exit when bounded cleanup cannot prove exit.
+
+Follow-up checkpoint `cc77b9b` explicitly calls `TerminateJobObject` with the
+unique nonzero failed-launch code `0xE0435243` for every post-creation failed
+launch. It then closes the last Job handle before it continues any outstanding
+debug event. The `AfterInitialBreakpointOwned` fault uses the Exit role and
+observes that exact forced code instead of its natural exit code `0`. This
+directly closes the former pre-entry cleanup window.
 
 The full debug transaction runs on a fresh dedicated operating-system thread
 with `ExecutionContext` flow suppressed. The caller joins it non-abandonably.
@@ -444,17 +472,22 @@ authority remains until the exact handle signals. If
 records terminal uncertainty. The build wrapper places a separate 180-second
 outer watchdog around the .NET validation process.
 
-The five cases cover the platform and AMD64 ABI gate, exact Exit result `0`,
-the blocking role and immediate directory pin through explicit Job close, all 9
-injected launch stages, a late post-resume deadline, and coalesced concurrent
-disposal.
-They do not directly terminate the parent. The debug event is not a direct
-entry sentinel. Its file handle is not kernel section-object identity. The
-application directory still permits new children. A new-child ABA is harmless
-only for this exact one-file fixture with no app-local dependency; it is not a
-general loader-closure result. The checkpoint supplies no System32 or KnownDLL
-module-identity proof, trusted manifest-pin provenance, production role,
-private handoff, role-bound `READY`, Java integration, or HRC runtime evidence.
+Checkpoint `2512c6a` extends the existing five cases; it adds no sixth
+containment case. They now cover the extended AMD64 debug ABI, exact startup
+order, all 13 injected launch stages, pre-resume and post-resume late deadlines,
+retained evidence revalidation, the forced pre-entry failure exit, and the
+prior containment and disposal behaviour. Baseline and final reaper assertions
+show only that no retained or terminal reaper state remained at each assertion
+time. They do not prove that the reaper was never used. The overall Release
+result remains 110/110.
+
+They do not directly terminate the parent. The initial breakpoint is not a
+direct entry sentinel. Neither debug-event file handle proves section, mapping,
+or executed-page identity. The evidence proves no KnownDLL, Microsoft, or
+signer provenance, no global System32 namespace closure, and no general loader
+or dependency closure. It does not establish trusted or production launch, a
+production role, private handoff, role-bound `READY`, Java integration, or HRC
+runtime evidence.
 
 The isolated Equinox fixture passes 12/12 prerequisite-scenario tests, 18/18
 recorded-row-scenario tests, and 9/9 observer-failure-scenario tests. It uses
@@ -482,8 +515,9 @@ provisioning and provenance, stale and crash recovery, production descriptor
 persistence, secure initial pipe-name delivery, dedicated production bootstrap
 executables, a trusted installer or release policy that supplies canonical
 manifest bytes and independent pin provenance for each complete production
-artefact set, trusted pin provenance, production namespace and module identity,
-a direct abrupt-parent-death containment test, private handoff, role-bound
+artefact set, trusted pin provenance, production namespace, complete runtime-
+module and dependency closure, a direct abrupt-parent-death containment test,
+private handoff, role-bound
 `READY`, Java-to-Windows integration, packaging, startup, installation,
 rollback, safe final shutdown, runtime correlation, and every standalone-runner
 operation.
@@ -493,5 +527,6 @@ or a different HRC startup route.
 Define a trusted installer or release policy that supplies canonical manifest
 bytes and independent pin provenance. Keep the current containment proof
 separate until dedicated production roles integrate it. Close the production
-namespace, runtime-module identity, private handoff, and role-bound `READY`
-gates before any Java or HRC integration.
+namespace and complete production runtime-module, loader, and dependency
+closure before private handoff and role-bound `READY`. Pass those gates before
+any Java or HRC integration.

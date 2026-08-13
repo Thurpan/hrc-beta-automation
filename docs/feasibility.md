@@ -291,12 +291,16 @@ pinned release-manifest seam and passes 88/88 tests. Checkpoint `fb9ba23` adds
 the no-CRT native fixture and strict structural PE audit and passes 95/95 tests.
 Checkpoint `64043e5` adds the audited native-release binding and passes 102/102
 tests. Committed checkpoint `70e0d77` adds 5 audited native-containment cases
-and passes 107/107. The current total is 20
+and passes 107/107. Committed checkpoint `2512c6a` extends those 5 cases with
+real startup module-load evidence. Follow-up checkpoint `cc77b9b` closes the
+failed-launch pre-entry cleanup window. Release validation passes 110/110 on
+the exact `cc77b9b` snapshot, with no native-fixture child left running. The
+current total is 20
 primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
 tests, 11 filesystem tests, 5 single-file artefact-identity tests, 6 protected
 app-local artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture
 tests, 7 audited native-release binding tests, 5 harness-containment tests, and
-5 audited native-containment tests.
+3 native system-module identity tests and 5 audited native-containment tests.
 None of these builds installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -607,10 +611,35 @@ creation handles. It authenticated the event's direct image-file handle by
 exact length, SHA-256, volume serial number, 128-bit `FILE_ID`, and volume-GUID
 path against the retained executable.
 
-The initial `SuspendThread` returned prior count `0`. The launcher continued
-the event, detached, confirmed that no remote debugger remained, revalidated
-the exact set and namespace, and required the final `ResumeThread` to return
-prior count `1`. It performed one final deadline check after resume.
+The create-process event's direct image-file handle binds the main image only.
+Committed checkpoint `2512c6a` continued that event and pumped real startup
+`LOAD_DLL` events. Every event used the exact created PID and initial TID. The
+launcher admitted at most 32 startup events. Exact initial-thread enforcement
+and the 32-event cap are fail-closed host and fixture compatibility policy.
+They are not general Windows loader contracts.
+
+Exactly one debugger-supplied `KERNEL32` `LOAD_DLL` file handle matched the
+contemporaneously retained native System32 `kernel32.dll`. The comparison
+covered file identity, length, volume identity, volume-GUID path, and SHA-256
+bytes. The launcher duplicated and retained that matching debug-event handle.
+The exact initial first-chance breakpoint supplied the startup barrier. While
+that event remained outstanding, `SuspendThread` returned prior count `0`.
+The launcher continued the breakpoint, detached, confirmed that no remote
+debugger remained, revalidated every retained identity, and required the final
+`ResumeThread` to return prior count `1`. It performed one final deadline check
+after resume.
+
+The expected System32 identity and loaded-module evidence remained retained
+through the wrapper and process lifetime. Failure cleanup and the detached
+process reaper also retain both until exact process exit when bounded cleanup
+cannot prove exit.
+
+Follow-up checkpoint `cc77b9b` explicitly calls `TerminateJobObject` with the
+unique nonzero failed-launch code `0xE0435243` for every post-creation failed
+launch. It then closes the last Job handle before it continues any outstanding
+debug event. The `AfterInitialBreakpointOwned` fault used the Exit role and
+observed that exact forced code instead of its natural exit code `0`. This
+directly proved that the former pre-entry cleanup window was closed.
 
 The create, debug, detach, and initial-resume transaction ran on a fresh
 dedicated operating-system thread with `ExecutionContext` flow suppressed.
@@ -623,15 +652,20 @@ handle signals. If `WaitForSingleObject` fails, the reaper retains that
 authority indefinitely and records terminal uncertainty. The build wrapper
 applied a separate 180-second watchdog to the .NET validation process.
 
-The five cases covered the platform and AMD64 ABI gate; exact Exit result `0`;
-the Block role, immediate directory pin, and explicit Job-close exit; every one
-of 9 injected launch stages; a late post-resume deadline; and concurrent
-coalesced disposal. No test directly terminated the parent. The initial debug
-event is not a direct entry sentinel. Its file handle is not kernel section-
-object identity. The application directory still permits new children. A new-
-child ABA is harmless only for this exact one-file fixture with no app-local
-dependency. It is not a general loader-closure result. The checkpoint supplies
-no System32 or KnownDLL module-identity proof, trusted manifest-pin provenance,
+Checkpoint `2512c6a` extends the existing five containment cases; it adds no
+sixth case. They now cover the extended AMD64 debug ABI, exact startup order,
+all 13 injected launch stages, pre-resume and post-resume late deadlines,
+retained evidence revalidation, the forced pre-entry failure exit, and the
+prior containment and disposal behaviour. Baseline and final reaper assertions
+showed only that no retained or terminal reaper state remained at each
+assertion time. They do not prove that the reaper was never used. Release
+validation passes 110/110.
+
+No test directly terminated the parent. The initial breakpoint is not a direct
+entry sentinel. Neither debug-event file handle proves section, mapping, or
+executed-page identity. The evidence proves no KnownDLL, Microsoft, or signer
+provenance, no global System32 namespace closure, and no general loader or
+dependency closure. It does not establish trusted or production launch, a
 production role, private handoff, role-bound `READY`, Java integration, or HRC
 runtime evidence. It remains ineligible for trusted launch.
 
@@ -1978,17 +2012,24 @@ reproducible, structurally audited PE evidence. The audited native-release
 composite binds its one-file manifest profile, retained executable bytes, and
 PE audit. The dedicated containment wrapper launches only that exact synthetic
 fixture through atomic Job assignment and pre-user-mode debug-event image
-authentication.
+authentication. Checkpoint `2512c6a` also binds one real startup `KERNEL32`
+`LOAD_DLL` file handle to the contemporaneous native System32 file before the
+initial first-chance breakpoint barrier.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 107
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 110
 Windows bootstrap tests. Committed checkpoint `64043e5` passes 102/102.
 Committed checkpoint `70e0d77` adds 5 audited native-containment cases and
-passes 107/107. The Windows total is 20 primitive tests, 8
+passes 107/107. Committed checkpoint `2512c6a` extends those cases with real
+startup module-load evidence. Follow-up checkpoint `cc77b9b` closes the failed-
+launch pre-entry cleanup window. Release validation passes 110/110 on the
+exact `cc77b9b` snapshot, with no native-fixture child left running. The
+Windows total is 20 primitive tests, 8
 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
 artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture tests, 7
-audited native-release binding tests, 5 harness-containment tests, and 5
-audited native-containment tests. The start-level fixture passes 12/12
+audited native-release binding tests, 5 harness-containment tests, 3 native
+system-module identity tests, and 5 audited native-containment tests. The
+start-level fixture passes 12/12
 prerequisite, 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
@@ -2100,8 +2141,13 @@ both profile golden identities, exact retained-handle image copies, late-
 failure wiping, authenticated PE-audit binding and revalidation, and partial-
 failure cleanup. The current five audited native-containment cases cover the
 Windows and AMD64 gate, exact Exit result `0`, explicit Job-close Block cleanup
-with the immediate directory pinned, every injected launch stage, a late post-
-resume deadline, and concurrent disposal.
+with the immediate directory pinned, every injected launch stage, pre-resume
+and post-resume late deadlines, retained System32 and load-event evidence, and
+concurrent disposal. Checkpoint `2512c6a` extends these same five cases. The
+`cc77b9b` follow-up adds the forced pre-entry failure-exit proof without adding
+a case. The overall Release count remains 110/110. Baseline and final reaper
+assertions show only that no retained or terminal reaper state remained at each
+assertion time.
 
 Legacy harness-containment checkpoint `2a56de1` launches exactly the current
 generated apphost through `ContainedHarnessProcess` with one of two fixed
@@ -2137,8 +2183,9 @@ HRC integration, sandbox, or same-user hostile-process defence.
 Define a trusted installer or release policy that supplies canonical manifest
 bytes and independent pin provenance. Keep the current containment proof
 separate until dedicated production roles integrate it. Close the production
-namespace and runtime-module identity before private initial name handoff and
-role-bound `READY`. Then add guarded
+namespace and complete production runtime-module, loader, and dependency
+closure before private initial name handoff and role-bound `READY`. Then add
+guarded
 Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 and provenance, and stale or crash recovery around the existing-directory
 seam. Do not integrate this seam with Java or open the standalone-runner gate

@@ -232,14 +232,35 @@ initial `CREATE_PROCESS_DEBUG_EVENT` arrives before user mode. It requires the
 exact created PID and TID and compares the event's process and thread handles
 with the `PROCESS_INFORMATION` handles. It adopts the event's direct image-file
 handle. That handle must match the retained executable's exact length, SHA-256,
-128-bit `FILE_ID`, volume serial number, and volume-GUID path.
+128-bit `FILE_ID`, volume serial number, and volume-GUID path. This handle binds
+the main image only.
 
-The wrapper calls `SuspendThread` while the initial debug event is outstanding
-and requires prior count `0`. It then closes the event image handle, continues
-the event, detaches the debugger, and requires
+Committed checkpoint `2512c6a` closes that event handle, continues the create-
+process event, and pumps real startup `LOAD_DLL` events. Every startup event
+must identify the exact created PID and initial TID. The pump admits at most 32
+events. Exact initial-thread enforcement and the 32-event cap are fail-closed
+host and fixture compatibility policy. They are not general Windows loader
+contracts.
+
+Exactly one debugger-supplied `KERNEL32` `LOAD_DLL` file handle must match the
+contemporaneously retained native System32 `kernel32.dll`. The comparison
+covers file identity, length, volume serial number, volume-GUID path, and
+SHA-256 bytes. The wrapper duplicates and retains that matching debug-event
+handle. It rejects a second match.
+
+The exact initial first-chance breakpoint is the startup barrier. The wrapper
+calls `SuspendThread` while that event is outstanding and requires prior count
+`0`. It then continues the breakpoint, detaches the debugger, and requires
 `CheckRemoteDebuggerPresent=false`. After final identity, namespace, exact-set,
-AMD64, platform, and liveness checks, `ResumeThread` must report prior count
-`1`. A final deadline check rejects late post-resume success.
+system-module, AMD64, platform, and liveness checks, `ResumeThread` must report
+prior count `1`. A final deadline check rejects late post-resume success.
+
+Follow-up checkpoint `cc77b9b` makes every post-creation failed launch
+explicitly call `TerminateJobObject` with the unique nonzero failed-launch code
+`0xE0435243`. It then closes the last Job handle before it continues any
+outstanding debug event. The `AfterInitialBreakpointOwned` fault uses the Exit
+role and observes that exact forced code instead of its natural exit code `0`.
+This directly closes the former pre-entry cleanup window.
 
 The complete create, debug, detach, and initial-resume transaction runs on one
 fresh dedicated operating-system thread. `ExecutionContext` flow is suppressed
@@ -251,21 +272,24 @@ before it can return.
 After debugger detachment, failure and disposal close the last Job handle and
 wait for the exact retained process under a fixed five-second bound. If that
 wait cannot prove exit, `NativeFixtureProcessReaper` retains the exact process
-handle, namespace, and audited release until the exact handle signals. It does
-not use PID lookup, cancellation, a deadline, or another termination action. If
-`WaitForSingleObject` fails, the reaper retains that authority indefinitely and
+handle, namespace, audited release, expected System32 identity, and loaded-
+module evidence until the exact handle signals. It does not use PID lookup,
+cancellation, a deadline, or another termination action. The wrapper retains
+both system-module authorities through its process lifetime. If
+`WaitForSingleObject` fails, the reaper retains all authority indefinitely and
 records terminal uncertainty. The build wrapper applies a separate 180-second
 watchdog to the complete .NET validation process.
 
-This is exact synthetic fixture evidence only. The initial debug event is not
-a direct entry sentinel, and the image-file handle is not kernel section-object
-identity. The application directory still permits new child creation. A new-
-child ABA is harmless under this exact one-file fixture policy because the
-audited image has no app-local dependency. This does not generalise to another
-image or prove loader closure. No check establishes System32 or KnownDLL
-module identity. The wrapper supplies no trusted installer or manifest-pin
-provenance, production role, private handoff, role-bound `READY`, Java
-integration, or HRC runtime evidence.
+This is exact synthetic fixture evidence only. The initial breakpoint is not a
+direct entry sentinel. Neither debug-event file handle proves section, mapping,
+or executed-page identity. The evidence proves no KnownDLL, Microsoft, or
+signer provenance, no global System32 namespace closure, and no general loader
+or dependency closure. The application directory still permits new child
+creation. A new-child ABA is harmless under this exact one-file fixture policy
+because the audited image has no app-local dependency. This does not
+generalise to another image. The wrapper supplies no trusted installer or
+manifest-pin provenance, trusted or production launch, production role,
+private handoff, role-bound `READY`, Java integration, or HRC runtime evidence.
 
 `SecretBuffer` generates exactly 32 cryptographically random bytes, rejects the
 all-zero value, never converts the secret to a string, and wipes its owned
@@ -610,6 +634,14 @@ Five legacy harness-containment cases cover normal exit, explicit Job-close
 termination of a blocking child, a pre-resume fault, post-resume late-deadline
 cleanup, and coalesced concurrent disposal with exact-process exit observation.
 
+The existing five audited native-containment cases now cover the extended AMD64
+debug ABI, exact startup order, all 13 injected launch stages, pre-resume and
+post-resume late deadlines, retained evidence revalidation, the forced pre-
+entry failure exit, and the prior containment and disposal behaviour. Baseline
+and final reaper assertions show only that no retained or terminal reaper state
+remained at each assertion time. They do not prove that the reaper was never
+used.
+
 The result before containment was 77/77. Checkpoint `2a56de1` passed 82/82 after
 adding 5 legacy harness-containment tests. Checkpoint `d4cd474` passed 88/88: 20 primitive
 tests, 8 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
@@ -618,7 +650,12 @@ tests, 6 pinned release-manifest tests, and 5 containment tests. Checkpoint
 `fb9ba23` passes 95/95 after adding 7 native-fixture tests. Checkpoint
 `64043e5` passes 102/102 after adding 7 audited native-release binding tests.
 Committed checkpoint `70e0d77` passes 107/107 after adding 5 audited native-
-containment tests. This is offline
+containment tests. Committed checkpoint `2512c6a` extends those same 5 cases
+with real startup module-load evidence. Follow-up checkpoint `cc77b9b` closes
+the failed-launch pre-entry cleanup window. Release validation passes 110/110
+on the exact `cc77b9b` snapshot, with no native-fixture child left running.
+The 3 native system-module identity cases were added between `70e0d77` and
+`2512c6a`. This is offline
 Windows model, codec, primitive, publication-seam, artefact-identity, artefact-
 set, pinned-manifest, synthetic-broker, test-harness containment, and native-
 fixture evidence only.
@@ -626,8 +663,8 @@ fixture evidence only.
 Define a trusted installer or release policy that supplies canonical manifest
 bytes and independent pin provenance. Keep the existing containment proof
 separate until dedicated production roles integrate it. Close production
-namespace and runtime-module identity before private initial name handoff and
-role-bound `READY`.
+namespace and complete production runtime-module, loader, and dependency
+closure before private initial name handoff and role-bound `READY`.
 
 Still unvalidated: production observer, broker, and controller executables;
 secure pipe-name delivery; known-folder resolution; LocalAppData hierarchy
@@ -635,7 +672,8 @@ provisioning and provenance; stale and crash recovery; production descriptor
 persistence; a trusted installer or release policy that supplies canonical
 manifest bytes and independent pin provenance for each complete production
 artefact set; and production-role containment integration. Still unvalidated
-are trusted pin provenance, production namespace and runtime-module identity,
-a direct abrupt-parent-death containment test, private handoff and role-bound
+are trusted pin provenance, production namespace, complete runtime-module and
+dependency closure, a direct abrupt-parent-death containment test, private
+handoff and role-bound
 `READY`, Java integration, OSGi startup, installation, rollback, HRC runtime
 use, and every standalone-runner action.

@@ -153,13 +153,18 @@ unexpected source or target difference.
   same-user protected mechanism. Never commit, persist, log, or echo the token.
 - Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Committed
   checkpoint `64043e5` passes 102/102 tests. Committed checkpoint `70e0d77`
-  adds 5 audited native-containment cases and passes 107/107. The total
-  comprises 20 primitive tests, 8
+  adds 5 audited native-containment cases and passes 107/107. Committed
+  checkpoint `2512c6a` extends those 5 cases with real startup module-load
+  evidence. Follow-up checkpoint `cc77b9b` makes failed-launch cleanup
+  fail-closed at an outstanding startup debug event. Release validation passes
+  110/110 on the exact `cc77b9b` snapshot, with no native-fixture child left
+  running. The total comprises 20 primitive tests, 8
   descriptor and protocol tests, 27 broker and in-memory-store tests, 11
   filesystem tests, 5 single-file artefact-identity tests, 6 protected app-
   local artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture
   tests, 7 audited native-release binding tests, 5 harness-containment tests,
-  and 5 audited native-containment tests. It proves
+  3 native system-module identity tests, and 5 audited native-containment
+  tests. It proves
   exact applied protected-DACL read-back, two-sided process identity, bounded
   one-shot frames, fixed
   public-frame exchange with a synthetic child, rejection of a wrong live
@@ -351,33 +356,57 @@ unexpected source or target difference.
   DOS and volume-GUID identity. The exact executable handle remains retained.
   `DEBUG_ONLY_THIS_PROCESS` supplies the initial `CREATE_PROCESS_DEBUG_EVENT`
   before user mode. The launcher compares its process and thread handles with
-  the creation handles. It authenticates the event's direct image-file handle
+  the creation handles. It authenticates that event's direct image-file handle
   by exact length, SHA-256, 128-bit `FILE_ID`, volume identity, and volume-GUID
-  path against the retained executable.
-  The initial thread must have a prior `SuspendThread` count of `0`. The
-  launcher continues the event, detaches, requires no remaining remote
-  debugger, revalidates every retained identity, and requires the final
-  `ResumeThread` prior count to be `1`. The complete create, debug, detach, and
-  initial resume transaction runs on a fresh dedicated operating-system thread
-  with `ExecutionContext` flow suppressed. The caller joins that thread non-
-  abandonably. Failure cleanup resolves the thread-affine debug session non-
-  abandonably. After detachment, cleanup closes the final Job handle and uses
-  the exact process handle. If the bounded wait cannot prove exit, a detached
-  process reaper retains all process, namespace, and audit authority until that
-  exact handle signals. If `WaitForSingleObject` fails, that authority is
-  retained indefinitely and terminal uncertainty is recorded. The build
-  wrapper gives the validation process a separate 180-second outer watchdog.
-  Five real cases cover the Windows and AMD64 ABI gate, exact Exit result `0`,
-  the blocking role and application-directory pin through explicit Job close,
-  all 9 injected launch stages, a late post-resume deadline, and coalesced
-  concurrent disposal. The explicit Job-close result is not a direct abrupt-
-  parent-death or crash test. The debug event is not a direct entry sentinel.
-  The event file handle is not kernel section-object identity. The application
-  directory still admits new children. A new-child ABA is harmless only for
-  this exact one-file, no-app-local-dependency fixture policy; it is not a
-  general loader-closure result. There is no System32 or KnownDLL module-
-  identity proof, trusted installer or pin provenance, production role,
-  private handoff, role-bound `READY`, Java integration, or HRC evidence.
+  path against the retained executable. The event file handle binds the main
+  image only.
+  Committed checkpoint `2512c6a` pumps real startup `LOAD_DLL` events after it
+  continues the create-process event. It requires every startup event to use
+  the exact created PID and initial TID. It admits at most 32 startup events.
+  These exact-thread and event-count requirements are fail-closed host and
+  fixture compatibility policy, not general Windows loader contracts. Exactly
+  one debugger-supplied `KERNEL32` `LOAD_DLL` file handle must match the
+  contemporaneously retained native System32 `kernel32.dll` by file identity,
+  length, volume identity, volume-GUID path, and SHA-256 bytes. The launcher
+  duplicates and retains the matching debug-event handle.
+  The exact initial first-chance breakpoint is the startup barrier. While that
+  event remains outstanding, `SuspendThread` must report prior count `0`. The
+  launcher then continues the breakpoint, detaches, requires no remaining
+  remote debugger, and revalidates every retained identity. The final
+  `ResumeThread` must report prior count `1`. The expected System32 identity and
+  loaded-module evidence remain retained through the wrapper and process
+  lifetime. Failure cleanup and the detached process reaper retain them until
+  exact process exit when bounded cleanup cannot prove exit.
+  Follow-up checkpoint `cc77b9b` explicitly calls `TerminateJobObject` with the
+  unique nonzero failed-launch code `0xE0435243` for every post-creation failed
+  launch. It then closes the last Job handle before it continues any outstanding
+  debug event. The `AfterInitialBreakpointOwned` fault uses the Exit role and
+  observes that exact forced code instead of the role's natural exit code `0`.
+  This directly closes the former pre-entry cleanup window.
+  The complete create, debug, detach, and initial resume transaction runs on a
+  fresh dedicated operating-system thread with `ExecutionContext` flow
+  suppressed. The caller joins that thread non-abandonably. Failure cleanup
+  resolves the thread-affine debug session non-abandonably. After detachment,
+  cleanup closes the final Job handle and uses the exact process handle. If the
+  bounded wait cannot prove exit, a detached process reaper retains all launch
+  authority until that exact handle signals. If `WaitForSingleObject` fails,
+  that authority is retained indefinitely and terminal uncertainty is
+  recorded. The build wrapper gives the validation process a separate
+  180-second outer watchdog.
+  The existing five real cases now cover the extended AMD64 debug ABI, exact
+  startup order, all 13 injected launch stages, pre-resume and post-resume late
+  deadlines, retained evidence revalidation, the forced pre-entry failure exit,
+  and prior containment and disposal behaviour. Baseline and final reaper
+  assertions prove only that retained and terminal-failure state is unchanged
+  at each assertion point; they do not prove that the reaper was never used.
+  The total remains 110 tests. The
+  explicit Job-close result is not a direct abrupt-parent-death or crash test.
+  The initial breakpoint is not a direct entry sentinel. Neither debug-event
+  file handle proves section, mapping, or executed-page identity. The evidence
+  proves no KnownDLL, Microsoft, or signer provenance, no global System32
+  namespace closure, and no general loader or dependency closure. It does not
+  establish trusted or production launch, a production role, private handoff,
+  role-bound `READY`, Java integration, or HRC runtime evidence.
 - Treat descriptor parsing as structural validation only. After a secure token
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
@@ -391,11 +420,12 @@ unexpected source or target difference.
   provisioning and provenance, stale and crash recovery, and Java lifecycle
   integration are implemented and validated. Keep the atomic containment proof
   as a separate boundary until dedicated production roles integrate it. Resolve
-  trusted installer policy and pin provenance, production application
-  namespace, runtime-module identity, and loader trust before the private
-  handoff and `READY` boundary. Keep the audited synthetic containment proof
-  separate until dedicated production roles integrate it. Complete the
-  production gate before private handoff or role-bound `READY` work.
+  trusted installer policy and pin provenance, the production application
+  namespace, complete production runtime-module and dependency closure, and
+  loader trust before the private handoff and `READY` boundary. Keep the
+  audited synthetic containment proof separate until dedicated production
+  roles integrate it. Complete the production gate before private handoff or
+  role-bound `READY` work.
   The existing-directory seam, in-memory store, and synthetic broker do not
   prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the
