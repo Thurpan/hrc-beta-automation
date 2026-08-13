@@ -718,6 +718,157 @@ internal sealed class TrustedArtifactLease : IDisposable
         }
     }
 
+    /// <summary>
+    /// Copies the exact retained default-stream bytes under one caller-owned
+    /// operation budget. The retained identity is revalidated before and after
+    /// the read. The returned snapshot is independently hashed against the
+    /// authenticated artifact digest; every failed snapshot is wiped.
+    /// </summary>
+    internal byte[] CopyExactBytes(
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        return CopyExactBytes(
+            maximumLength,
+            deadline,
+            cancellationToken,
+            testHook: null);
+    }
+
+    /// <summary>
+    /// Test-only overload. The hook must not mutate the borrowed snapshot. A
+    /// test may retain its reference only to assert zeroing after a forced
+    /// failure; it must never use the reference after successful return.
+    /// </summary>
+    internal byte[] CopyExactBytes(
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken,
+        Action<TrustedArtifactCopyStage, byte[]>? testHook)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            if (maximumLength < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumLength));
+            }
+
+            if (Length > maximumLength || Length > int.MaxValue)
+            {
+                throw new SecurityException(
+                    "The trusted artifact exceeds the retained-copy bound.");
+            }
+
+            TrustedArtifactIdentity.Revalidate(
+                handle,
+                Path,
+                Length,
+                sha256Digest,
+                Identity,
+                deadline,
+                cancellationToken);
+            CheckOperation(deadline, cancellationToken);
+
+            byte[]? snapshot = new byte[checked((int)Length)];
+            byte[]? snapshotDigest = null;
+            try
+            {
+                testHook?.Invoke(
+                    TrustedArtifactCopyStage.SnapshotAllocated,
+                    snapshot);
+                const int CopyChunkLength = 64 * 1024;
+                int offset = 0;
+                while (offset < snapshot.Length)
+                {
+                    CheckOperation(deadline, cancellationToken);
+                    int requested = Math.Min(
+                        CopyChunkLength,
+                        snapshot.Length - offset);
+                    int read = RandomAccess.Read(
+                        handle,
+                        snapshot.AsSpan(offset, requested),
+                        offset);
+                    if (read <= 0)
+                    {
+                        throw new EndOfStreamException(
+                            "The retained trusted artifact ended before its exact length.");
+                    }
+
+                    offset = checked(offset + read);
+                    CheckOperation(deadline, cancellationToken);
+                }
+
+                testHook?.Invoke(
+                    TrustedArtifactCopyStage.SnapshotRead,
+                    snapshot);
+
+                CheckOperation(deadline, cancellationToken);
+                Span<byte> trailing = stackalloc byte[1];
+                if (RandomAccess.Read(handle, trailing, Length) != 0)
+                {
+                    throw new SecurityException(
+                        "The retained trusted artifact exceeded its exact length.");
+                }
+
+                CheckOperation(deadline, cancellationToken);
+                TrustedArtifactIdentity.Revalidate(
+                    handle,
+                    Path,
+                    Length,
+                    sha256Digest,
+                    Identity,
+                    deadline,
+                    cancellationToken);
+                CheckOperation(deadline, cancellationToken);
+                snapshotDigest = SHA256.HashData(snapshot);
+                CheckOperation(deadline, cancellationToken);
+                if (!CryptographicOperations.FixedTimeEquals(
+                        snapshotDigest,
+                        sha256Digest))
+                {
+                    throw new SecurityException(
+                        "The retained trusted-artifact snapshot digest changed.");
+                }
+
+                CheckOperation(deadline, cancellationToken);
+                testHook?.Invoke(
+                    TrustedArtifactCopyStage.BeforeReturn,
+                    snapshot);
+                ThrowIfDisposed();
+                CheckOperation(deadline, cancellationToken);
+                CryptographicOperations.ZeroMemory(snapshotDigest);
+                snapshotDigest = SHA256.HashData(snapshot);
+                if (!CryptographicOperations.FixedTimeEquals(
+                        snapshotDigest,
+                        sha256Digest))
+                {
+                    throw new SecurityException(
+                        "The retained trusted-artifact snapshot changed before ownership transfer.");
+                }
+
+                CheckOperation(deadline, cancellationToken);
+                byte[] result = snapshot;
+                snapshot = null;
+                return result;
+            }
+            finally
+            {
+                if (snapshot is not null)
+                {
+                    CryptographicOperations.ZeroMemory(snapshot);
+                }
+
+                if (snapshotDigest is not null)
+                {
+                    CryptographicOperations.ZeroMemory(snapshotDigest);
+                }
+            }
+        }
+    }
+
     internal void RevalidateCurrentPath()
     {
         lock (gate)
@@ -761,8 +912,14 @@ internal sealed class TrustedArtifactLease : IDisposable
             }
 
             disposed = true;
-            handle.Dispose();
-            CryptographicOperations.ZeroMemory(sha256Digest);
+            try
+            {
+                handle.Dispose();
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(sha256Digest);
+            }
         }
     }
 
@@ -773,4 +930,22 @@ internal sealed class TrustedArtifactLease : IDisposable
             throw new ObjectDisposedException(nameof(TrustedArtifactLease));
         }
     }
+
+    private static void CheckOperation(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = deadline.GetRemaining();
+    }
+}
+
+/// <summary>
+/// Test-only stages within the retained exact-byte-copy ownership envelope.
+/// </summary>
+internal enum TrustedArtifactCopyStage
+{
+    SnapshotAllocated = 1,
+    SnapshotRead = 2,
+    BeforeReturn = 3,
 }

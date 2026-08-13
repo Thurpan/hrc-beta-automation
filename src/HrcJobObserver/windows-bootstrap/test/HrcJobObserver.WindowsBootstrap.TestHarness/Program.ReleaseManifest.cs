@@ -218,6 +218,10 @@ internal static partial class Program
                 AssertPinnedManifestFormatFailure(
                     MutateReleaseManifest(canonical, 9, 2));
                 AssertPinnedManifestFormatFailure(
+                    MutateReleaseManifest(canonical, 8, 3));
+                AssertPinnedManifestFormatFailure(
+                    MutateReleaseManifest(canonical, 9, 3));
+                AssertPinnedManifestFormatFailure(
                     MutateReleaseManifest(canonical, 11, 2));
                 AssertPinnedManifestFormatFailure(
                     MutateReleaseManifest(canonical, 12, 1));
@@ -530,7 +534,11 @@ internal static partial class Program
         string executableRelativeFileName,
         IReadOnlyList<ReleaseArtifactContent> artifacts,
         ReadOnlySpan<byte> artifactSetManifestSha256,
-        bool preserveInputOrder = false)
+        bool preserveInputOrder = false,
+        ReleaseArtifactRole artifactRole =
+            ReleaseArtifactRole.SyntheticTestHarness,
+        ReleaseDeploymentKind deploymentKind =
+            ReleaseDeploymentKind.FrameworkDependentSnapshot)
     {
         IEnumerable<ReleaseArtifactContent> ordered = preserveInputOrder
             ? artifacts
@@ -539,8 +547,8 @@ internal static partial class Program
                 StringComparer.Ordinal);
         using MemoryStream output = new(ReleaseManifestV1.MaximumEncodedLength);
         output.Write(Encoding.ASCII.GetBytes("HRCREL01"));
-        output.WriteByte((byte)ReleaseArtifactRole.SyntheticTestHarness);
-        output.WriteByte((byte)ReleaseDeploymentKind.FrameworkDependentSnapshot);
+        output.WriteByte((byte)artifactRole);
+        output.WriteByte((byte)deploymentKind);
         BootstrapBinary.WriteUInt16(
             output,
             (ushort)ReleaseTargetRuntimeIdentifier.WinX64);

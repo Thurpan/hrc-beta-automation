@@ -238,6 +238,27 @@ internal sealed class TrustedArtifactSetLease : IDisposable
         }
     }
 
+    internal byte[] CopyExactExecutableBytes(
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            ArtifactSetMember executable = members.Single(member =>
+                string.Equals(
+                    member.RelativeFileName,
+                    ExecutableRelativeFileName,
+                    StringComparison.Ordinal));
+            return executable.Artifact.CopyExactBytes(
+                maximumLength,
+                deadline,
+                cancellationToken);
+        }
+    }
+
     internal void RevalidateExactSet(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)

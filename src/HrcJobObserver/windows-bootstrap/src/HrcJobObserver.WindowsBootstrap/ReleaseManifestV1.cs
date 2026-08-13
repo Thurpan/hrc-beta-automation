@@ -9,21 +9,23 @@ using System.Threading;
 namespace HrcJobObserver.WindowsBootstrap;
 
 /// <summary>
-/// The only role admitted by the source/test-only release-manifest seam.
-/// This is not a production observer or controller role.
+/// Closed source/test-only roles admitted by release-manifest version 1.
+/// Neither value is a production observer or controller role.
 /// </summary>
 internal enum ReleaseArtifactRole : byte
 {
     SyntheticTestHarness = 1,
+    SyntheticNativeFixture = 2,
 }
 
 /// <summary>
-/// The only deployment shape admitted by the current manifest version. A
-/// framework-dependent snapshot does not close shared-runtime or loader trust.
+/// Closed deployment shapes admitted by release-manifest version 1. Neither
+/// shape establishes release provenance or loader atomicity.
 /// </summary>
 internal enum ReleaseDeploymentKind : byte
 {
     FrameworkDependentSnapshot = 1,
+    NativeNoCrtSystem32Fixture = 2,
 }
 
 /// <summary>
@@ -43,6 +45,8 @@ internal enum ReleaseTargetRuntimeIdentifier : ushort
 internal sealed class ReleaseManifestV1
 {
     internal const int MaximumEncodedLength = 38_325;
+    internal const string NativeFixtureExecutableRelativeFileName =
+        "HrcJobObserver.NativeFixture.exe";
     private const int MinimumEncodedLength = 98;
     private const int Sha256Length = 32;
     private const int MaximumFileNameLength = 255;
@@ -52,20 +56,22 @@ internal sealed class ReleaseManifestV1
     private readonly byte[] artifactSetManifestSha256;
 
     private ReleaseManifestV1(
+        ReleaseArtifactRole artifactRole,
+        ReleaseDeploymentKind deploymentKind,
         string executableRelativeFileName,
         TrustedArtifactExpectation[] artifacts,
         byte[] artifactSetManifestSha256)
     {
+        ArtifactRole = artifactRole;
+        DeploymentKind = deploymentKind;
         ExecutableRelativeFileName = executableRelativeFileName;
         this.artifacts = artifacts;
         this.artifactSetManifestSha256 = artifactSetManifestSha256;
     }
 
-    internal ReleaseArtifactRole ArtifactRole =>
-        ReleaseArtifactRole.SyntheticTestHarness;
+    internal ReleaseArtifactRole ArtifactRole { get; }
 
-    internal ReleaseDeploymentKind DeploymentKind =>
-        ReleaseDeploymentKind.FrameworkDependentSnapshot;
+    internal ReleaseDeploymentKind DeploymentKind { get; }
 
     internal ReleaseTargetRuntimeIdentifier TargetRuntimeIdentifier =>
         ReleaseTargetRuntimeIdentifier.WinX64;
@@ -110,18 +116,39 @@ internal sealed class ReleaseManifestV1
                 "The release manifest magic or version is invalid.");
         }
 
-        if (reader.ReadByte("release artifact role") !=
-            (byte)ReleaseArtifactRole.SyntheticTestHarness)
+        ReleaseArtifactRole artifactRole = reader.ReadByte(
+            "release artifact role") switch
         {
-            throw new FormatException(
-                "The release artifact role is not admitted by this schema.");
-        }
+            (byte)ReleaseArtifactRole.SyntheticTestHarness =>
+                ReleaseArtifactRole.SyntheticTestHarness,
+            (byte)ReleaseArtifactRole.SyntheticNativeFixture =>
+                ReleaseArtifactRole.SyntheticNativeFixture,
+            _ => throw new FormatException(
+                "The release artifact role is not admitted by this schema."),
+        };
 
-        if (reader.ReadByte("release deployment kind") !=
-            (byte)ReleaseDeploymentKind.FrameworkDependentSnapshot)
+        ReleaseDeploymentKind deploymentKind = reader.ReadByte(
+            "release deployment kind") switch
+        {
+            (byte)ReleaseDeploymentKind.FrameworkDependentSnapshot =>
+                ReleaseDeploymentKind.FrameworkDependentSnapshot,
+            (byte)ReleaseDeploymentKind.NativeNoCrtSystem32Fixture =>
+                ReleaseDeploymentKind.NativeNoCrtSystem32Fixture,
+            _ => throw new FormatException(
+                "The release deployment kind is not admitted by this schema."),
+        };
+
+        bool profileIsAdmitted =
+            artifactRole == ReleaseArtifactRole.SyntheticTestHarness &&
+            deploymentKind ==
+                ReleaseDeploymentKind.FrameworkDependentSnapshot ||
+            artifactRole == ReleaseArtifactRole.SyntheticNativeFixture &&
+            deploymentKind ==
+                ReleaseDeploymentKind.NativeNoCrtSystem32Fixture;
+        if (!profileIsAdmitted)
         {
             throw new FormatException(
-                "The release deployment kind is not admitted by this schema.");
+                "The release role and deployment-kind pair is not admitted by this schema.");
         }
 
         if (reader.ReadUInt16("target runtime identifier") !=
@@ -140,6 +167,17 @@ internal sealed class ReleaseManifestV1
         {
             throw new FormatException(
                 "The release artifact count is outside the admitted range.");
+        }
+
+        if (artifactRole == ReleaseArtifactRole.SyntheticNativeFixture &&
+            (!string.Equals(
+                executableName,
+                NativeFixtureExecutableRelativeFileName,
+                StringComparison.Ordinal) ||
+                count != 1))
+        {
+            throw new FormatException(
+                "The synthetic native-fixture profile requires its one exact executable artifact.");
         }
 
         TrustedArtifactExpectation[] artifacts = new TrustedArtifactExpectation[
@@ -204,12 +242,24 @@ internal sealed class ReleaseManifestV1
                 "The designated executable is not an exact release artifact.");
         }
 
+        if (artifactRole == ReleaseArtifactRole.SyntheticNativeFixture &&
+            !string.Equals(
+                artifacts[0].RelativeFileName,
+                NativeFixtureExecutableRelativeFileName,
+                StringComparison.Ordinal))
+        {
+            throw new FormatException(
+                "The synthetic native-fixture member filename is not exact.");
+        }
+
         byte[] artifactSetManifest = reader.ReadBytes(
             Sha256Length,
             "protected artifact-set manifest SHA-256").ToArray();
         reader.RequireEnd();
         CheckOperation(deadline, cancellationToken);
         return new ReleaseManifestV1(
+            artifactRole,
+            deploymentKind,
             executableName,
             artifacts,
             artifactSetManifest);
@@ -251,6 +301,19 @@ internal sealed class ReleaseManifestV1
         }
     }
 
+    internal byte[] CopyExecutableSha256Digest()
+    {
+        TrustedArtifactExpectation executable = Array.Find(
+            artifacts,
+            artifact => string.Equals(
+                artifact.RelativeFileName,
+                ExecutableRelativeFileName,
+                StringComparison.Ordinal)) ??
+            throw new InvalidOperationException(
+                "The parsed release manifest has no exact executable artifact.");
+        return executable.CopySha256Digest();
+    }
+
     private static void CheckOperation(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
@@ -277,6 +340,7 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
     private readonly TrustedArtifactSetLease artifactSet;
     private readonly byte[] manifestPinSha256;
     private readonly byte[] artifactSetManifestSha256;
+    private readonly byte[] executableSha256;
     private bool disposed;
 
     private PinnedReleaseArtifactSetLease(
@@ -288,6 +352,7 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
         this.artifactSet = artifactSet;
         this.manifestPinSha256 = manifestPinSha256;
         this.artifactSetManifestSha256 = artifactSetManifestSha256;
+        executableSha256 = manifest.CopyExecutableSha256Digest();
         ArtifactRole = manifest.ArtifactRole;
         DeploymentKind = manifest.DeploymentKind;
         TargetRuntimeIdentifier = manifest.TargetRuntimeIdentifier;
@@ -309,6 +374,22 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
     internal string ExecutablePath => artifactSet.ExecutablePath;
 
     internal int Count => artifactSet.Count;
+
+    internal byte[] CopyExactExecutableBytes(
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            CheckOperation(deadline, cancellationToken);
+            return artifactSet.CopyExactExecutableBytes(
+                maximumLength,
+                deadline,
+                cancellationToken);
+        }
+    }
 
     internal static PinnedReleaseArtifactSetLease Open(
         string exactApplicationDirectory,
@@ -445,6 +526,15 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
         }
     }
 
+    internal byte[] CopyExecutableSha256Digest()
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return (byte[])executableSha256.Clone();
+        }
+    }
+
     internal void RevalidateExactSet(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
@@ -477,6 +567,7 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
                 CryptographicOperations.ZeroMemory(manifestPinSha256);
                 CryptographicOperations.ZeroMemory(
                     artifactSetManifestSha256);
+                CryptographicOperations.ZeroMemory(executableSha256);
             }
         }
     }
