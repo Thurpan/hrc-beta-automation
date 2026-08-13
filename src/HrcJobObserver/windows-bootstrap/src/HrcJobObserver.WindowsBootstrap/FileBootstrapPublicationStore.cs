@@ -500,6 +500,38 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         }
     }
 
+    internal static GuardedDescriptorDirectory OpenExact(
+        string exactExistingDirectoryPath,
+        string expectedOwnerSid)
+    {
+        string canonicalPath = CanonicalLocalPath(exactExistingDirectoryPath);
+        // This seam deliberately compares the canonical DOS directory path
+        // ordinal-insensitively. It does not prove the on-disk case of each
+        // component, including inside a case-sensitive NTFS directory.
+        if (Path.EndsInDirectorySeparator(exactExistingDirectoryPath) ||
+            !string.Equals(
+                canonicalPath,
+                exactExistingDirectoryPath,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "The guarded directory path must already be canonical.",
+                nameof(exactExistingDirectoryPath));
+        }
+
+        string root = Path.GetPathRoot(canonicalPath) ??
+            throw new ArgumentException(
+                "The guarded directory path does not have a drive root.",
+                nameof(exactExistingDirectoryPath));
+        if (NativeMethods.GetDriveType(root) != NativeMethods.DriveFixed)
+        {
+            throw new PlatformNotSupportedException(
+                "The guarded directory must be on a fixed local drive.");
+        }
+
+        return Open(canonicalPath, expectedOwnerSid, testHook: null);
+    }
+
     internal static byte[] CanonicalClone(ReadOnlySpan<byte> descriptor)
     {
         byte[] source = descriptor.ToArray();
@@ -531,6 +563,222 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
     internal void RevalidateDirectory()
     {
         RequireDirectoryUnchanged();
+    }
+
+    /// <summary>
+    /// Package-file composition helper. Only
+    /// <see cref="NativeLaunchPolicyPackageFileLease"/> may call this method.
+    /// The caller owns the returned handle, must serialize all operations on
+    /// its shared file position, and gains no content authority from this
+    /// namespace/metadata check alone.
+    /// </summary>
+    internal SafeFileHandle OpenRetainedExactReadOnlyLeaf(
+        string exactLeafName,
+        int minimumLength,
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken,
+        Action<NativeLaunchPolicyPackageFileStage, byte[]?>? testHook)
+    {
+        ValidateRetainedLeafArguments(
+            exactLeafName,
+            minimumLength,
+            maximumLength);
+        CheckOperation(deadline, cancellationToken);
+        RequireDirectoryUnchanged();
+
+        NativeFileIdentity? expectedIdentity = null;
+        SafeFileHandle? file = null;
+        try
+        {
+            expectedIdentity = FindDirectoryEntryIdentity(
+                exactLeafName,
+                requireExactCase: true);
+            if (expectedIdentity is null)
+            {
+                throw new FileNotFoundException(
+                    "The required guarded file does not exist.",
+                    ChildPath(exactLeafName));
+            }
+
+            testHook?.Invoke(
+                NativeLaunchPolicyPackageFileStage.LeafIdentityEnumerated,
+                null);
+            CheckOperation(deadline, cancellationToken);
+            file = OpenHandle(
+                ChildPath(exactLeafName),
+                FileReadAccess,
+                NativeMethods.FileShareRead,
+                NativeMethods.OpenExisting,
+                NativeMethods.FileFlagOpenReparsePoint |
+                    NativeMethods.FileFlagSequentialScan,
+                securityAttributes: 0);
+            testHook?.Invoke(
+                NativeLaunchPolicyPackageFileStage.LeafHandleOpened,
+                null);
+            CheckOperation(deadline, cancellationToken);
+
+            RetainedLeafState state = ReadRetainedLeafState(
+                file,
+                exactLeafName,
+                minimumLength,
+                maximumLength);
+            try
+            {
+                if (!expectedIdentity.Value.Equals(state.Identity))
+                {
+                    throw new SecurityException(
+                        "The guarded file name resolved to a different file identity.");
+                }
+            }
+            finally
+            {
+                WipeIdentity(state.Identity);
+            }
+
+            testHook?.Invoke(
+                NativeLaunchPolicyPackageFileStage.LeafValidated,
+                null);
+            CheckOperation(deadline, cancellationToken);
+            SafeFileHandle result = file;
+            file = null;
+            return result;
+        }
+        finally
+        {
+            file?.Dispose();
+            if (expectedIdentity is not null)
+            {
+                WipeIdentity(expectedIdentity.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Package-file composition helper. Only
+    /// <see cref="NativeLaunchPolicyPackageFileLease"/> may call this method.
+    /// The caller must serialize use of the retained handle and authenticate
+    /// the returned bytes separately. At <c>SnapshotRead</c>, the test hook
+    /// receives a borrowed snapshot that it must not mutate; it may retain the
+    /// reference only to verify wiping after a forced failure.
+    /// </summary>
+    internal byte[] CopyRetainedExactReadOnlyLeaf(
+        SafeFileHandle retainedFile,
+        string exactLeafName,
+        int minimumLength,
+        int maximumLength,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken,
+        Action<NativeLaunchPolicyPackageFileStage, byte[]?>? testHook)
+    {
+        ArgumentNullException.ThrowIfNull(retainedFile);
+        if (retainedFile.IsInvalid || retainedFile.IsClosed)
+        {
+            throw new ObjectDisposedException(nameof(retainedFile));
+        }
+
+        ValidateRetainedLeafArguments(
+            exactLeafName,
+            minimumLength,
+            maximumLength);
+        CheckOperation(deadline, cancellationToken);
+        RetainedLeafState before = ReadRetainedLeafState(
+            retainedFile,
+            exactLeafName,
+            minimumLength,
+            maximumLength);
+        byte[]? bytes = null;
+        try
+        {
+            if (NativeMethods.SetFilePointerEx(
+                    retainedFile,
+                    0,
+                    out long position,
+                    NativeMethods.FileBegin) == 0 ||
+                position != 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Seeking the guarded read-only file failed");
+            }
+
+            bytes = new byte[checked((int)before.Length)];
+            unsafe
+            {
+                fixed (byte* pointer = bytes)
+                {
+                    if (NativeMethods.ReadFile(
+                            retainedFile,
+                            pointer,
+                            checked((uint)bytes.Length),
+                            out uint read,
+                            0) == 0)
+                    {
+                        throw NativeMethods.Win32Failure(
+                            "Reading the guarded read-only file failed");
+                    }
+
+                    if (read != bytes.Length)
+                    {
+                        throw new EndOfStreamException(
+                            "The guarded read-only file ended before its recorded length.");
+                    }
+                }
+
+                byte trailing = 0;
+                if (NativeMethods.ReadFile(
+                        retainedFile,
+                        &trailing,
+                        1,
+                        out uint trailingRead,
+                        0) == 0)
+                {
+                    throw NativeMethods.Win32Failure(
+                        "Checking the guarded read-only file terminator failed");
+                }
+
+                if (trailingRead != 0)
+                {
+                    throw new InvalidDataException(
+                        "The guarded read-only file has trailing bytes.");
+                }
+            }
+
+            testHook?.Invoke(
+                NativeLaunchPolicyPackageFileStage.SnapshotRead,
+                bytes);
+            CheckOperation(deadline, cancellationToken);
+            RetainedLeafState after = ReadRetainedLeafState(
+                retainedFile,
+                exactLeafName,
+                minimumLength,
+                maximumLength);
+            try
+            {
+                if (after.Length != before.Length ||
+                    !after.Identity.Equals(before.Identity))
+                {
+                    throw new SecurityException(
+                        "The guarded read-only file changed during its read.");
+                }
+            }
+            finally
+            {
+                WipeIdentity(after.Identity);
+            }
+
+            CheckOperation(deadline, cancellationToken);
+            byte[] result = bytes;
+            bytes = null;
+            return result;
+        }
+        finally
+        {
+            WipeIdentity(before.Identity);
+            if (bytes is not null)
+            {
+                CryptographicOperations.ZeroMemory(bytes);
+            }
+        }
     }
 
     internal SafeFileHandle? TryCreateTemp(string name)
@@ -908,16 +1156,123 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         RequireDirectory(directory);
         RequireFinalPath(directory, path);
         RequireSecurity(directory, expectedSecurityDescriptor);
-        if (!directoryIdentity.Equals(ReadIdentity(directory)))
+        NativeFileIdentity currentIdentity = ReadIdentity(directory);
+        try
         {
-            throw new SecurityException(
-                "The guarded descriptor directory identity changed.");
+            if (!directoryIdentity.Equals(currentIdentity))
+            {
+                throw new SecurityException(
+                    "The guarded descriptor directory identity changed.");
+            }
+        }
+        finally
+        {
+            WipeIdentity(currentIdentity);
         }
     }
 
     private string ChildPath(string name)
     {
         return Path.Combine(path, name);
+    }
+
+    private RetainedLeafState ReadRetainedLeafState(
+        SafeFileHandle retainedFile,
+        string exactLeafName,
+        int minimumLength,
+        int maximumLength)
+    {
+        RequireDirectoryUnchanged();
+        if (NativeMethods.GetFileType(retainedFile) != NativeMethods.FileTypeDisk)
+        {
+            throw new SecurityException(
+                "The guarded read-only leaf is not a disk file.");
+        }
+
+        RequireRegularFile(retainedFile);
+        RequireSecurity(retainedFile, expectedSecurityDescriptor);
+        RequireSameVolume(directory, retainedFile);
+        RequireFinalPath(retainedFile, ChildPath(exactLeafName));
+
+        NativeFileIdentity identity = ReadIdentity(retainedFile);
+        NativeFileIdentity? directoryEntryIdentity = null;
+        try
+        {
+            directoryEntryIdentity = FindDirectoryEntryIdentity(
+                exactLeafName,
+                requireExactCase: true);
+            if (directoryEntryIdentity is null ||
+                !directoryEntryIdentity.Value.Equals(identity))
+            {
+                throw new SecurityException(
+                    "The retained directory does not contain the guarded file identity.");
+            }
+
+            if (NativeMethods.GetFileSizeEx(retainedFile, out long length) == 0)
+            {
+                throw NativeMethods.Win32Failure(
+                    "Reading the guarded read-only file size failed");
+            }
+
+            NativeMethods.FileStandardInfo standard =
+                ReadStandardInformation(retainedFile);
+            if (standard.EndOfFile < 0 || length != standard.EndOfFile)
+            {
+                throw new SecurityException(
+                    "The guarded read-only file length metadata is inconsistent.");
+            }
+
+            if (length < minimumLength || length > maximumLength)
+            {
+                throw new InvalidDataException(
+                    "The guarded read-only file length is invalid.");
+            }
+
+            RequireDirectoryUnchanged();
+            RetainedLeafState result = new(identity, length);
+            identity = default;
+            return result;
+        }
+        finally
+        {
+            WipeIdentity(identity);
+            if (directoryEntryIdentity is not null)
+            {
+                WipeIdentity(directoryEntryIdentity.Value);
+            }
+        }
+    }
+
+    private static void ValidateRetainedLeafArguments(
+        string exactLeafName,
+        int minimumLength,
+        int maximumLength)
+    {
+        _ = TrustedArtifactSetLease.ValidateRelativeFileName(
+            exactLeafName,
+            nameof(exactLeafName));
+        if (minimumLength <= 0 || maximumLength < minimumLength)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(minimumLength),
+                "The guarded read-only file length bounds are invalid.");
+        }
+    }
+
+    private static void CheckOperation(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = deadline.GetRemaining();
+    }
+
+    private static void WipeIdentity(NativeFileIdentity identity)
+    {
+        if (identity.Identifier is not null)
+        {
+            CryptographicOperations.ZeroMemory(identity.Identifier);
+        }
     }
 
     private static SafeFileHandle OpenHandle(
@@ -1078,11 +1433,21 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         SafeFileHandle expected,
         SafeFileHandle actual)
     {
-        if (ReadIdentity(expected).VolumeSerialNumber !=
-            ReadIdentity(actual).VolumeSerialNumber)
+        NativeFileIdentity expectedIdentity = ReadIdentity(expected);
+        NativeFileIdentity actualIdentity = ReadIdentity(actual);
+        try
         {
-            throw new SecurityException(
-                "The descriptor crossed the guarded directory volume.");
+            if (expectedIdentity.VolumeSerialNumber !=
+                actualIdentity.VolumeSerialNumber)
+            {
+                throw new SecurityException(
+                    "The descriptor crossed the guarded directory volume.");
+            }
+        }
+        finally
+        {
+            WipeIdentity(actualIdentity);
+            WipeIdentity(expectedIdentity);
         }
     }
 
@@ -1167,13 +1532,17 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         }
     }
 
-    private unsafe NativeFileIdentity? FindDirectoryEntryIdentity(string name)
+    private unsafe NativeFileIdentity? FindDirectoryEntryIdentity(
+        string name,
+        bool requireExactCase = false)
     {
         const int BufferBytes = 64 * 1024;
         const int FileNameLengthOffset = 60;
         const int FileIdOffset = 72;
         const int FileNameOffset = 88;
         byte[] buffer = new byte[BufferBytes];
+        NativeFileIdentity? exactMatch = null;
+        bool transferred = false;
         try
         {
             fixed (byte* pointer = buffer)
@@ -1201,7 +1570,8 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
                         int error = Marshal.GetLastWin32Error();
                         if (error == NativeMethods.ErrorNoMoreFiles)
                         {
-                            return null;
+                            transferred = true;
+                            return exactMatch;
                         }
 
                         throw new Win32Exception(
@@ -1243,9 +1613,32 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
                                     pointer + offset + FileIdOffset,
                                     identifier.Length)
                                 .CopyTo(identifier);
-                            return new NativeFileIdentity(
+                            NativeFileIdentity identity = new(
                                 directoryIdentity.VolumeSerialNumber,
                                 identifier);
+                            if (!requireExactCase)
+                            {
+                                return identity;
+                            }
+
+                            if (!string.Equals(
+                                    entryName,
+                                    name,
+                                    StringComparison.Ordinal))
+                            {
+                                WipeIdentity(identity);
+                                throw new SecurityException(
+                                    "The guarded file name does not use exact canonical case.");
+                            }
+
+                            if (exactMatch is not null)
+                            {
+                                WipeIdentity(identity);
+                                throw new SecurityException(
+                                    "The guarded directory contains a case-colliding file name.");
+                            }
+
+                            exactMatch = identity;
                         }
 
                         if (nextOffset == 0)
@@ -1268,6 +1661,10 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
         finally
         {
             CryptographicOperations.ZeroMemory(buffer);
+            if (!transferred && exactMatch is not null)
+            {
+                WipeIdentity(exactMatch.Value);
+            }
         }
     }
 
@@ -1529,6 +1926,10 @@ internal sealed class GuardedDescriptorDirectory : IDisposable
             return code.ToHashCode();
         }
     }
+
+    private readonly record struct RetainedLeafState(
+        NativeFileIdentity Identity,
+        long Length);
 
     private sealed class OwnedSecurityDescriptor : IDisposable
     {
