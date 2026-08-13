@@ -7,10 +7,10 @@ dependency-free console test harness. It is a source/test-only feasibility
 module. It contains an in-memory publication store, an offline guarded
 descriptor-file publication seam, an independent file reader, and a one-shot
 synthetic broker session. It also contains a one-file artefact-identity
-primitive, a protected app-local artefact-set primitive, and an internal
-test-harness-only containment primitive. The file seam
-operates only in a caller-supplied,
-already-existing protected directory. It is not production descriptor
+primitive, a protected app-local artefact-set primitive, an out-of-band pinned
+release-manifest seam, and an internal test-harness-only containment primitive.
+The file seam operates only in a caller-supplied, already-existing protected
+directory. It is not production descriptor
 persistence, a production broker or controller, an installer, a standalone
 runner, a Java bridge, or HRC integration.
 
@@ -63,9 +63,46 @@ The retained root allows new child creation. The set is therefore a snapshot
 and detection control only. A race remains between the last revalidation and a
 later path-based loader action.
 
+`ReleaseManifestV1` parses one out-of-band canonical binary manifest with magic
+`HRCREL01`. Its closed version-1 policy admits only
+`SyntheticTestHarness`, `FrameworkDependentSnapshot`, and `WinX64`. These are
+role, deployment-kind, and target-runtime policy labels. They do not prove
+actual runtime selection. The manifest records one exact designated executable,
+1 through 128 artefact entries, and the protected artefact-set canonical digest.
+
+`PinnedReleaseArtifactSetLease.Open` copies the manifest bytes and the caller's
+expected 32-byte pin before it uses them. It computes SHA-256 over the domain
+`HRC-BETA-OBSERVER-RELEASE-MANIFEST-PIN-V1\0` and the complete owned manifest.
+It compares that digest with the owned expected pin in fixed time before any
+structural parse. The parser requires exact closed policy values, a zero
+reserved field, canonical printable ASCII Windows filenames, strict ordinal
+ordering, no duplicate or case-colliding names, exact lengths and SHA-256
+values, exact inclusion of the designated executable, and no trailing bytes.
+
+After authentication and parsing, the composite opens the exact
+`TrustedArtifactSetLease` described by the entries. It compares the manifest's
+artefact-set digest with `TrustedArtifactSetLease.CopyManifestSha256`, then runs
+one final `RevalidateExactSet`. The successful composite retains the exact
+member identities, validated manifest pin, and artefact-set digest. Copies
+returned to callers are independent. `IsEligibleForTrustedLaunch` is always
+false. On any failure, the composite disposes a partially opened set and wipes
+its owned manifest, pin, and temporary digest copies.
+
+Keep the release manifest out of the protected application directory and exact
+artefact set. Including it would create self-reference and an unexpected entry.
+The caller supplies the out-of-band manifest bytes and owns the pin provenance.
+A sibling manifest, a pin derived from that manifest, or a pin compiled into an
+artefact covered by the same circular policy does not establish independent
+trust. The seam supplies no signature, release provenance, freshness, rollback
+protection, trusted installer policy, member file ACL, shared-runtime trust,
+loader atomicity, launch integration, production role, private handoff, role-
+bound `READY`, Java integration, or HRC runtime evidence. One absolute deadline
+and caller cancellation govern cooperative checks. They do not hard-preempt
+blocking native calls.
+
 `ContainedHarnessProcess` launches exactly the current generated harness
-apphost in one of two fixed public modes: `Exit` or `Block`. It supplies an exact non-
-null `lpApplicationName`, a fixed command line, an empty Unicode environment,
+apphost in one of two fixed public modes: `Exit` or `Block`. It supplies an exact
+non-null `lpApplicationName`, a fixed command line, an empty Unicode environment,
 the current executable directory, no inherited handles, and no standard I/O
 handles. These join three legacy IPC child modes, for five fixed public child
 modes in total. It creates an unnamed, non-inheritable Job Object and requires
@@ -247,13 +284,14 @@ licence data, poker data, network client, registry access, or environment-secret
 input. The fixed file contains only the public canonical descriptor, not the
 bearer token.
 
-The protected set snapshot binds the caller-declared app-local files. It has no
-independently trusted release manifest that authenticates the complete
-production artefact set and its canonical digest. It also does not bind or
-select a shared .NET runtime. The proof does not include member file ACLs,
-signatures, launch atomicity, launched-process identity, production role
-executables, production-role containment integration, private handoff, role-
-bound `READY`, Java integration, or HRC runtime behaviour.
+The protected set and pinned manifest bind only caller-declared synthetic
+app-local files. The manifest pin is independently supplied only as an API
+condition; the caller must establish its provenance. Neither primitive binds or
+selects a shared .NET runtime. They provide no member file ACL, signature,
+freshness, rollback protection, installer trust, launch atomicity, launched-
+process identity, production role executable, production-role containment
+integration, private handoff, role-bound `READY`, Java integration, or HRC
+runtime evidence.
 
 The DACL admits the bound account and `SYSTEM`; exact peer identity is checked
 after connection. A same-account process that discovers the pipe name could
@@ -382,31 +420,39 @@ revalidation, incomplete and unexpected entry rejection, every member's
 identity expectations, canonical manifest binding, operation bounds, and
 protected-root guards.
 
+Six pinned release-manifest cases cover exact owned-copy retention and final
+revalidation, authentication before structural parsing, noncanonical wire
+rejection, protected artefact-set digest binding with failure cleanup, one
+absolute operation budget, and a fixed golden identity.
+
 Five containment cases cover normal exit, explicit Job-close termination of a
 blocking child, a pre-resume fault, post-resume late-deadline cleanup, and
 coalesced concurrent disposal with exact-process exit observation.
 
-The prior result was 77/77. Checkpoint `2a56de1` passes 82/82: 20 primitive
+The result before containment was 77/77. Checkpoint `2a56de1` passed 82/82 after
+adding 5 containment tests. Checkpoint `d4cd474` passes 88/88: 20 primitive
 tests, 8 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 artefact-identity tests, 6 protected app-local artefact-set
-tests, and 5 containment tests. This is offline Windows model, codec, primitive,
-publication-seam, artefact-identity, artefact-set, synthetic broker, and test-
-harness containment evidence only.
+tests, 6 pinned release-manifest tests, and 5 containment tests. This is offline
+Windows model, codec, primitive, publication-seam, artefact-identity, artefact-
+set, pinned-manifest, synthetic-broker, and test-harness containment evidence
+only.
 
-Next, require an independently trusted release manifest to authenticate each
-complete production artefact set and its canonical digest. Resolve the
-protected application namespace, shared-runtime selection, and loader-integrity
-gaps. Keep the containment proof separate until dedicated production roles
-integrate it. Complete these boundaries before private initial name handoff and
-role-bound `READY`.
+Next, investigate a dedicated native test-only fixture with `System32` loader
+closure, or an equivalent loader-closure design. Resolve the protected
+application namespace, shared-runtime selection, and loader-integrity gaps.
+Define a trusted installer or release policy that supplies the canonical
+manifest bytes and independent pin provenance. Keep the containment proof
+separate until dedicated production roles integrate it. Complete these
+boundaries before private initial name handoff and role-bound `READY`.
 
 Still unvalidated: production observer, broker, and controller executables;
 secure pipe-name delivery; known-folder resolution; LocalAppData hierarchy
 provisioning and provenance; stale and crash recovery; production descriptor
-persistence; an independently trusted release manifest that authenticates each
-complete production artefact set and its canonical digest; shared .NET runtime
-selection; artefact-to-loader atomicity; production-role containment
-integration; a direct abrupt-parent-death containment test; private handoff and
-role-bound `READY`; Java
-integration; OSGi startup; installation; rollback; HRC runtime use; and every
+persistence; a trusted installer or release policy that supplies canonical
+manifest bytes and independent pin provenance for each complete production
+artefact set; shared .NET runtime selection; artefact-to-loader atomicity;
+production-role containment integration; a direct abrupt-parent-death
+containment test; private handoff and role-bound `READY`; Java integration;
+OSGi startup; installation; rollback; HRC runtime use; and every
 standalone-runner action.

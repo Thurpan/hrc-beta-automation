@@ -151,17 +151,17 @@ unexpected source or target difference.
 - Generate a fresh cryptographically random 32-byte bearer token for each
   observer start. Transfer the token and endpoint only through a validated
   same-user protected mechanism. Never commit, persist, log, or echo the token.
-- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 82/82
+- Treat `src/HrcJobObserver/windows-bootstrap/` as source/test-only. Its 88/88
   harness comprises 20 primitive tests, 8 descriptor and protocol tests, 27
   broker and in-memory-store tests, 11 filesystem tests, 5 single-file artefact-
-  identity tests, 6 protected app-local artefact-set tests, and 5 containment
-  tests. It proves exact applied protected-DACL read-back, two-sided process
-  identity, bounded one-shot frames, fixed public-frame exchange with a
-  synthetic child, rejection of a wrong live child, a canonical HMAC-bound
-  descriptor model, and eight phase- and role-bound message codecs. It also
-  proves a capacity-one asynchronous
-  in-memory publisher with independent wipeable snapshots and a store-affine,
-  coalesced exact-removal lease. The lease provides cross-store and ABA defence.
+  identity tests, 6 protected app-local artefact-set tests, 6 pinned release-
+  manifest tests, and 5 containment tests. It proves exact applied protected-
+  DACL read-back, two-sided process identity, bounded one-shot frames, fixed
+  public-frame exchange with a synthetic child, rejection of a wrong live
+  child, a canonical HMAC-bound descriptor model, and eight phase- and role-
+  bound message codecs. It also proves a capacity-one asynchronous in-memory
+  publisher with independent wipeable snapshots and a store-affine, coalesced
+  exact-removal lease. The lease provides cross-store and ABA defence.
   A one-shot broker runs all four exchanges across the broker harness process
   and long-lived synthetic observer and controller child modes. It enforces
   exact role bindings, one common security context, a publication budget capped
@@ -221,15 +221,41 @@ unexpected source or target difference.
   The retained root allows new child creation. The set is therefore a snapshot
   and detection control only. A race remains between the last revalidation and
   a later path-based loader action.
-  This evidence has no independently trusted release manifest that
-  authenticates the complete production artefact set and its canonical digest.
-  It does not prove member file ACLs, signatures, shared .NET runtime selection,
-  artefact-to-loader atomicity, integration with launched-process identity,
-  dedicated role executables, production-role containment, private handoff,
-  role-bound `READY`, known-folder resolution, protected LocalAppData hierarchy
-  provisioning or provenance, stale or crash recovery,
-  production descriptor persistence, secure initial pipe-name delivery,
-  Java integration, or HRC runtime use.
+  The internal pinned release-manifest seam accepts one out-of-band canonical
+  binary manifest with magic `HRCREL01`. Version 1 admits only the synthetic
+  test-harness role, the framework-dependent snapshot deployment kind, and the
+  `win-x64` target-runtime policy label. The label is policy data, not an
+  observation of runtime selection. The seam owns copies of the supplied
+  manifest bytes and expected pin. It computes the domain-separated SHA-256 pin
+  and compares it in fixed time before structural parsing.
+  Structural parsing requires closed role, deployment, and runtime values; a
+  zero reserved field; one exact designated executable; 1 through 128 strictly
+  ordinally sorted canonical file entries; no duplicate or case-colliding name;
+  exact lengths and SHA-256 values; one protected artefact-set manifest digest;
+  and no trailing bytes. The composite opens the exact protected artefact set,
+  binds its computed canonical digest to the authenticated manifest, and
+  performs a final exact-set revalidation. A successful lease retains the exact
+  member identities, validated manifest pin, and artefact-set digest. It is
+  explicitly ineligible for trusted launch. Failure disposes a partially opened
+  set and wipes owned temporary manifest and digest copies.
+  Keep the release manifest out of the protected application directory and its
+  exact artefact set. Including it would create self-reference and an unexpected
+  directory entry. The caller supplies the out-of-band manifest bytes and owns
+  the pin provenance. A sibling manifest, a pin derived from that manifest, or
+  a pin compiled into an artefact covered by the same circular policy does not
+  establish independent trust. The seam supplies no signature, release
+  provenance, freshness, rollback protection, trusted installer policy, member
+  file ACL, shared-runtime trust, loader atomicity, launch integration,
+  production role, private handoff, role-bound `READY`, known-folder resolution,
+  protected LocalAppData hierarchy provisioning or provenance, stale or crash
+  recovery, production descriptor persistence, secure initial pipe-name
+  delivery, Java integration, or HRC runtime evidence. One caller-supplied
+  absolute deadline and cancellation token govern cooperative checks. They do
+  not hard-preempt blocking native calls.
+  Six tests cover exact owned-copy retention and final revalidation,
+  authentication before structural parsing, noncanonical wire rejection,
+  protected artefact-set digest binding with failure cleanup, one absolute
+  operation budget, and a fixed golden identity.
   The internal test-harness-only `ContainedHarnessProcess` launches exactly the
   current generated apphost in one of two fixed public `Exit` or `Block` modes.
   These join three legacy IPC child modes, for five fixed public child modes in
@@ -243,11 +269,11 @@ unexpected source or target difference.
   `PROC_THREAD_ATTRIBUTE_JOB_LIST` with suspended process creation. Before the
   exact `ResumeThread`, it requires one exact Job PID and checks a retained
   `ProcessIdentityLease` plus the image path. One absolute monotonic deadline
-  and caller cancellation govern cooperative checks around synchronous native launch
-  calls, including late-success rejection after resume. They do not hard-
-  preempt those calls. Start failure and disposal close the last held Job handle
-  before they wait for the exact retained process under a separate fixed five-
-  second cleanup bound. Concurrent disposal coalesces.
+  and caller cancellation govern cooperative checks around synchronous native
+  launch calls, including late-success rejection after resume. They do not
+  hard-preempt those calls. Start failure and disposal close the last held Job
+  handle before they wait for the exact retained process under a separate fixed
+  five-second cleanup bound. Concurrent disposal coalesces.
   Five tests cover normal exit, explicit last-Job-handle closure that kills a
   blocking child, no managed entry before a pre-resume fault, late post-resume
   deadline cleanup, and concurrent disposal with an admitted exact-process
@@ -262,16 +288,19 @@ unexpected source or target difference.
   claim, require its HMAC, exact observer and broker bindings, freshness, and
   caller-supplied maximum lifetime to verify before use.
 - Do not publish or transfer a real observer token through the Windows seam
-  until an independently trusted release manifest authenticates each complete
-  production artefact set and its canonical digest,
+  until a trusted installer or release policy independently supplies the
+  canonical manifest bytes and pin provenance for each complete production
+  artefact set,
   dedicated roles enter validated kill-on-close Job Object containment at
   process creation, private initial name delivery and role-bound `READY` are
   validated, and known-folder resolution, protected LocalAppData hierarchy
   provisioning and provenance, stale and crash recovery, and Java lifecycle
   integration are implemented and validated. Keep the atomic containment proof
   as a separate boundary until dedicated production roles integrate it. Resolve
-  independently trusted release provenance, application namespace, shared-
+  trusted installer policy and pin provenance, application namespace, shared-
   runtime, and loader trust before the private handoff and `READY` boundary.
+  Investigate a dedicated native test-only fixture with `System32` loader
+  closure, or an equivalent loader-closure design, before that handoff.
   The existing-directory seam, in-memory store, and synthetic broker do not
   prove those runtime properties.
   Do not reuse a channel after an I/O failure or timeout. The pipe is not the

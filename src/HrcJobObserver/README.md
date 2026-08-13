@@ -28,12 +28,14 @@ independent reader against caller-supplied, already-existing protected local
 NTFS directories. This existing-directory seam is not production persistence.
 A separate primitive retains and verifies one caller-supplied local artefact.
 A protected app-local artefact-set primitive composes retained identities into
-one exact directory snapshot. The module has no independently trusted release
-manifest that authenticates each complete production artefact set and its
-canonical digest. It also has no shared .NET runtime selection, secure initial
-pipe-name handoff, dedicated production role executables, production-role
-containment integration, or connection to the Java layers. This component is
-not the standalone runner or an installable HRC plug-in. It has no
+one exact directory snapshot. An out-of-band pinned release-manifest seam binds
+one canonical synthetic framework-dependent `win-x64` policy manifest to that
+set, but remains ineligible for trusted launch. The module has no trusted
+installer policy or independent pin provenance. It also has no shared .NET
+runtime selection, secure initial pipe-name handoff, dedicated production role
+executables, production-role containment integration, or connection to the
+Java layers. This component is not the standalone runner or an installable HRC
+plug-in. It has no
 OSGi manifest, enabled activator, live listener registration, installer, or HRC
 runtime entry point. Its offline adapter, runtime, and lifecycle builds accept
 an HRC installation path solely to resolve and hash public API provider JARs.
@@ -233,11 +235,12 @@ The adapter filters before reading public name, Bundle, flags, or result and
 adds a fixed-capacity mailbox with a non-waiting callback hand-off. The current
 offline results are 30/30 core tests, 34/34 adapter tests, 25/25 transport
 tests, 10/10 runtime assembly tests, 14/14 lifecycle tests, and 13/13 packaging
-tests. The prior Windows bootstrap result was 77/77: 20 primitive tests, 8
-descriptor and protocol tests, 27 broker and in-memory-store tests, 11
+tests. The Windows bootstrap history was 77/77 before containment: 20 primitive
+tests, 8 descriptor and protocol tests, 27 broker and in-memory-store tests, 11
 filesystem tests, 5 single-file artefact-identity tests, and 6 protected app-
-local artefact-set tests. Checkpoint `2a56de1` adds 5 containment tests, so the
-current Windows result is 82/82. The broker and in-memory-store tests cover
+local artefact-set tests. Checkpoint `2a56de1` added 5 containment tests for
+82/82. Checkpoint `d4cd474` adds 6 pinned release-manifest tests, so the current
+Windows result is 88/88. The broker and in-memory-store tests cover
 asynchronous publication,
 store-affine coalesced removal, cross-store and ABA defence, exact role context,
 all four cross-process exchanges, and
@@ -277,11 +280,40 @@ The retained protected root still permits new child creation. The result is a
 snapshot and detection control only. A race remains between the final
 revalidation and a later path-based loader action.
 
-This slice has no independently trusted release manifest that authenticates the
-complete production artefact set and its canonical digest. It proves no member
-file ACL, signature, shared .NET runtime selection, atomic launch, launched-
-process identity, production role executables, containment, private handoff,
-role-bound `READY`, Java integration, or HRC runtime behaviour.
+`ReleaseManifestV1` accepts an out-of-band canonical binary that starts with
+`HRCREL01`. Its closed policy admits only the synthetic test-harness role, the
+framework-dependent snapshot deployment kind, and the `win-x64` target-runtime
+label. The label does not prove actual runtime selection.
+`PinnedReleaseArtifactSetLease` owns copies of the supplied manifest bytes and
+expected pin. It computes a domain-separated SHA-256 pin and compares it in
+fixed time before structural parsing.
+
+The parser requires closed role, deployment, and runtime values; a zero reserved
+field; one exact designated executable; 1 through 128 strictly ordinally sorted
+canonical file entries; no duplicate or case-colliding name; exact lengths and
+SHA-256 values; one protected artefact-set manifest digest; and no trailing
+bytes. The composite opens the exact protected set, binds its computed canonical
+digest to the authenticated manifest, and performs a final exact-set
+revalidation. The returned lease retains every member identity, the validated
+manifest pin, and the artefact-set digest. It is explicitly ineligible for
+trusted launch. Failure disposes a partially opened set and wipes owned
+temporary manifest and digest copies.
+
+Keep the manifest out of the protected application directory and exact artefact
+set. Inclusion would create self-reference and an unexpected entry. The caller
+supplies the out-of-band manifest bytes and owns the pin provenance. A sibling
+manifest, a pin derived from that manifest, or a pin compiled into an artefact
+covered by the same circular policy does not establish independent trust. The
+seam supplies no signature, release provenance, freshness, rollback protection,
+trusted installer policy, member file ACL, shared-runtime trust, loader
+atomicity, launch integration, production role, private handoff, role-bound
+`READY`, Java integration, or HRC runtime evidence. Cooperative deadline and
+cancellation checks do not hard-preempt blocking native calls.
+
+Six tests cover exact owned-copy retention and final revalidation,
+authentication before structural parsing, noncanonical wire rejection,
+protected artefact-set digest binding with failure cleanup, one absolute
+operation budget, and a fixed golden identity.
 
 The containment tests use internal `ContainedHarnessProcess` code to launch
 exactly the current generated harness apphost in one of two fixed public modes:
@@ -339,19 +371,20 @@ and removal, real Eclipse callback delivery, secure token and endpoint
 provisioning, Windows known-folder resolution, LocalAppData hierarchy
 provisioning and provenance, stale and crash recovery, production descriptor
 persistence, secure initial pipe-name delivery, dedicated production bootstrap
-executables, an independently trusted release manifest that authenticates each
-complete production artefact set and its canonical digest, shared .NET runtime
-selection, artefact-to-loader atomicity, production-role containment
-integration, a direct abrupt-parent-death containment test, private handoff,
-role-bound `READY`, Java-to-Windows
+executables, a trusted installer or release policy that supplies canonical
+manifest bytes and independent pin provenance for each complete production
+artefact set, shared .NET runtime selection, artefact-to-loader atomicity,
+production-role containment integration, a direct abrupt-parent-death
+containment test, private handoff, role-bound `READY`, Java-to-Windows
 integration, packaging, startup, installation, rollback, safe final shutdown,
 runtime correlation, and every standalone-runner operation.
 The normal clean-start evidence does not validate arbitrary early class loading
 or a different HRC startup route.
 
-Next, require an independently trusted release manifest to authenticate each
-complete production artefact set and its canonical digest. Resolve the
-protected application namespace, shared-runtime selection, and loader-integrity
-gaps. Keep the containment proof separate until dedicated production roles
-integrate it. Complete these boundaries before private initial name handoff and
-role-bound `READY`.
+Next, investigate a dedicated native test-only fixture with `System32` loader
+closure, or an equivalent loader-closure design. Resolve the protected
+application namespace, shared-runtime selection, and loader-integrity gaps.
+Define a trusted installer or release policy that supplies the canonical
+manifest bytes and independent pin provenance. Keep the containment proof
+separate until dedicated production roles integrate it. Complete these
+boundaries before private initial name handoff and role-bound `READY`.
