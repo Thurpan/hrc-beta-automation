@@ -49,6 +49,11 @@ internal static partial class NativeMethods
         uint informationLength);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial int TerminateJobObject(
+        SafeJobHandle job,
+        uint exitCode);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     internal static partial int QueryInformationJobObject(
         SafeJobHandle job,
         int informationClass,

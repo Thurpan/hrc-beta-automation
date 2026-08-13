@@ -186,10 +186,14 @@ internal static partial class Program
         {
             using NativeReleaseFixture fixture = NativeReleaseFixture.Create();
             using NativeContainmentFaultProbe faults = new(stage);
+            ContainedNativeFixtureMode mode =
+                stage == NativeContainmentFaultStage.AfterInitialBreakpointOwned
+                    ? ContainedNativeFixtureMode.Exit
+                    : ContainedNativeFixtureMode.Block;
             AssertThrows<TestNativeContainmentFaultException>(() =>
                 LaunchAuditedNativeFixture(
                     fixture,
-                    ContainedNativeFixtureMode.Block,
+                    mode,
                     NewNativeContainmentDeadline(),
                     faults));
             AssertEqual(1, faults.Calls,
@@ -204,6 +208,11 @@ internal static partial class Program
                 Assert(faults.ProcessId != 0 && faults.ExactProcess is not null,
                     $"{stage} must retain the exact created process object");
                 AssertExactNativeProcessExited(faults.ExactProcess!);
+                if (stage ==
+                    NativeContainmentFaultStage.AfterInitialBreakpointOwned)
+                {
+                    AssertExactNativeExitRoleWasTerminated(faults.ExactProcess!);
+                }
             }
 
             AssertNativeFixtureDirectoryRenameable(fixture);
@@ -380,6 +389,21 @@ internal static partial class Program
             NativeMethods.WaitObject0,
             NativeMethods.WaitForSingleObject(process, 0),
             "failed native containment exact-process terminal state");
+    }
+
+    private static void AssertExactNativeExitRoleWasTerminated(
+        NativeMethods.SafeProcessHandle process)
+    {
+        if (NativeMethods.GetExitCodeProcess(process, out uint exitCode) == 0)
+        {
+            throw NativeMethods.Win32Failure(
+                "Reading the failed native Exit-role process code failed");
+        }
+
+        AssertEqual(
+            ContainedAuditedNativeFixtureProcess.FailedLaunchExitCode,
+            exitCode,
+            "failed pre-entry Exit-role Job termination code");
     }
 
     private static void AssertNativeFixtureDirectoryRenameDenied(

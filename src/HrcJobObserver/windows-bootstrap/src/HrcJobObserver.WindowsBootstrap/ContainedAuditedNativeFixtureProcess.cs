@@ -82,6 +82,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     private const int MinimumReleaseManifestLength = 98;
     private const int Sha256Length = 32;
     private const int MaximumStartupEvents = 32;
+    internal const uint FailedLaunchExitCode = 0xE0435243;
     private const string ExitArgument = "--native-exit";
     private const string BlockArgument = "--native-block";
     private readonly object gate = new();
@@ -1439,6 +1440,23 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
     {
         cleanupStopwatch.Restart();
         bool crossedBound = false;
+        // Once launch has failed, close the last Job handle before releasing
+        // any outstanding debug stop. This makes Job termination pending while
+        // the debuggee is still stopped and prevents an unsuspended initial
+        // breakpoint from reaching fixture entry during debugger cleanup.
+        NativeMethods.SafeJobHandle? ownedJobForClose = job;
+        job = null;
+        if (ownedJobForClose is not null && processId != 0 &&
+            NativeMethods.TerminateJobObject(
+                ownedJobForClose,
+                FailedLaunchExitCode) == 0)
+        {
+            failures.RecordWin32(
+                CleanupFailureKind.FailedJobTerminationFailed,
+                Marshal.GetLastWin32Error());
+        }
+
+        DisposeCleanupResource(failures, ownedJobForClose);
         ResolveDebugSessionNonAbandonably(
             ref debugEventFile,
             ref debugEventOutstanding,
@@ -1456,8 +1474,6 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         NativeMethods.SafeThreadHandle? ownedThread = thread;
         thread = null;
         DisposeCleanupResource(failures, ownedThread);
-        NativeMethods.SafeJobHandle? ownedJobForClose = job;
-        DisposeCleanupResource(failures, ownedJobForClose);
         bool signalled = process is null || process.IsInvalid;
         if (process is not null && !process.IsInvalid)
         {
@@ -1807,6 +1823,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         DebugCleanupBoundCrossed = 1 << 2,
         DisposalFallbackBoundCrossed = 1 << 3,
         ExactProcessWaitFailed = 1 << 4,
+        FailedJobTerminationFailed = 1 << 5,
     }
 
     /// <summary>
@@ -1824,6 +1841,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
         private CleanupFailureKind kinds;
         private int failedProcessWaitError;
         private int exactProcessWaitError;
+        private int failedJobTerminationError;
         private bool droppedDetails;
 
         internal bool HasFailures =>
@@ -1853,6 +1871,7 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
             kinds = CleanupFailureKind.None;
             failedProcessWaitError = 0;
             exactProcessWaitError = 0;
+            failedJobTerminationError = 0;
             droppedDetails = false;
         }
 
@@ -1891,6 +1910,10 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 else if (kind == CleanupFailureKind.ExactProcessWaitFailed)
                 {
                     exactProcessWaitError = error;
+                }
+                else if (kind == CleanupFailureKind.FailedJobTerminationFailed)
+                {
+                    failedJobTerminationError = error;
                 }
             }
 
@@ -1941,6 +1964,13 @@ internal sealed class ContainedAuditedNativeFixtureProcess : IAsyncDisposable
                 destination.Add(new System.ComponentModel.Win32Exception(
                     exactProcessWaitError,
                     "Non-abandonable exact process wait failed"));
+            }
+
+            if ((kinds & CleanupFailureKind.FailedJobTerminationFailed) != 0)
+            {
+                destination.Add(new System.ComponentModel.Win32Exception(
+                    failedJobTerminationError,
+                    "Terminating the failed native-fixture Job failed"));
             }
 
             if (droppedDetails)
