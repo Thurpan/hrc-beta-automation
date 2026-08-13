@@ -289,11 +289,14 @@ passes 77/77 tests. Checkpoint `2a56de1` adds test-harness-only atomic Job Objec
 containment and passes 82/82 tests. Checkpoint `d4cd474` adds the out-of-band
 pinned release-manifest seam and passes 88/88 tests. Checkpoint `fb9ba23` adds
 the no-CRT native fixture and strict structural PE audit and passes 95/95 tests.
-The current total is 20 primitive tests, 8 descriptor and protocol tests, 27
-broker and in-memory-store
+Checkpoint `64043e5` adds the audited native-release binding and passes 102/102
+tests. Committed checkpoint `70e0d77` adds 5 audited native-containment cases
+and passes 107/107. The current total is 20
+primitive tests, 8 descriptor and protocol tests, 27 broker and in-memory-store
 tests, 11 filesystem tests, 5 single-file artefact-identity tests, 6 protected
 app-local artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture
-tests, and 5 containment tests.
+tests, 7 audited native-release binding tests, 5 harness-containment tests, and
+5 audited native-containment tests.
 None of these builds installed, loaded, attached to, or interacted with HRC.
 
 The implementation records one process ID, creation `FILETIME`, full image
@@ -458,15 +461,17 @@ file ACL, shared-runtime trust, loader atomicity, launch integration, production
 role, private handoff, role-bound `READY`, Java integration, or HRC runtime
 evidence. Its absolute deadline and cancellation checks are cooperative.
 
-Five containment cases exercise the internal test-harness-only
-`ContainedHarnessProcess`. It launches exactly the current generated harness
-apphost in one of two fixed public modes: `Exit` or `Block`. It supplies an exact non-
-null `lpApplicationName`, a fixed command line, an empty Unicode environment,
-the current executable directory, no inherited handles, and no standard I/O
-handles. These two modes join three legacy IPC child modes, for five fixed
-public child modes in total. The build guard rejects managed `ProcessStartInfo`
-or `Process.Start` launch outside the legacy harness `Program.cs`. The native
-`CreateProcessW` containment path is an explicit isolated source exception.
+Five cases from legacy harness-containment checkpoint `2a56de1` exercise the
+internal test-harness-only `ContainedHarnessProcess`. It launches exactly the
+current generated harness apphost in one of two fixed public modes: `Exit` or
+`Block`. It supplies an exact non-null `lpApplicationName`, a fixed command
+line, an empty Unicode environment, the current executable directory, no
+inherited handles, and no standard I/O handles. These two modes join three
+legacy IPC child modes, for five fixed public child modes in total. The build
+guard rejects managed `ProcessStartInfo` or `Process.Start` launch outside the
+legacy harness `Program.cs`. It admits
+exactly two native `CreateProcessW` call sites in production source:
+`ContainedHarnessProcess` and `ContainedAuditedNativeFixtureProcess`.
 The launcher creates an unnamed, non-inheritable Job Object, applies
 and reads back exactly `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and passes it in
 `PROC_THREAD_ATTRIBUTE_JOB_LIST` during suspended `CreateProcessW`.
@@ -482,10 +487,11 @@ second cleanup bound. Concurrent disposal coalesces.
 The cases prove normal exit, explicit last-Job-handle closure that kills a
 blocking child, no managed child-entry event before an injected pre-resume
 fault, cleanup of a post-resume deadline failure, and coalesced concurrent
-disposal with an admitted exact-process exit wait. The suite does not terminate
-its parent abruptly. Windows kill-on-close semantics support cleanup when the
-final Job handle closes, but direct abrupt-parent-death and crash behaviour
-remain unexercised.
+disposal with an admitted exact-process exit wait. The managed-entry assertion
+applies to this legacy apphost checkpoint, not the audited no-CRT fixture. The
+suite does not terminate its parent abruptly. Windows kill-on-close semantics
+support cleanup when the final Job handle closes, but direct abrupt-parent-
+death and crash behaviour remain unexercised.
 
 This containment proof is not integrated with the artefact-set lease, broker
 roles, or token transport. It has no independently trusted release provenance,
@@ -543,19 +549,91 @@ The bounded runtime case launched Exit and an invalid argument with no shell or
 redirected standard handles. Its environment contained only `SystemRoot`,
 `WINDIR`, a System32-only `PATH`, and build-local `TEMP` and `TMP`. Exit
 returned `0`; the invalid argument returned `87`. Timeout cleanup killed the
-retained exact process and waited for it under a separate bound. The source-
-defined Block role was not launched because native Job containment is not
-integrated.
+retained exact process and waited for it under a separate bound. At historical
+checkpoint `fb9ba23`, the source-defined Block role was not launched because
+native Job containment was not integrated.
 
 The embedded Windows manifest is not a native `HRCREL01` release-manifest
-binding. The structural audit does not prove machine-code semantics. The image
-has no Control Flow Guard instrumentation. `/CETCOMPAT` is present but does not
-prove Control-flow Enforcement Technology enforcement. The build records tool
-paths but does not prove toolchain or signer provenance. The import and load-
-policy checks do not prove System32 or KnownDLL trust. No retained file lease is
-bound to the PE audit, and no native fixture launch uses the atomic containment
-primitive. The fixture is ineligible for trusted launch and supplies no
-production role, private handoff, Java integration, or HRC runtime evidence.
+binding by itself. The structural audit does not prove machine-code semantics.
+The image has no Control Flow Guard instrumentation. `/CETCOMPAT` is present
+but does not prove Control-flow Enforcement Technology enforcement. The build
+records tool paths but does not prove toolchain or signer provenance. The
+import and load-policy checks do not prove System32 or KnownDLL trust.
+
+At checkpoint `64043e5`, seven audited native-release binding cases added a
+second closed `HRCREL01` profile. It pairs `SyntheticNativeFixture` with the
+`NativeNoCrtSystem32Fixture` policy and requires the exact one-file
+`HrcJobObserver.NativeFixture.exe` set. Both release profiles use the
+`win-x64` target label. These are policy values, not observations of runtime or
+loaded-module selection.
+
+`AuditedNativeFixtureReleaseLease` accepts only that one-file profile. It
+copies the 4,096-byte image through the retained executable handle, audits the
+owned byte snapshot, compares the audit SHA-256 with the authenticated manifest
+entry, and performs final exact-set revalidation. The seven cases also cover
+both profile golden identities, exact-copy ownership, late-failure wiping,
+revalidation, and partial-failure cleanup. The caller still owns manifest-pin
+provenance. The result remains ineligible for trusted launch.
+
+Committed checkpoint `70e0d77` adds five audited native-containment cases. It
+launches only the exact synthetic one-file no-CRT fixture. The policy gate
+requires Windows 10 version 1709 build 16299 or later. The ABI gate requires
+x64 `CREATE_PROCESS_DEBUG_INFO` and `DEBUG_EVENT` layouts. Each real child must
+be AMD64. The launcher creates an unnamed Job, reads back exactly
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, assigns it through
+`PROC_THREAD_ATTRIBUTE_JOB_LIST` at creation, and requires one exact Job PID.
+
+The launcher uses the canonical DOS executable for non-null
+`lpApplicationName`, command-line argument zero, and the canonical DOS
+application directory for the working directory. During development, a direct
+volume-GUID `CreateProcessW` attempt was rejected on this licensed host. The
+validated implementation therefore launches with the canonical DOS locator
+and retains its volume-GUID identity for comparison. This is an observation of
+this host, not a general Windows compatibility result.
+
+The launch namespace retains handles from the fixed-drive root through the
+application directory. Each directory handle omits `FILE_SHARE_DELETE`,
+rejects reparses, and binds the DOS path, volume-GUID path, volume serial
+number, and 128-bit `FILE_ID`. The executable handle remains retained. The
+production implementation revalidates the complete ancestor chain and exact
+executable around each critical step. The real Block case directly confirmed
+that the immediate application directory could not be renamed until wrapper
+disposal; it did not attempt a rename of every ancestor.
+
+`DEBUG_ONLY_THIS_PROCESS` supplied the initial
+`CREATE_PROCESS_DEBUG_EVENT` before user mode. The launcher required the exact
+created PID and TID and compared the event process and thread handles with the
+creation handles. It authenticated the event's direct image-file handle by
+exact length, SHA-256, volume serial number, 128-bit `FILE_ID`, and volume-GUID
+path against the retained executable.
+
+The initial `SuspendThread` returned prior count `0`. The launcher continued
+the event, detached, confirmed that no remote debugger remained, revalidated
+the exact set and namespace, and required the final `ResumeThread` to return
+prior count `1`. It performed one final deadline check after resume.
+
+The create, debug, detach, and initial-resume transaction ran on a fresh
+dedicated operating-system thread with `ExecutionContext` flow suppressed.
+The caller joined it non-abandonably. Failure cleanup resolved the thread-
+affine debug state non-abandonably. After detachment, cleanup closed the final
+Job handle and waited on the exact process handle for five seconds. If that
+bounded wait could not prove exit, a detached process reaper retained the exact
+process, namespace, and audit authority. That authority remains until the exact
+handle signals. If `WaitForSingleObject` fails, the reaper retains that
+authority indefinitely and records terminal uncertainty. The build wrapper
+applied a separate 180-second watchdog to the .NET validation process.
+
+The five cases covered the platform and AMD64 ABI gate; exact Exit result `0`;
+the Block role, immediate directory pin, and explicit Job-close exit; every one
+of 9 injected launch stages; a late post-resume deadline; and concurrent
+coalesced disposal. No test directly terminated the parent. The initial debug
+event is not a direct entry sentinel. Its file handle is not kernel section-
+object identity. The application directory still permits new children. A new-
+child ABA is harmless only for this exact one-file fixture with no app-local
+dependency. It is not a general loader-closure result. The checkpoint supplies
+no System32 or KnownDLL module-identity proof, trusted manifest-pin provenance,
+production role, private handoff, role-bound `READY`, Java integration, or HRC
+runtime evidence. It remains ineligible for trusted launch.
 
 The one-shot broker runs in the main harness process. Long-lived synthetic
 observer and controller child modes run in two child processes. All three roles
@@ -1896,16 +1974,22 @@ an independent file reader, a protected app-local artefact-set primitive, and a
 synthetic broker under `src/HrcJobObserver/`. The Windows module also contains
 an out-of-band pinned release-manifest seam and a test-harness-only atomic Job
 Object containment primitive. A separate no-CRT native fixture supplies
-reproducible, structurally audited PE evidence and bounded Exit and invalid-
-argument runtime evidence.
+reproducible, structurally audited PE evidence. The audited native-release
+composite binds its one-file manifest profile, retained executable bytes, and
+PE audit. The dedicated containment wrapper launches only that exact synthetic
+fixture through atomic Job assignment and pre-user-mode debug-event image
+authentication.
 The current suites pass 30 core tests, 34 adapter tests, 25 transport tests,
-10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 95
-Windows bootstrap tests. The Windows total is 20 primitive tests, 8 descriptor
-and protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests,
-5 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
-6 pinned release-manifest tests, 7 native-fixture tests, and 5 containment
-tests. The start-level fixture passes 12/12 prerequisite, 18/18 recorded-row,
-and 9/9 observer-failure tests. The assembly
+10 joined-assembly tests, 14 lifecycle tests, 13 packaging tests, and 107
+Windows bootstrap tests. Committed checkpoint `64043e5` passes 102/102.
+Committed checkpoint `70e0d77` adds 5 audited native-containment cases and
+passes 107/107. The Windows total is 20 primitive tests, 8
+descriptor and protocol tests, 27 broker and in-memory-store tests, 11
+filesystem tests, 5 single-file artefact-identity tests, 6 protected app-local
+artefact-set tests, 6 pinned release-manifest tests, 7 native-fixture tests, 7
+audited native-release binding tests, 5 harness-containment tests, and 5
+audited native-containment tests. The start-level fixture passes 12/12
+prerequisite, 18/18 recorded-row, and 9/9 observer-failure tests. The assembly
 orders callbacks, checkpoints, and arms through the same mailbox worker and
 uses a second post-arm marker to verify request ownership and start a fresh
 observer-local lease. Every successfully confirmed exact idempotent retry
@@ -1974,12 +2058,13 @@ control only. A race remains between the last revalidation and a later loader
 action.
 
 Checkpoint `d4cd474` adds an internal out-of-band canonical release manifest
-with magic `HRCREL01`. Its closed policy admits only the synthetic test-harness
-role, framework-dependent snapshot deployment, and `win-x64` target-runtime
-label. The label is not evidence of actual runtime selection. The composite
-owns copies of the manifest bytes and expected pin. It computes a domain-
-separated SHA-256 pin and authenticates it in fixed time before structural
-parsing.
+with magic `HRCREL01`. Checkpoint `64043e5` preserves the synthetic test-
+harness and framework-dependent pair and adds the one-file synthetic native
+and no-CRT System32-policy pair. Both use the `win-x64` target-runtime label.
+These labels are not evidence of actual runtime or module selection. The
+composite owns copies of the manifest bytes and expected pin. It computes a
+domain-separated SHA-256 pin and authenticates it in fixed time before
+structural parsing.
 
 The parser requires closed role, deployment, and runtime values; a zero reserved
 field; one exact designated executable; 1 through 128 strictly ordinally sorted
@@ -2010,14 +2095,24 @@ protected artefact-set digest binding with failure cleanup, one absolute
 operation budget, and a fixed golden identity. These offline tests do not change
 the `TO CONFIRM` feasibility verdict.
 
-The containment primitive launches exactly the current generated apphost with
-one of two fixed public arguments: `Exit` or `Block`. These join three legacy IPC
-child modes, for five fixed public child modes in total. The build guard rejects
-managed `ProcessStartInfo` or `Process.Start` launch outside the legacy harness
-`Program.cs`. The native `CreateProcessW` containment path is an explicit
-isolated source exception. An exact non-null application name, fixed command
-line, empty Unicode environment, current executable directory, no inherited
-handles, and no standard I/O handles constrain process creation. An
+The seven audited native-release binding cases at checkpoint `64043e5` cover
+both profile golden identities, exact retained-handle image copies, late-
+failure wiping, authenticated PE-audit binding and revalidation, and partial-
+failure cleanup. The current five audited native-containment cases cover the
+Windows and AMD64 gate, exact Exit result `0`, explicit Job-close Block cleanup
+with the immediate directory pinned, every injected launch stage, a late post-
+resume deadline, and concurrent disposal.
+
+Legacy harness-containment checkpoint `2a56de1` launches exactly the current
+generated apphost through `ContainedHarnessProcess` with one of two fixed
+public arguments: `Exit` or `Block`. These join three legacy IPC child modes,
+for five fixed public child modes in total. The build guard rejects managed
+`ProcessStartInfo` or `Process.Start` launch outside the legacy harness
+`Program.cs`. It admits exactly two native `CreateProcessW` call sites in
+production source: `ContainedHarnessProcess` and
+`ContainedAuditedNativeFixtureProcess`. The legacy launcher uses an exact non-
+null application name, fixed command line, empty Unicode environment, current
+executable directory, no inherited handles, and no standard I/O handles. An
 unnamed, non-inheritable Job Object retains exactly the kill-on-close policy.
 The Job-list process attribute assigns it during suspended creation. Before the
 initial thread resumes, the launcher requires one exact Job PID and checks a
@@ -2030,7 +2125,8 @@ handle, then wait for the retained exact process under a separate fixed five-
 second cleanup bound. Concurrent disposal coalesces. The five cases cover
 normal exit, explicit Job-close termination of a blocking child, pre-resume
 failure with no managed entry, late-deadline cleanup, and concurrent disposal
-with an exact-process exit wait.
+with an exact-process exit wait. The managed-entry assertion is legacy apphost
+evidence, not an assertion about the audited no-CRT fixture.
 
 The tests do not terminate their parent abruptly. Direct abrupt-parent-death
 and crash behaviour remain unexercised. The primitive has no artefact-set trust
@@ -2038,13 +2134,11 @@ integration, trusted release provenance, shared-runtime or loader trust,
 production roles, private handoff, role-bound `READY`, token transfer, Java or
 HRC integration, sandbox, or same-user hostile-process defence.
 
-Next, add an explicit native synthetic profile to the release-manifest policy.
-Bind the authenticated native image to its retained file identity and strict PE
-audit. Then integrate atomic Job assignment and bounded native runtime evidence.
 Define a trusted installer or release policy that supplies canonical manifest
 bytes and independent pin provenance. Keep the current containment proof
-separate until dedicated production roles integrate it. Complete this gate
-before private initial name handoff and role-bound `READY`. Then add guarded
+separate until dedicated production roles integrate it. Close the production
+namespace and runtime-module identity before private initial name handoff and
+role-bound `READY`. Then add guarded
 Windows known-folder resolution, protected LocalAppData hierarchy provisioning
 and provenance, and stale or crash recovery around the existing-directory
 seam. Do not integrate this seam with Java or open the standalone-runner gate
