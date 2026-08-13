@@ -327,14 +327,19 @@ the standalone authenticated `HRCNLP01` native launch-policy package. Direct
 Release validation of `9d947ce` passes 114/114 with no native-fixture child
 residue. Checkpoint `a4e1a9d` adds the retained, read-only fixed-leaf package
 selector. Direct Release validation of `a4e1a9d` passes 118/118 with no native-
-fixture child residue. The Windows
+fixture child residue. Documentation checkpoint `e0ffdd8` records that selector
+boundary. Committed checkpoint `5815844` composes the selector into the audited
+synthetic launcher and adds 4 package-bound containment cases. Full Release
+validation of `5815844` passes 122/122 with no
+native-fixture child residue. The Windows
 total is 20 primitive tests, 8 descriptor and
 protocol tests, 27 broker and in-memory-store tests, 11 filesystem tests, 5
 single-file artefact-identity tests, 6 protected app-local artefact-set tests,
 6 pinned release-manifest tests, 7 native-fixture tests, 7 audited native-
 release binding tests, 5 harness-containment tests, 3 native system-module
 identity tests, 5 audited native-containment tests, 4 native launch-policy
-package tests, and 4 native launch-policy file-selector tests. The start-level
+package tests, 4 native launch-policy file-selector tests, and 4 package-bound
+native-containment tests. The start-level
 fixture
 passes 12/12 prerequisite tests,
 18/18 recorded-row tests, and 9/9 observer-failure tests.
@@ -661,6 +666,31 @@ prevent it. These controls make no guarantee against privileged, kernel, or
 raw-volume modification. The selector remains ineligible for trusted launch and
 does not launch either nested policy.
 
+Checkpoint `5815844` adds the selected-package route
+`ContainedAuditedNativeFixtureProcess.OpenSelectedPackageAndLaunch`. It accepts
+the exact package directory, expected current-user owner SID, external outer
+package pin, exact application directory, embedded application manifest, fixed
+synthetic mode, absolute deadline, and cancellation token. It accepts no
+separate nested policy inputs. The route copies the external outer pin and
+embedded application manifest before it acquires selector or filesystem
+authority. It copies the release manifest and pin, and the native system-module
+policy and pin, exclusively from the authenticated fixed-leaf package. It
+admits only the closed, ineligible synthetic native-
+fixture profile. The package and application directories must differ lexically
+and by volume serial number plus 128-bit `FILE_ID`.
+
+One absolute deadline governs cooperative selection and launch checks. The
+route revalidates the selector before process creation, before resume, after
+resume, and before return. It retains the selector through the process wrapper,
+failed-launch cleanup, disposal, and detached-reaper uncertainty. A successful
+Exit retains that authority until wrapper disposal. After process creation,
+failed-launch or reaper authority is released only after proved exact exit. An
+indeterminate wait retains it indefinitely and records terminal uncertainty.
+Temporary nested copies are wiped. The new selected-package evidence surface
+exposes only binding, generation, independent outer-pin copies, and binding
+revalidation. The legacy explicit synthetic launcher
+remains available, but it is not a package-bound route.
+
 After authenticating the `CREATE_PROCESS_DEBUG_EVENT` image handle, the
 launcher continues that event. It then accepts exactly four `LOAD_DLL` events
 in the stated order, followed by the exact initial first-chance breakpoint.
@@ -745,6 +775,18 @@ allowed siblings, read-only sharing, authentication precedence, bounds,
 replacement and reparse rejection, cancellation and deadline rollback,
 borrowed-snapshot wiping, recovery, and disposal release. Direct Release
 validation of `a4e1a9d` passes 118/118 with no native-fixture child residue.
+Checkpoint `5815844` adds 4 package-bound native-containment cases over its new
+composition. The Exit case covers selected authority retention, independent
+copies, selector-snapshot and directly captured retained-backing wiping, and
+disposal release. The pre-create case covers direct same-`FILE_ID` directory
+rejection, a wrong outer pin, and nested release or module-policy mismatch
+before `CreateProcessW`. The fault case covers all 16 containment fault stages,
+exact-exit cleanup, no child residue, and unchanged reaper baselines. The bounds
+case covers selection and launch cancellation, late deadlines, and coalesced
+concurrent disposal. Full
+Release validation of `5815844` passes 122/122 with no native-fixture child
+residue. Baseline and final reaper state was unchanged. This evidence does not
+prove that the reaper was never used transiently.
 
 The tests do not terminate the parent abruptly. The initial breakpoint is not
 a direct entry sentinel. No debug-event file handle proves section, mapping,
@@ -758,12 +800,17 @@ Define an independently provisioned outer-pin issuer and rotation policy. Add
 trusted provisioning of the canonical selector root and exact fixed leaf, a
 freshness and rollback floor, trusted writer, installer, and updater transactions
 with crash recovery, and servicing coordination. Checkpoint `a4e1a9d` supplies
-only an offline, read-only fixed-leaf selector around the pure package
-authenticator. It does not provision its root, leaf, owner SID, or external pin;
-write or update the package; compose the package into the existing audited
-launcher; launch either nested policy; or provide production, HRC, or runner
-integration. Its exact ACL does not isolate hostile processes running as the
-same user. The
+the offline, read-only fixed-leaf selector. Documentation checkpoint `e0ffdd8`
+records that boundary. Checkpoint `5815844` composes and validates it only in
+the synthetic audited launcher. The test package and module policy are synthetic and current-host
+scoped. The caller still supplies the outer pin, owner SID, protected root,
+application directory and manifest, and launch mode. The composition does not
+supply issuer or pin provenance, root or leaf provenance, a signature,
+freshness or rollback protection, a trusted writer or updater, crash recovery,
+servicing coordination, same-user isolation, a production role, complete loader
+closure, HRC or runner readiness, or trusted-launch eligibility. It does not
+write or update the package. Its exact ACL does not isolate hostile processes
+running as the same user. The
 synthetic current-host test policy and
 further self-baselined enumeration cannot provide that trust. Close
 the production namespace and complete runtime-module, loader, and
