@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -42,12 +41,12 @@ internal enum ReleaseTargetRuntimeIdentifier : ushort
 /// set. The complete bytes are authenticated only relative to a caller-supplied
 /// SHA-256 pin. This structure supplies no signature or release provenance.
 /// </summary>
-internal sealed class ReleaseManifestV1
+internal sealed class ReleaseManifestV1 : IDisposable
 {
     internal const int MaximumEncodedLength = 38_325;
     internal const string NativeFixtureExecutableRelativeFileName =
         "HrcJobObserver.NativeFixture.exe";
-    private const int MinimumEncodedLength = 98;
+    internal const int MinimumEncodedLength = 98;
     private const int Sha256Length = 32;
     private const int MaximumFileNameLength = 255;
     private static readonly byte[] Magic = Encoding.ASCII.GetBytes("HRCREL01");
@@ -84,7 +83,26 @@ internal sealed class ReleaseManifestV1
 
     internal TrustedArtifactExpectation[] CopyArtifacts()
     {
-        return (TrustedArtifactExpectation[])artifacts.Clone();
+        TrustedArtifactExpectation[] copy =
+            new TrustedArtifactExpectation[artifacts.Length];
+        try
+        {
+            for (int index = 0; index < artifacts.Length; index++)
+            {
+                copy[index] = artifacts[index].CloneOwned();
+            }
+
+            return copy;
+        }
+        catch
+        {
+            foreach (TrustedArtifactExpectation? artifact in copy)
+            {
+                artifact?.Dispose();
+            }
+
+            throw;
+        }
     }
 
     internal byte[] CopyArtifactSetManifestSha256()
@@ -182,87 +200,111 @@ internal sealed class ReleaseManifestV1
 
         TrustedArtifactExpectation[] artifacts = new TrustedArtifactExpectation[
             checked((int)count)];
-        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
-        string? previousName = null;
-        bool containsExecutable = false;
-        for (int index = 0; index < artifacts.Length; index++)
+        byte[]? artifactSetManifest = null;
+        bool transferred = false;
+        try
         {
-            CheckOperation(deadline, cancellationToken);
-            string name = ReadFileName(
-                ref reader,
-                $"artifact {index} filename");
-            if (previousName is not null &&
-                string.CompareOrdinal(previousName, name) >= 0)
+            HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+            string? previousName = null;
+            bool containsExecutable = false;
+            for (int index = 0; index < artifacts.Length; index++)
             {
-                throw new FormatException(
-                    "Release artifact filenames must be strictly ordinally sorted.");
-            }
+                CheckOperation(deadline, cancellationToken);
+                string name = ReadFileName(
+                    ref reader,
+                    $"artifact {index} filename");
+                if (previousName is not null &&
+                    string.CompareOrdinal(previousName, name) >= 0)
+                {
+                    throw new FormatException(
+                        "Release artifact filenames must be strictly ordinally sorted.");
+                }
 
-            if (!names.Add(name))
-            {
-                throw new FormatException(
-                    "Release artifact filenames must not have case collisions.");
-            }
+                if (!names.Add(name))
+                {
+                    throw new FormatException(
+                        "Release artifact filenames must not have case collisions.");
+                }
 
-            ulong encodedLength = reader.ReadUInt64($"artifact {index} length");
-            if (encodedLength > long.MaxValue)
-            {
-                throw new FormatException(
-                    "A release artifact length exceeds the admitted range.");
-            }
+                ulong encodedLength = reader.ReadUInt64(
+                    $"artifact {index} length");
+                if (encodedLength > long.MaxValue)
+                {
+                    throw new FormatException(
+                        "A release artifact length exceeds the admitted range.");
+                }
 
-            ReadOnlySpan<byte> digest = reader.ReadBytes(
-                Sha256Length,
-                $"artifact {index} SHA-256");
-            try
-            {
-                artifacts[index] = new TrustedArtifactExpectation(
+                ReadOnlySpan<byte> digest = reader.ReadBytes(
+                    Sha256Length,
+                    $"artifact {index} SHA-256");
+                try
+                {
+                    artifacts[index] = new TrustedArtifactExpectation(
+                        name,
+                        checked((long)encodedLength),
+                        digest);
+                }
+                catch (ArgumentException exception)
+                {
+                    throw new FormatException(
+                        "A release artifact entry is not canonical.",
+                        exception);
+                }
+
+                containsExecutable |= string.Equals(
                     name,
-                    checked((long)encodedLength),
-                    digest);
+                    executableName,
+                    StringComparison.Ordinal);
+                previousName = name;
+                CheckOperation(deadline, cancellationToken);
             }
-            catch (ArgumentException exception)
+
+            if (!containsExecutable)
             {
                 throw new FormatException(
-                    "A release artifact entry is not canonical.",
-                    exception);
+                    "The designated executable is not an exact release artifact.");
             }
 
-            containsExecutable |= string.Equals(
-                name,
-                executableName,
-                StringComparison.Ordinal);
-            previousName = name;
+            if (artifactRole == ReleaseArtifactRole.SyntheticNativeFixture &&
+                !string.Equals(
+                    artifacts[0].RelativeFileName,
+                    NativeFixtureExecutableRelativeFileName,
+                    StringComparison.Ordinal))
+            {
+                throw new FormatException(
+                    "The synthetic native-fixture member filename is not exact.");
+            }
+
+            artifactSetManifest = reader.ReadBytes(
+                Sha256Length,
+                "protected artifact-set manifest SHA-256").ToArray();
+            reader.RequireEnd();
             CheckOperation(deadline, cancellationToken);
+            ReleaseManifestV1 result = new(
+                artifactRole,
+                deploymentKind,
+                executableName,
+                artifacts,
+                artifactSetManifest);
+            artifactSetManifest = null;
+            transferred = true;
+            return result;
         }
-
-        if (!containsExecutable)
+        finally
         {
-            throw new FormatException(
-                "The designated executable is not an exact release artifact.");
-        }
+            if (!transferred)
+            {
+                foreach (TrustedArtifactExpectation? artifact in artifacts)
+                {
+                    artifact?.Dispose();
+                }
 
-        if (artifactRole == ReleaseArtifactRole.SyntheticNativeFixture &&
-            !string.Equals(
-                artifacts[0].RelativeFileName,
-                NativeFixtureExecutableRelativeFileName,
-                StringComparison.Ordinal))
-        {
-            throw new FormatException(
-                "The synthetic native-fixture member filename is not exact.");
+                if (artifactSetManifest is not null)
+                {
+                    CryptographicOperations.ZeroMemory(artifactSetManifest);
+                }
+            }
         }
-
-        byte[] artifactSetManifest = reader.ReadBytes(
-            Sha256Length,
-            "protected artifact-set manifest SHA-256").ToArray();
-        reader.RequireEnd();
-        CheckOperation(deadline, cancellationToken);
-        return new ReleaseManifestV1(
-            artifactRole,
-            deploymentKind,
-            executableName,
-            artifacts,
-            artifactSetManifest);
     }
 
     private static string ReadFileName(
@@ -314,6 +356,16 @@ internal sealed class ReleaseManifestV1
         return executable.CopySha256Digest();
     }
 
+    public void Dispose()
+    {
+        foreach (TrustedArtifactExpectation artifact in artifacts)
+        {
+            artifact.Dispose();
+        }
+
+        CryptographicOperations.ZeroMemory(artifactSetManifestSha256);
+    }
+
     private static void CheckOperation(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
@@ -331,11 +383,6 @@ internal sealed class ReleaseManifestV1
 /// </summary>
 internal sealed class PinnedReleaseArtifactSetLease : IDisposable
 {
-    private const int Sha256Length = 32;
-    private const int HashChunkLength = 4_096;
-    private static readonly byte[] PinDomain = Encoding.ASCII.GetBytes(
-        "HRC-BETA-OBSERVER-RELEASE-MANIFEST-PIN-V1\0");
-
     private readonly object gate = new();
     private readonly TrustedArtifactSetLease artifactSet;
     private readonly byte[] manifestPinSha256;
@@ -345,7 +392,7 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
 
     private PinnedReleaseArtifactSetLease(
         TrustedArtifactSetLease artifactSet,
-        ReleaseManifestV1 manifest,
+        AuthenticatedReleaseManifestV1 manifest,
         byte[] manifestPinSha256,
         byte[] artifactSetManifestSha256)
     {
@@ -414,56 +461,35 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
         CancellationToken cancellationToken)
     {
         CheckOperation(deadline, cancellationToken);
-        if (canonicalManifest.Length is < 1 or >
-            ReleaseManifestV1.MaximumEncodedLength)
-        {
-            throw new ArgumentException(
-                "The release manifest byte length is invalid.",
-                nameof(canonicalManifest));
-        }
-
-        if (expectedManifestPinSha256.Length != Sha256Length)
-        {
-            throw new ArgumentException(
-                "The expected release-manifest pin must contain exactly 32 bytes.",
-                nameof(expectedManifestPinSha256));
-        }
-
-        byte[] ownedManifest = canonicalManifest.ToArray();
-        byte[] ownedExpectedPin = expectedManifestPinSha256.ToArray();
-        byte[]? actualPin = null;
+        AuthenticatedReleaseManifestV1? manifest = null;
+        byte[]? retainedManifestPin = null;
         byte[]? artifactSetManifestIdentity = null;
         TrustedArtifactSetLease? artifactSet = null;
         try
         {
-            CheckOperation(deadline, cancellationToken);
-            actualPin = ComputePinSha256(
-                ownedManifest,
-                deadline,
-                cancellationToken);
-            CheckOperation(deadline, cancellationToken);
-            if (!CryptographicOperations.FixedTimeEquals(
-                    actualPin,
-                    ownedExpectedPin))
-            {
-                throw new SecurityException(
-                    "The release manifest does not match the independently supplied pin.");
-            }
-
-            CheckOperation(deadline, cancellationToken);
-            ReleaseManifestV1 manifest =
-                ReleaseManifestV1.ParseStructuralCanonical(
-                ownedManifest,
+            manifest = AuthenticatedReleaseManifestV1.Authenticate(
+                canonicalManifest,
+                expectedManifestPinSha256,
                 deadline,
                 cancellationToken);
             CheckOperation(deadline, cancellationToken);
             TrustedArtifactExpectation[] artifacts = manifest.CopyArtifacts();
-            artifactSet = TrustedArtifactSetLease.Open(
-                exactApplicationDirectory,
-                manifest.ExecutableRelativeFileName,
-                artifacts,
-                deadline,
-                cancellationToken);
+            try
+            {
+                artifactSet = TrustedArtifactSetLease.Open(
+                    exactApplicationDirectory,
+                    manifest.ExecutableRelativeFileName,
+                    artifacts,
+                    deadline,
+                    cancellationToken);
+            }
+            finally
+            {
+                foreach (TrustedArtifactExpectation artifact in artifacts)
+                {
+                    artifact.Dispose();
+                }
+            }
 
             artifactSetManifestIdentity =
                 manifest.CopyArtifactSetManifestSha256();
@@ -489,15 +515,25 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
 
             artifactSet.RevalidateExactSet(deadline, cancellationToken);
             CheckOperation(deadline, cancellationToken);
+            retainedManifestPin = manifest.CopyManifestPinSha256();
             PinnedReleaseArtifactSetLease result = new(
                 artifactSet,
                 manifest,
-                actualPin,
+                retainedManifestPin,
                 artifactSetManifestIdentity);
             artifactSet = null;
-            actualPin = null;
+            retainedManifestPin = null;
             artifactSetManifestIdentity = null;
-            return result;
+            try
+            {
+                CheckOperation(deadline, cancellationToken);
+                return result;
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
         }
         finally
         {
@@ -507,11 +543,10 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
             }
             finally
             {
-                CryptographicOperations.ZeroMemory(ownedManifest);
-                CryptographicOperations.ZeroMemory(ownedExpectedPin);
-                if (actualPin is not null)
+                manifest?.Dispose();
+                if (retainedManifestPin is not null)
                 {
-                    CryptographicOperations.ZeroMemory(actualPin);
+                    CryptographicOperations.ZeroMemory(retainedManifestPin);
                 }
 
                 if (artifactSetManifestIdentity is not null)
@@ -585,37 +620,6 @@ internal sealed class PinnedReleaseArtifactSetLease : IDisposable
                 CryptographicOperations.ZeroMemory(executableSha256);
             }
         }
-    }
-
-    private static byte[] ComputePinSha256(
-        ReadOnlySpan<byte> canonicalManifest,
-        MonotonicDeadline deadline,
-        CancellationToken cancellationToken)
-    {
-        CheckOperation(deadline, cancellationToken);
-        using IncrementalHash hash = IncrementalHash.CreateHash(
-            HashAlgorithmName.SHA256);
-        hash.AppendData(PinDomain);
-        for (int offset = 0; offset < canonicalManifest.Length;
-            offset += HashChunkLength)
-        {
-            CheckOperation(deadline, cancellationToken);
-            int length = Math.Min(
-                HashChunkLength,
-                canonicalManifest.Length - offset);
-            hash.AppendData(canonicalManifest.Slice(offset, length));
-        }
-
-        CheckOperation(deadline, cancellationToken);
-        byte[] result = hash.GetHashAndReset();
-        if (result.Length != Sha256Length)
-        {
-            CryptographicOperations.ZeroMemory(result);
-            throw new CryptographicException(
-                "The release-manifest pin digest length was invalid.");
-        }
-
-        return result;
     }
 
     private static void CheckOperation(

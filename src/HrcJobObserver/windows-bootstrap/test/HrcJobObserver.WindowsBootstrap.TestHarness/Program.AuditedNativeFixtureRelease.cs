@@ -30,7 +30,7 @@ internal static partial class Program
                 "role.exe",
                 legacyArtifacts,
                 artifactSetManifest);
-            ReleaseManifestV1 legacyParsed =
+            using ReleaseManifestV1 legacyParsed =
                 ReleaseManifestV1.ParseStructuralCanonical(
                     legacy,
                     NewArtifactDeadline(),
@@ -55,7 +55,7 @@ internal static partial class Program
                 artifactRole: ReleaseArtifactRole.SyntheticNativeFixture,
                 deploymentKind:
                     ReleaseDeploymentKind.NativeNoCrtSystem32Fixture);
-            ReleaseManifestV1 nativeParsed =
+            using ReleaseManifestV1 nativeParsed =
                 ReleaseManifestV1.ParseStructuralCanonical(
                     native,
                     NewArtifactDeadline(),
@@ -161,7 +161,7 @@ internal static partial class Program
                 "the legacy V1 release wire identity changed");
             Assert(actualNativePin.AsSpan().SequenceEqual(expectedNativePin),
                 "the native V1 release wire identity changed");
-            ReleaseManifestV1 parsed =
+            using ReleaseManifestV1 parsed =
                 ReleaseManifestV1.ParseStructuralCanonical(
                     nativeWire,
                     NewArtifactDeadline(),

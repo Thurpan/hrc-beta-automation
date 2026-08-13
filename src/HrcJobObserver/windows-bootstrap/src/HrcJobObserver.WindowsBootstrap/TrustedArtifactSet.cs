@@ -14,7 +14,7 @@ namespace HrcJobObserver.WindowsBootstrap;
 /// Immutable expected identity for one app-local artifact. The relative name
 /// is one canonical Windows filename, not a path.
 /// </summary>
-internal sealed class TrustedArtifactExpectation
+internal sealed class TrustedArtifactExpectation : IDisposable
 {
     private const int Sha256Length = 32;
     private readonly byte[] sha256Digest;
@@ -50,6 +50,19 @@ internal sealed class TrustedArtifactExpectation
     internal byte[] CopySha256Digest()
     {
         return (byte[])sha256Digest.Clone();
+    }
+
+    internal TrustedArtifactExpectation CloneOwned()
+    {
+        return new TrustedArtifactExpectation(
+            RelativeFileName,
+            Length,
+            sha256Digest);
+    }
+
+    public void Dispose()
+    {
+        CryptographicOperations.ZeroMemory(sha256Digest);
     }
 }
 

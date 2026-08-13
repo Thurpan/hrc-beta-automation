@@ -150,6 +150,8 @@ internal static partial class Program
         byte[] malformed = new byte[ReleaseManifestV1.MaximumEncodedLength];
         byte[] wrongPin = new byte[32];
         byte[] correctPin = ComputeReleaseManifestPin(malformed);
+        byte[] canonical = CreateGoldenLegacyReleaseManifest();
+        byte[] canonicalPin = ComputeReleaseManifestPin(canonical);
         try
         {
             wrongPin[0] = 1;
@@ -183,6 +185,24 @@ internal static partial class Program
                         NewArtifactDeadline(),
                         CancellationToken.None);
             });
+
+            using AuthenticatedReleaseManifestV1 authenticated =
+                AuthenticatedReleaseManifestV1.Authenticate(
+                    canonical,
+                    canonicalPin,
+                    NewArtifactDeadline(),
+                    CancellationToken.None);
+            AssertEqual(ReleaseArtifactRole.SyntheticTestHarness,
+                authenticated.ArtifactRole,
+                "standalone authenticated release role after failed parses");
+            AssertEqual(1, authenticated.ArtifactCount,
+                "standalone authenticated release artifact count");
+            Assert(!authenticated.IsEligibleForTrustedLaunch,
+                "standalone release authentication must not establish launch eligibility");
+            AssertAuthenticatedReleaseManifestArtifactOwnership(
+                authenticated,
+                canonical,
+                canonicalPin);
             return Task.CompletedTask;
         }
         finally
@@ -190,6 +210,8 @@ internal static partial class Program
             CryptographicOperations.ZeroMemory(malformed);
             CryptographicOperations.ZeroMemory(wrongPin);
             CryptographicOperations.ZeroMemory(correctPin);
+            CryptographicOperations.ZeroMemory(canonical);
+            CryptographicOperations.ZeroMemory(canonicalPin);
         }
     }
 
@@ -474,7 +496,7 @@ internal static partial class Program
         {
             Assert(actualPin.AsSpan().SequenceEqual(expectedPin),
                 "the independent golden release-manifest pin changed");
-            ReleaseManifestV1 parsed = ReleaseManifestV1
+            using ReleaseManifestV1 parsed = ReleaseManifestV1
                 .ParseStructuralCanonical(
                     wire,
                     NewArtifactDeadline(),
@@ -492,6 +514,110 @@ internal static partial class Program
             CryptographicOperations.ZeroMemory(wire);
             CryptographicOperations.ZeroMemory(expectedPin);
             CryptographicOperations.ZeroMemory(actualPin);
+        }
+    }
+
+    private static void AssertAuthenticatedReleaseManifestArtifactOwnership(
+        AuthenticatedReleaseManifestV1 authenticated,
+        ReadOnlySpan<byte> canonical,
+        ReadOnlySpan<byte> canonicalPin)
+    {
+        TrustedArtifactExpectation[]? first = null;
+        TrustedArtifactExpectation[]? beforeOwnerDisposal = null;
+        byte[]? retainedWire = null;
+        byte[]? retainedPin = null;
+        try
+        {
+            first = authenticated.CopyArtifacts();
+            AssertEqual(1, first.Length,
+                "first independently owned release artifact array length");
+            byte[] firstDigest = first[0].CopySha256Digest();
+            try
+            {
+                first[0].Dispose();
+                byte[] wipedFirstDigest = first[0].CopySha256Digest();
+                try
+                {
+                    Assert(wipedFirstDigest.All(value => value == 0),
+                        "disposing an artifact copy must wipe that copy");
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(wipedFirstDigest);
+                }
+
+                TrustedArtifactExpectation[] fresh =
+                    authenticated.CopyArtifacts();
+                try
+                {
+                    byte[] freshDigest = fresh[0].CopySha256Digest();
+                    try
+                    {
+                        Assert(freshDigest.Any(value => value != 0),
+                            "disposing an artifact copy must not wipe the authenticated owner");
+                        Assert(freshDigest.AsSpan().SequenceEqual(firstDigest),
+                            "the authenticated owner must retain its exact artifact digest");
+                    }
+                    finally
+                    {
+                        CryptographicOperations.ZeroMemory(freshDigest);
+                    }
+                }
+                finally
+                {
+                    DisposeTrustedArtifactExpectations(fresh);
+                }
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(firstDigest);
+            }
+
+            beforeOwnerDisposal = authenticated.CopyArtifacts();
+            retainedWire = authenticated.CopyCanonicalManifest();
+            retainedPin = authenticated.CopyManifestPinSha256();
+            authenticated.Dispose();
+            byte[] survivingDigest =
+                beforeOwnerDisposal[0].CopySha256Digest();
+            try
+            {
+                Assert(survivingDigest.Any(value => value != 0),
+                    "disposing the authenticated owner must not wipe prior artifact copies");
+                Assert(retainedWire.AsSpan().SequenceEqual(canonical),
+                    "disposing the authenticated owner must not alter prior wire copies");
+                Assert(retainedPin.AsSpan().SequenceEqual(canonicalPin),
+                    "disposing the authenticated owner must not alter prior pin copies");
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(survivingDigest);
+            }
+
+            AssertThrows<ObjectDisposedException>(() =>
+                authenticated.CopyArtifacts());
+            AssertThrows<ObjectDisposedException>(() =>
+                authenticated.CopyCanonicalManifest());
+        }
+        finally
+        {
+            DisposeTrustedArtifactExpectations(first);
+            DisposeTrustedArtifactExpectations(beforeOwnerDisposal);
+            WipeNativeLaunchPolicyBytes(retainedWire);
+            WipeNativeLaunchPolicyBytes(retainedPin);
+        }
+    }
+
+    private static void DisposeTrustedArtifactExpectations(
+        TrustedArtifactExpectation[]? artifacts)
+    {
+        if (artifacts is null)
+        {
+            return;
+        }
+
+        foreach (TrustedArtifactExpectation artifact in artifacts)
+        {
+            artifact.Dispose();
         }
     }
 
