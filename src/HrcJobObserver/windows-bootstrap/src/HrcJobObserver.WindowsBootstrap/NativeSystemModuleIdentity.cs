@@ -9,8 +9,15 @@ using Microsoft.Win32.SafeHandles;
 
 namespace HrcJobObserver.WindowsBootstrap;
 
+internal enum NativeStartupSystemModule
+{
+    Ntdll = 0,
+    Kernel32 = 1,
+    KernelBase = 2,
+}
+
 /// <summary>
-/// Retains the native System32 KERNEL32 file and compares debugger-supplied
+/// Retains one exact native System32 module file and compares debugger-supplied
 /// LOAD_DLL file handles with that contemporaneous identity. This does not
 /// establish Microsoft provenance, KnownDLL section identity, or trusted-launch
 /// eligibility.
@@ -18,6 +25,7 @@ namespace HrcJobObserver.WindowsBootstrap;
 internal sealed class NativeSystemModuleIdentityLease : IDisposable
 {
     private readonly object gate = new();
+    private readonly NativeStartupSystemModule module;
     private readonly SafeFileHandle expectedHandle;
     private readonly byte[] expectedDigest;
     private readonly TrustedArtifactFileIdentity expectedIdentity;
@@ -25,6 +33,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
     private bool disposed;
 
     private NativeSystemModuleIdentityLease(
+        NativeStartupSystemModule module,
         SafeFileHandle expectedHandle,
         string path,
         string volumeGuidPath,
@@ -33,6 +42,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         TrustedArtifactFileIdentity expectedIdentity,
         uint expectedLinkCount)
     {
+        this.module = module;
         this.expectedHandle = expectedHandle;
         Path = path;
         VolumeGuidPath = volumeGuidPath;
@@ -47,6 +57,8 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
     internal string VolumeGuidPath { get; }
 
     internal long Length { get; }
+
+    internal NativeStartupSystemModule Module => module;
 
     internal bool IsEligibleForTrustedLaunch => false;
 
@@ -68,21 +80,64 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         }
     }
 
+    internal bool HasSameFileIdentity(
+        NativeSystemModuleIdentityLease other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        byte[] thisIdentifier = CopyFileIdentifier();
+        byte[]? otherIdentifier = null;
+        try
+        {
+            otherIdentifier = other.CopyFileIdentifier();
+            return expectedIdentity.VolumeSerialNumber ==
+                    other.expectedIdentity.VolumeSerialNumber &&
+                CryptographicOperations.FixedTimeEquals(
+                    thisIdentifier,
+                    otherIdentifier);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(thisIdentifier);
+            if (otherIdentifier is not null)
+            {
+                CryptographicOperations.ZeroMemory(otherIdentifier);
+            }
+        }
+    }
+
     internal static NativeSystemModuleIdentityLease OpenKernel32(
         MonotonicDeadline deadline,
         CancellationToken cancellationToken)
     {
-        CheckOperation(deadline, cancellationToken);
-        if (IntPtr.Size != 8 ||
-            RuntimeInformation.ProcessArchitecture != Architecture.X64 ||
-            RuntimeInformation.OSArchitecture != Architecture.X64)
+        RequireSupportedPlatform(deadline, cancellationToken);
+        return OpenExpectedModule(
+            NativeStartupSystemModule.Kernel32,
+            ReadNativeSystemDirectory(),
+            deadline,
+            cancellationToken);
+    }
+
+    internal static NativeSystemModuleIdentityLease OpenExpectedModule(
+        NativeStartupSystemModule module,
+        string systemDirectory,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(systemDirectory);
+        RequireSupportedPlatform(deadline, cancellationToken);
+        string nativeSystemDirectory = ReadNativeSystemDirectory();
+        if (!string.Equals(
+                systemDirectory,
+                nativeSystemDirectory,
+                StringComparison.OrdinalIgnoreCase))
         {
-            throw new PlatformNotSupportedException(
-                "The native System32 module identity requires an x64 process.");
+            throw new SecurityException(
+                "The expected native system-module directory was not the current native System32 directory.");
         }
 
-        string systemDirectory = ReadNativeSystemDirectory();
-        string path = PathJoinCanonical(systemDirectory, "kernel32.dll");
+        CheckOperation(deadline, cancellationToken);
+        string moduleFileName = GetFileName(module);
+        string path = PathJoinCanonical(systemDirectory, moduleFileName);
         CheckOperation(deadline, cancellationToken);
         SafeFileHandle? handle = null;
         byte[]? digest = null;
@@ -95,6 +150,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
             RequireUnchanged(before, after);
             CheckOperation(deadline, cancellationToken);
             NativeSystemModuleIdentityLease result = new(
+                module,
                 handle,
                 path,
                 before.VolumeGuidPath,
@@ -127,7 +183,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
 
     /// <summary>
     /// Returns null only after a stable candidate identity differs from the
-    /// expected KERNEL32 identity. An exact match produces independently owned
+    /// expected module identity. An exact match produces independently owned
     /// evidence by duplicating the debugger-owned file handle.
     /// </summary>
     internal NativeSystemModuleLoadEvidence? TryCaptureLoadedModuleEvidence(
@@ -138,12 +194,12 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         lock (gate)
         {
             ThrowIfDisposed();
-            CheckOperation(deadline, cancellationToken);
             SafeFileHandle? candidateCopy = DuplicateFileHandle(candidate);
             byte[]? candidateDigest = null;
             byte[]? evidenceDigest = null;
             try
             {
+                CheckOperation(deadline, cancellationToken);
                 ValidateExpectedStillCurrent(deadline, cancellationToken);
                 ModuleMetadata candidateBefore = ValidateHandle(candidateCopy);
                 if (!candidateBefore.Identity.Equals(expectedIdentity))
@@ -168,7 +224,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
                         expectedDigest))
                 {
                     throw new SecurityException(
-                        "The loaded native system module bytes did not match KERNEL32.");
+                        $"The loaded native system module bytes did not match {GetDisplayName(module)}.");
                 }
 
                 CheckOperation(deadline, cancellationToken);
@@ -176,6 +232,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
                 evidenceDigest = (byte[])expectedDigest.Clone();
                 CheckOperation(deadline, cancellationToken);
                 NativeSystemModuleLoadEvidence evidence = new(
+                    module,
                     candidateCopy,
                     Path,
                     VolumeGuidPath,
@@ -257,7 +314,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
             if (!CryptographicOperations.FixedTimeEquals(digest, expectedDigest))
             {
                 throw new SecurityException(
-                    "The native System32 KERNEL32 bytes changed during revalidation.");
+                    $"The native System32 {GetDisplayName(module)} bytes changed during revalidation.");
             }
 
             ModuleMetadata retainedAfter = ValidateExpectedPath(expectedHandle, Path);
@@ -282,7 +339,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new SecurityException(
-                "The native system module identity did not match KERNEL32.");
+                $"The native system module identity did not match {GetDisplayName(module)}.");
         }
     }
 
@@ -290,6 +347,44 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
     }
+
+    internal static void RequireSupportedPlatform(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        CheckOperation(deadline, cancellationToken);
+        if (IntPtr.Size != 8 ||
+            RuntimeInformation.ProcessArchitecture != Architecture.X64 ||
+            RuntimeInformation.OSArchitecture != Architecture.X64)
+        {
+            throw new PlatformNotSupportedException(
+                "The native System32 module identity requires an x64 process.");
+        }
+    }
+
+    internal static string GetDisplayName(NativeStartupSystemModule module) =>
+        module switch
+        {
+            NativeStartupSystemModule.Ntdll => "NTDLL",
+            NativeStartupSystemModule.Kernel32 => "KERNEL32",
+            NativeStartupSystemModule.KernelBase => "KernelBase",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(module),
+                module,
+                "The native startup system module is not supported."),
+        };
+
+    private static string GetFileName(NativeStartupSystemModule module) =>
+        module switch
+        {
+            NativeStartupSystemModule.Ntdll => "ntdll.dll",
+            NativeStartupSystemModule.Kernel32 => "kernel32.dll",
+            NativeStartupSystemModule.KernelBase => "KernelBase.dll",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(module),
+                module,
+                "The native startup system module is not supported."),
+        };
 
     internal static SafeFileHandle DuplicateFileHandle(SafeFileHandle source)
     {
@@ -360,13 +455,13 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
             NativeMethods.GetDriveType(root) != NativeMethods.DriveFixed)
         {
             throw new PlatformNotSupportedException(
-                "The native System32 KERNEL32 is not on a fixed local drive.");
+                "The native System32 module is not on a fixed local drive.");
         }
 
         return full;
     }
 
-    private static unsafe string ReadNativeSystemDirectory()
+    internal static unsafe string ReadNativeSystemDirectory()
     {
         Span<char> buffer = stackalloc char[32_768];
         fixed (char* pointer = buffer)
@@ -399,7 +494,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         if (raw == 0 || raw == -1)
         {
             throw NativeMethods.Win32Failure(
-                "Opening the native System32 KERNEL32 file failed");
+                "Opening the native System32 module file failed");
         }
 
         try
@@ -417,7 +512,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         }
     }
 
-    private static ModuleMetadata ValidateExpectedPath(
+    internal static ModuleMetadata ValidateExpectedPath(
         SafeFileHandle handle,
         string expectedPath)
     {
@@ -427,7 +522,7 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
         if (!string.Equals(dosPath, expected, StringComparison.OrdinalIgnoreCase))
         {
             throw new SecurityException(
-                "The native System32 KERNEL32 path resolved unexpectedly.");
+                "The native System32 module path resolved unexpectedly.");
         }
 
         return metadata;
@@ -661,12 +756,556 @@ internal sealed class NativeSystemModuleIdentityLease : IDisposable
 }
 
 /// <summary>
-/// Owns a duplicate of the debugger-supplied LOAD_DLL file handle that matched
-/// the contemporaneously retained System32 KERNEL32 identity.
+/// Retains the exact native System32 NTDLL, KERNEL32, and KernelBase files and
+/// owns debugger-supplied LOAD_DLL evidence for that exact observed order. The
+/// aggregate is a closed host-compatibility policy for the synthetic fixture;
+/// it does not establish KnownDLL, signer, section, or trusted-launch identity.
+/// Its retained read-only, non-delete-sharing file handles can defer replacement
+/// or Windows servicing of these three System32 files for the lease lifetime.
+/// </summary>
+internal sealed class NativeStartupSystemModuleSetLease : IDisposable
+{
+    internal const int RequiredModuleCount = 3;
+
+    private readonly object gate = new();
+    private readonly NativeSystemModuleIdentityLease?[] expectedModules;
+    private readonly NativeSystemModuleLoadEvidence?[] loadedModules =
+        new NativeSystemModuleLoadEvidence?[RequiredModuleCount];
+    private readonly nint[] loadedBaseAddresses = new nint[RequiredModuleCount];
+    private nint mainImageBaseAddress;
+    private int capturedCount;
+    private bool sealedAtInitialBreakpoint;
+    private bool faulted;
+    private bool disposed;
+
+    private NativeStartupSystemModuleSetLease(
+        NativeSystemModuleIdentityLease?[] expectedModules)
+    {
+        this.expectedModules = expectedModules;
+    }
+
+    internal int CapturedCount
+    {
+        get
+        {
+            lock (gate)
+            {
+                ThrowIfDisposed();
+                return capturedCount;
+            }
+        }
+    }
+
+    internal bool IsSealed
+    {
+        get
+        {
+            lock (gate)
+            {
+                ThrowIfDisposed();
+                return sealedAtInitialBreakpoint;
+            }
+        }
+    }
+
+    internal bool IsEligibleForTrustedLaunch
+    {
+        get
+        {
+            lock (gate)
+            {
+                ThrowIfDisposed();
+                return false;
+            }
+        }
+    }
+
+    internal static NativeStartupSystemModuleSetLease OpenExpected(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        NativeSystemModuleIdentityLease.RequireSupportedPlatform(
+            deadline,
+            cancellationToken);
+        string systemDirectory =
+            NativeSystemModuleIdentityLease.ReadNativeSystemDirectory();
+        NativeSystemModuleIdentityLease?[] expected =
+            new NativeSystemModuleIdentityLease?[RequiredModuleCount];
+        bool transferred = false;
+        try
+        {
+            for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
+            {
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+                expected[ordinal] =
+                    NativeSystemModuleIdentityLease.OpenExpectedModule(
+                        GetModuleAtOrdinal(ordinal),
+                        systemDirectory,
+                        deadline,
+                        cancellationToken);
+
+                NativeSystemModuleIdentityLease current = expected[ordinal] ??
+                    throw new InvalidOperationException(
+                        "Opening a native startup system module returned no lease.");
+                for (int prior = 0; prior < ordinal; prior++)
+                {
+                    NativeSystemModuleIdentityLease.CheckOperation(
+                        deadline,
+                        cancellationToken);
+                    NativeSystemModuleIdentityLease priorLease =
+                        expected[prior] ?? throw new InvalidOperationException(
+                            "The expected native startup system-module set became incomplete.");
+                    if (current.HasSameFileIdentity(priorLease))
+                    {
+                        throw new SecurityException(
+                            "Expected native startup system modules shared one file identity.");
+                    }
+                }
+            }
+
+            for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
+            {
+                expected[ordinal]!.Revalidate(deadline, cancellationToken);
+            }
+
+            NativeSystemModuleIdentityLease.CheckOperation(
+                deadline,
+                cancellationToken);
+            NativeStartupSystemModuleSetLease result = new(expected);
+            transferred = true;
+            try
+            {
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+                return result;
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            if (!transferred)
+            {
+                for (int ordinal = expected.Length - 1; ordinal >= 0; ordinal--)
+                {
+                    expected[ordinal]?.Dispose();
+                    expected[ordinal] = null;
+                }
+            }
+        }
+    }
+
+    internal NativeStartupSystemModule GetExpectedModule(int ordinal)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            _ = GetExpectedAtOrdinal(ordinal);
+            return GetModuleAtOrdinal(ordinal);
+        }
+    }
+
+    internal string GetExpectedPath(NativeStartupSystemModule module)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return GetExpected(module).Path;
+        }
+    }
+
+    internal long GetExpectedLength(NativeStartupSystemModule module)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return GetExpected(module).Length;
+        }
+    }
+
+    internal byte[] CopyExpectedSha256Digest(
+        NativeStartupSystemModule module)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return GetExpected(module).CopySha256Digest();
+        }
+    }
+
+    internal byte[] CopyExpectedFileIdentifier(
+        NativeStartupSystemModule module)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            return GetExpected(module).CopyFileIdentifier();
+        }
+    }
+
+    internal nint GetLoadedBaseAddress(NativeStartupSystemModule module)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            int ordinal = GetOrdinal(module);
+            if (loadedModules[ordinal] is null)
+            {
+                throw new InvalidOperationException(
+                    $"No {NativeSystemModuleIdentityLease.GetDisplayName(module)} load evidence has been captured.");
+            }
+
+            return loadedBaseAddresses[ordinal];
+        }
+    }
+
+    /// <summary>
+    /// Duplicates the borrowed debug-event file handle before validating the
+    /// event's addresses. The candidate must match the next exact member in the
+    /// fixed NTDLL, KERNEL32, KernelBase order.
+    /// </summary>
+    internal NativeStartupSystemModule CaptureNextLoadedModule(
+        SafeFileHandle borrowedEventFile,
+        nint moduleBaseAddress,
+        nint mainImageBaseAddress,
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            if (sealedAtInitialBreakpoint)
+            {
+                throw new InvalidOperationException(
+                    "The native startup system-module set is already sealed.");
+            }
+
+            ThrowIfFaulted();
+
+            if (capturedCount >= RequiredModuleCount)
+            {
+                faulted = true;
+                throw new SecurityException(
+                    "The native startup sequence supplied an extra system-module load event.");
+            }
+
+            int ordinal = capturedCount;
+            NativeStartupSystemModule module = GetModuleAtOrdinal(ordinal);
+            NativeSystemModuleLoadEvidence? captured = null;
+            try
+            {
+                // TryCaptureLoadedModuleEvidence duplicates the borrowed handle
+                // before performing file-identity, metadata, or digest work.
+                captured = GetExpectedAtOrdinal(ordinal)
+                    .TryCaptureLoadedModuleEvidence(
+                        borrowedEventFile,
+                        deadline,
+                        cancellationToken);
+                if (captured is null || captured.Module != module)
+                {
+                    throw new SecurityException(
+                        $"Startup module ordinal {ordinal} did not match {NativeSystemModuleIdentityLease.GetDisplayName(module)}.");
+                }
+
+                RequireDistinctBaseAddress(
+                    moduleBaseAddress,
+                    mainImageBaseAddress,
+                    ordinal);
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+
+                loadedModules[ordinal] = captured;
+                loadedBaseAddresses[ordinal] = moduleBaseAddress;
+                if (ordinal == 0)
+                {
+                    this.mainImageBaseAddress = mainImageBaseAddress;
+                }
+
+                capturedCount = ordinal + 1;
+                captured = null;
+                try
+                {
+                    NativeSystemModuleIdentityLease.CheckOperation(
+                        deadline,
+                        cancellationToken);
+                    return module;
+                }
+                catch
+                {
+                    capturedCount = ordinal;
+                    if (ordinal == 0)
+                    {
+                        this.mainImageBaseAddress = 0;
+                    }
+
+                    loadedBaseAddresses[ordinal] = 0;
+                    captured = loadedModules[ordinal];
+                    loadedModules[ordinal] = null;
+                    throw;
+                }
+            }
+            catch
+            {
+                faulted = true;
+                throw;
+            }
+            finally
+            {
+                captured?.Dispose();
+            }
+        }
+    }
+
+    internal void SealAtInitialBreakpoint(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            if (sealedAtInitialBreakpoint)
+            {
+                throw new InvalidOperationException(
+                    "The native startup system-module set is already sealed.");
+            }
+
+            ThrowIfFaulted();
+
+            if (capturedCount != RequiredModuleCount)
+            {
+                faulted = true;
+                throw new SecurityException(
+                    "The initial breakpoint arrived before the exact native startup system-module set was captured.");
+            }
+
+            try
+            {
+                RevalidateCompleteSet(deadline, cancellationToken);
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+                sealedAtInitialBreakpoint = true;
+                NativeSystemModuleIdentityLease.CheckOperation(
+                    deadline,
+                    cancellationToken);
+            }
+            catch
+            {
+                sealedAtInitialBreakpoint = false;
+                faulted = true;
+                throw;
+            }
+        }
+    }
+
+    internal void Revalidate(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            ThrowIfFaulted();
+            if (!sealedAtInitialBreakpoint ||
+                capturedCount != RequiredModuleCount)
+            {
+                throw new InvalidOperationException(
+                    "The native startup system-module set is not sealed and complete.");
+            }
+
+            RevalidateCompleteSet(deadline, cancellationToken);
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            if (disposed)
+            {
+                return;
+            }
+
+            disposed = true;
+            for (int ordinal = RequiredModuleCount - 1; ordinal >= 0; ordinal--)
+            {
+                loadedModules[ordinal]?.Dispose();
+                loadedModules[ordinal] = null;
+                loadedBaseAddresses[ordinal] = 0;
+            }
+
+            for (int ordinal = RequiredModuleCount - 1; ordinal >= 0; ordinal--)
+            {
+                expectedModules[ordinal]?.Dispose();
+                expectedModules[ordinal] = null;
+            }
+
+            mainImageBaseAddress = 0;
+            capturedCount = 0;
+            sealedAtInitialBreakpoint = false;
+            faulted = false;
+        }
+    }
+
+    private void RevalidateCompleteSet(
+        MonotonicDeadline deadline,
+        CancellationToken cancellationToken)
+    {
+        for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
+        {
+            NativeSystemModuleIdentityLease.CheckOperation(
+                deadline,
+                cancellationToken);
+            GetExpectedAtOrdinal(ordinal).Revalidate(
+                deadline,
+                cancellationToken);
+            NativeSystemModuleLoadEvidence evidence =
+                loadedModules[ordinal] ?? throw new SecurityException(
+                    "The native startup system-module evidence set is incomplete.");
+            if (evidence.Module != GetModuleAtOrdinal(ordinal))
+            {
+                throw new SecurityException(
+                    "The native startup system-module evidence order changed.");
+            }
+
+            evidence.Revalidate(deadline, cancellationToken);
+        }
+
+        RequireStoredBaseAddresses();
+        NativeSystemModuleIdentityLease.CheckOperation(
+            deadline,
+            cancellationToken);
+    }
+
+    private void RequireDistinctBaseAddress(
+        nint moduleBaseAddress,
+        nint suppliedMainImageBaseAddress,
+        int ordinal)
+    {
+        if (moduleBaseAddress == 0 || suppliedMainImageBaseAddress == 0)
+        {
+            throw new SecurityException(
+                "A native startup image or module base address was zero.");
+        }
+
+        if (moduleBaseAddress == suppliedMainImageBaseAddress)
+        {
+            throw new SecurityException(
+                "A native startup system module reused the main-image base address.");
+        }
+
+        if (ordinal > 0 &&
+            suppliedMainImageBaseAddress != mainImageBaseAddress)
+        {
+            throw new SecurityException(
+                "The native startup sequence changed its main-image base address.");
+        }
+
+        for (int prior = 0; prior < ordinal; prior++)
+        {
+            if (moduleBaseAddress == loadedBaseAddresses[prior])
+            {
+                throw new SecurityException(
+                    "Native startup system modules reused one load base address.");
+            }
+        }
+    }
+
+    private void RequireStoredBaseAddresses()
+    {
+        if (mainImageBaseAddress == 0)
+        {
+            throw new SecurityException(
+                "The retained native main-image base address was zero.");
+        }
+
+        for (int ordinal = 0; ordinal < RequiredModuleCount; ordinal++)
+        {
+            nint moduleBaseAddress = loadedBaseAddresses[ordinal];
+            if (moduleBaseAddress == 0 ||
+                moduleBaseAddress == mainImageBaseAddress)
+            {
+                throw new SecurityException(
+                    "A retained native startup module base address was invalid.");
+            }
+
+            for (int prior = 0; prior < ordinal; prior++)
+            {
+                if (moduleBaseAddress == loadedBaseAddresses[prior])
+                {
+                    throw new SecurityException(
+                        "Retained native startup modules shared a load base address.");
+                }
+            }
+        }
+    }
+
+    private NativeSystemModuleIdentityLease GetExpected(
+        NativeStartupSystemModule module) =>
+        GetExpectedAtOrdinal(GetOrdinal(module));
+
+    private NativeSystemModuleIdentityLease GetExpectedAtOrdinal(int ordinal)
+    {
+        if ((uint)ordinal >= RequiredModuleCount)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ordinal));
+        }
+
+        return expectedModules[ordinal] ?? throw new ObjectDisposedException(
+            nameof(NativeStartupSystemModuleSetLease));
+    }
+
+    private static NativeStartupSystemModule GetModuleAtOrdinal(int ordinal) =>
+        ordinal switch
+        {
+            0 => NativeStartupSystemModule.Ntdll,
+            1 => NativeStartupSystemModule.Kernel32,
+            2 => NativeStartupSystemModule.KernelBase,
+            _ => throw new ArgumentOutOfRangeException(nameof(ordinal)),
+        };
+
+    private static int GetOrdinal(NativeStartupSystemModule module) =>
+        module switch
+        {
+            NativeStartupSystemModule.Ntdll => 0,
+            NativeStartupSystemModule.Kernel32 => 1,
+            NativeStartupSystemModule.KernelBase => 2,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(module),
+                module,
+                "The native startup system module is not supported."),
+        };
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+    }
+
+    private void ThrowIfFaulted()
+    {
+        if (faulted)
+        {
+            throw new InvalidOperationException(
+                "The native startup system-module set is terminal after an earlier sequence failure.");
+        }
+    }
+}
+
+/// <summary>
+/// Owns a duplicate of a debugger-supplied LOAD_DLL file handle that matched
+/// one contemporaneously retained native System32 module identity.
 /// </summary>
 internal sealed class NativeSystemModuleLoadEvidence : IDisposable
 {
     private readonly object gate = new();
+    private readonly NativeStartupSystemModule module;
     private readonly SafeFileHandle loadedHandle;
     private readonly byte[] digest;
     private readonly TrustedArtifactFileIdentity identity;
@@ -674,6 +1313,7 @@ internal sealed class NativeSystemModuleLoadEvidence : IDisposable
     private bool disposed;
 
     internal NativeSystemModuleLoadEvidence(
+        NativeStartupSystemModule module,
         SafeFileHandle loadedHandle,
         string path,
         string volumeGuidPath,
@@ -682,6 +1322,7 @@ internal sealed class NativeSystemModuleLoadEvidence : IDisposable
         TrustedArtifactFileIdentity identity,
         uint linkCount)
     {
+        this.module = module;
         this.loadedHandle = loadedHandle;
         Path = path;
         VolumeGuidPath = volumeGuidPath;
@@ -696,6 +1337,8 @@ internal sealed class NativeSystemModuleLoadEvidence : IDisposable
     internal string VolumeGuidPath { get; }
 
     internal long Length { get; }
+
+    internal NativeStartupSystemModule Module => module;
 
     internal bool IsEligibleForTrustedLaunch => false;
 
